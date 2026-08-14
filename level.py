@@ -11,7 +11,7 @@ PHASES = [
         "world": 7420, "world_height": 1450, "world_top": -520, "step": 230, "widths": (160, 150, 170, 145),
         "heights": (650, 575, 505, 560, 470, 540, 600, 515),
         "checkpoints": (6, 11, 15),
-        "research": ((6, "Curiosidade"), (13, "Observação"), (21, "Hipótese")),
+        "research": ((4, "Curiosidade"), (7, "Observação"), (10, "Hipótese")),
         "dialogues": ((170, "Professora Ana", "Lia, toda grande descoberta começa com uma pergunta."),
                       (2500, "Lia", "Há um laboratório sob a escola. Talvez eu encontre novas pistas lá.")),
         "moving": (),
@@ -57,50 +57,61 @@ PHASES = [
     },
 ]
 
-# A Fase 1 usa plataformas manuais mais espaçadas. Mantemos os nomes já traduzidos
-# no dicionário original, mudando somente onde os livros aparecem.
-PHASES[0]["research"] = (
-    (4, "Curiosidade"),
-    # Os dois livros seguintes ficam nas plataformas altas das torres de parede.
-    (7, PHASES[0]["research"][1][1]),
-    (10, PHASES[0]["research"][2][1]),
-)
-
-
 class Level:
     """Fases de plataformas; a primeira também possui um laboratório subterrâneo."""
-    BUTTON_COLORS = ((55, 142, 230), (74, 184, 101), (238, 198, 54), (215, 70, 68))
+
     BUTTON_NAMES = ("AZUL", "VERDE", "AMARELO", "VERMELHO")
     LEVER_FRAME_DELAY = 6
+    LEVER_ACTIVATION_TIME = 300
+    ELEVATOR_RETURN_DELAY = 10 * 60
+    ELEVATOR_SPEED = 3
+    DEFAULT_SPAWN = (100, 650 - PLAYER_HEIGHT)
+    DEFAULT_SURFACE_RETURN = (4460, 412)
+    ENEMY_PLATFORM_SPAWNS = (
+        (3, 8, 12, 15),
+        (2, 8, 17, 25),
+        (6, 14, 22, 30, 36),
+    )
 
     def __init__(self, index):
-        self.index, self.data = index, PHASES[index]
-        # A primeira fase é lida diretamente do arquivo criado no Tiled.
-        # As outras duas continuam usando seus layouts atuais enquanto seus mapas
-        # ainda não forem desenhados no editor.
+        self.index = index
+        self.data = PHASES[index]
         self.tiled_map = self._load_school_map() if index == 0 else None
+        self._configure_world_dimensions()
+        self.is_underground = index == 0
+        self.grounds = []
+        self.dynamic_platforms = []
+        self.platforms = self._build_course()
+        self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
+        self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
+        self.surface_return = self.DEFAULT_SURFACE_RETURN
+        self.enemies = self._make_enemies()
+        self.checkpoints = self._make_checkpoints()
+        self.research = self._make_research()
+        self._reset_lab_state()
+        self.university_decor = self._make_university_decor() if self.index == 1 else None
+        if self.is_underground:
+            self._build_underground_lab()
+
+    def _configure_world_dimensions(self):
         self.world_width = self.data["world"]
         self.world_height = self.data["world_height"]
         self.world_top = self.data["world_top"]
         if self.tiled_map:
             self.world_width = self.tiled_map.pixel_width
             self.world_height = self.tiled_map.pixel_height
-        self.is_underground = index == 0
-        self.grounds = []
-        self.dynamic_platforms = []
-        self.platforms = self._build_course()
-        self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
-        self.spawn = self._map_spawn() if self.tiled_map else (100, 650 - PLAYER_HEIGHT)
-        self.surface_return = (4460, 412)
-        self.enemies = self._make_enemies()
-        self.checkpoints = self._make_checkpoints()
-        self.research = self._make_research()
+
+    def _reset_lab_state(self):
         self.top_lever = self.bottom_lever = self.panel_lever = None
         self.elevator = None
         self.elevator_target = None
+        self.elevator_return_timer = 0
+        self.elevator_return_target = None
         self.elevator_lever_timers = {"top": 0, "bottom": 0}
         self.upper_elevator = None
         self.upper_elevator_target = None
+        self.upper_elevator_return_timer = 0
+        self.upper_elevator_return_target = None
         self.upper_lever_timers = {"bottom": 0, "top": 0}
         # Cada alavanca guarda o quadro atual, o quadro-alvo e o tempo até o
         # próximo movimento. Os quadros 0..4 correspondem às imagens 1..5.
@@ -114,9 +125,6 @@ class Level:
         self.bench = None
         self.return_route_platforms = []
         self.return_route_active = False
-        self.university_decor = self._make_university_decor() if self.index == 1 else None
-        if self.is_underground:
-            self._build_underground_lab()
 
     @staticmethod
     def _map_path():
@@ -132,48 +140,73 @@ class Level:
     def _rect_from_object(item):
         return pygame.Rect(item["x"], item["y"], item["width"], item["height"])
 
+    @classmethod
+    def _platform_from_object(cls, item):
+        return Platform(
+            item["x"],
+            item["y"],
+            item["width"],
+            cls._object_style(item),
+        )
+
     @staticmethod
     def _object_style(item):
         value = item["properties"].get("estilo", item["properties"].get("style", "0"))
         styles = {"grama": 0, "madeira": 1, "tijolo": 2, "brick": 2}
-        return styles.get(str(value).casefold(), int(value) if str(value).lstrip("-").isdigit() else 0)
+        text = str(value)
+        numeric_style = int(text) if text.lstrip("-").isdigit() else 0
+        return styles.get(text.casefold(), numeric_style)
 
     def _map_spawn(self):
         item = self.tiled_map.entity("spawn")
         if not item:
-            return 100, 650 - PLAYER_HEIGHT
+            return self.DEFAULT_SPAWN
         return item["x"], item["y"] - PLAYER_HEIGHT
 
     def _build_course(self):
         if self.index == 0:
-            if self.tiled_map:
-                platforms = self._build_school_tiled_course()
-                if platforms:
-                    return platforms
+            tiled_platforms = self._build_school_tiled_course() if self.tiled_map else []
+            if tiled_platforms:
+                return tiled_platforms
             return self._build_school_course()
         if self.index == 1:
             return self._build_university_course()
+        return self._build_generated_course()
+
+    def _build_generated_course(self):
+        """Monta a Fase 3 a partir de suas sequências de altura e largura."""
         phase = self.data
         platforms = [Platform(0, 650, 210)]
+        moving = {number: values for number, *values in phase["moving"]}
         x, number = 210, 1
-        moving = {entry[0]: entry[1:] for entry in phase["moving"]}
         while x < phase["world"] - 320:
             width = phase["widths"][number % len(phase["widths"])]
             height = phase["heights"][number % len(phase["heights"])]
-            if number in moving:
-                travel, period, axis = moving[number]
-                platforms.append(Platform(x, height, width, number % 4, travel, period, axis))
-            else:
-                platforms.append(Platform(x, height, width, number % 4))
+            platforms.append(
+                self._platform_with_motion(
+                    x,
+                    height,
+                    width,
+                    number % 4,
+                    moving.get(number),
+                )
+            )
             x += phase["step"]
             number += 1
         platforms.append(Platform(phase["world"] - 220, 560, 220, 3))
         return platforms
 
+    @staticmethod
+    def _platform_with_motion(x, y, width, image_index, movement=None):
+        if movement:
+            travel, period, axis = movement
+            return Platform(x, y, width, image_index, travel, period, axis)
+        return Platform(x, y, width, image_index)
+
     def _build_school_tiled_course(self):
-        """Cria as colisões das plataformas a partir da camada ``Plataformas``."""
+        """Cria as colisões das plataformas a partir da camada Plataformas."""
         return [
-            Platform(item["x"], item["y"], item["width"], self._object_style(item))
+            self._platform_from_object(item)
             for item in self.tiled_map.objects("Plataformas", "Colisoes", "Collision")
             if item["width"] > 0 and item["height"] > 0
         ]
@@ -192,22 +225,24 @@ class Level:
         identificar de longe quais plataformas se movem."""
         phase = self.data
         layout = phase["layout"]
-        moving = {entry[0]: entry[1:] for entry in phase["moving"]}
+        moving = {number: values for number, *values in phase["moving"]}
         third = phase["world"] / 3
         platforms = []
         for index, (x, y, width) in enumerate(layout):
             if index in moving:
-                travel, period, axis = moving[index]
-                platforms.append(Platform(x, y, width, 3, travel, period, axis))
+                platforms.append(self._platform_with_motion(x, y, width, 3, moving[index]))
                 continue
-            if index == 0 or x < third:
-                skin = 0
-            elif x < 2 * third:
-                skin = 1
-            else:
-                skin = 2
+            skin = self._university_platform_skin(index, x, third)
             platforms.append(Platform(x, y, width, skin))
         return platforms
+
+    @staticmethod
+    def _university_platform_skin(index, x, third):
+        if index == 0 or x < third:
+            return 0
+        if x < 2 * third:
+            return 1
+        return 2
 
     def _make_university_decor(self):
         """Pré-calcula posições de decoração (não sólida) da Fase 2: itens sobre
@@ -246,16 +281,20 @@ class Level:
             ]
             if walls:
                 return walls
-        walls = []
-        for wall_x, wall_top in ((5540, 450), (6740, 420)):
-            for wall_y in range(wall_top, 650, 32):
-                walls.append(pygame.Rect(wall_x, wall_y, 32, 32))
-        return walls
+        return [
+            pygame.Rect(wall_x, wall_y, 32, 32)
+            for wall_x, wall_top in ((5540, 450), (6740, 420))
+            for wall_y in range(wall_top, 650, 32)
+        ]
 
     def _build_underground_lab(self):
         if self.tiled_map:
             self._build_tiled_underground_lab()
-            return
+        else:
+            self._build_default_underground_lab()
+
+    def _build_default_underground_lab(self):
+        """Mantém o laboratório manual como fallback para a Fase 1."""
         # O elevador substitui a plataforma inútil que ficava logo abaixo da superfície.
         self.elevator_top, self.elevator_bottom = 650, 1090
         self.elevator = Platform(2670, self.elevator_top, 160, 2)
@@ -267,17 +306,19 @@ class Level:
         self.upper_elevator = Platform(1750, self.upper_elevator_bottom, 160, 1)
         self.upper_elevator_target = self.upper_elevator_bottom
         self.platforms.append(self.upper_elevator)
+
         upper_platforms = [
             (1995, 100, 160), (2210, 0, 160), (2410, 90, 145),
             (2610, 0, 160), (2810, 100, 150),
         ]
-        self.platforms.extend(Platform(x, y, width, (i + 1) % 4) for i, (x, y, width) in enumerate(upper_platforms))
+        self._append_platform_layout(upper_platforms, style_offset=1)
+
         underground = [
             (2940, 1090, 160), (3140, 1000, 145), (3340, 1090, 160), (3560, 1000, 145),
             (3760, 1090, 160), (3980, 1010, 145), (4180, 1110, 165), (4390, 1040, 145),
             (4580, 1120, 170), (4790, 1040, 145), (4980, 950, 160),
         ]
-        self.platforms.extend(Platform(x, y, width, i % 4) for i, (x, y, width) in enumerate(underground))
+        self._append_platform_layout(underground)
 
         # Caminho de volta ao percurso principal. Ele aparece somente depois da
         # montagem, para Lia precisar concluir o laboratório antes de seguir.
@@ -290,17 +331,14 @@ class Level:
             for i, (x, y, width) in enumerate(return_route)
         ]
 
-        # Alavancas de superfÃ­cie acompanham o novo percurso da escola.
-        self.top_lever = pygame.Rect(self.elevator.rect.centerx - 17, self.elevator.rect.top - 52, 34, 52)
-        self.bottom_lever = None
+        self._configure_elevator_levers()
         self.panel_lever = pygame.Rect(3180, 948, 34, 52)
-        self.upper_bottom_lever = pygame.Rect(
-            self.upper_elevator.rect.centerx - 17, self.upper_elevator.rect.top - 52, 34, 52
-        )
-        self.upper_top_lever = None
+
         button_platforms = ((2210, 0, 160), (2410, 90, 145), (2610, 0, 160), (2810, 100, 150))
-        for x, y, width in button_platforms:
-            self.buttons.append(pygame.Rect(x + width // 2 - 18, y - 20, 36, 20))
+        self.buttons = [
+            pygame.Rect(x + width // 2 - 18, y - 20, 36, 20)
+            for x, y, width in button_platforms
+        ]
 
         self.microscope_parts = [
             # As imagens das peças ocupam 64x64; a base continua apoiada na plataforma.
@@ -316,8 +354,29 @@ class Level:
         ])
         self.bench = pygame.Rect(4940, 870, 110, 80)
 
+    def _append_platform_layout(self, layout, style_offset=0):
+        self.platforms.extend(
+            Platform(x, y, width, (index + style_offset) % 4)
+            for index, (x, y, width) in enumerate(layout)
+        )
+
+    def _configure_elevator_levers(self):
+        self.top_lever = self._lever_above(self.elevator)
+        self.bottom_lever = None
+        self.upper_bottom_lever = self._lever_above(self.upper_elevator)
+        self.upper_top_lever = None
+
+    @staticmethod
+    def _lever_above(platform):
+        return pygame.Rect(
+            platform.rect.centerx - 17,
+            platform.rect.top - 52,
+            34,
+            52,
+        )
+
     def _build_tiled_underground_lab(self):
-        """Lê os objetos especiais da camada ``Entidades`` do mapa do Tiled."""
+        """Lê os objetos especiais da camada Entidades do mapa do Tiled."""
         lower = self.tiled_map.entity("elevador_principal")
         upper = self.tiled_map.entity("elevador_superior")
         if not lower or not upper:
@@ -327,33 +386,25 @@ class Level:
 
         self.elevator_top = int(lower["properties"].get("top", lower["y"]))
         self.elevator_bottom = int(lower["properties"].get("bottom", lower["y"]))
-        self.elevator = Platform(lower["x"], lower["y"], lower["width"], self._object_style(lower))
+        self.elevator = self._platform_from_object(lower)
         self.elevator_target = self.elevator.y
-        self.platforms.append(self.elevator)
-        self.dynamic_platforms.append(self.elevator)
+        self._add_dynamic_platform(self.elevator)
 
         self.upper_elevator_top = int(upper["properties"].get("top", upper["y"]))
         self.upper_elevator_bottom = int(upper["properties"].get("bottom", upper["y"]))
-        self.upper_elevator = Platform(upper["x"], upper["y"], upper["width"], self._object_style(upper))
+        self.upper_elevator = self._platform_from_object(upper)
         self.upper_elevator_target = self.upper_elevator.y
-        self.platforms.append(self.upper_elevator)
-        self.dynamic_platforms.append(self.upper_elevator)
+        self._add_dynamic_platform(self.upper_elevator)
 
         self.return_route_platforms = [
-            Platform(item["x"], item["y"], item["width"], self._object_style(item))
+            self._platform_from_object(item)
             for item in self.tiled_map.objects("Rota Retorno")
             if item["width"] > 0 and item["height"] > 0
         ]
 
-        # Alavancas elevatórias acompanham sempre a plataforma móvel.
-        self.top_lever = pygame.Rect(self.elevator.rect.centerx - 17, self.elevator.rect.top - 52, 34, 52)
-        self.bottom_lever = None
+        self._configure_elevator_levers()
         panel = self.tiled_map.entity("painel")
         self.panel_lever = self._rect_from_object(panel) if panel else pygame.Rect(3180, 948, 34, 52)
-        self.upper_bottom_lever = pygame.Rect(
-            self.upper_elevator.rect.centerx - 17, self.upper_elevator.rect.top - 52, 34, 52
-        )
-        self.upper_top_lever = None
 
         buttons = self.tiled_map.entities("botao")
         self.buttons = [
@@ -371,6 +422,10 @@ class Level:
         if return_point:
             self.surface_return = (return_point["x"], return_point["y"] - PLAYER_HEIGHT)
 
+    def _add_dynamic_platform(self, platform):
+        self.platforms.append(platform)
+        self.dynamic_platforms.append(platform)
+
     def activate_return_route(self):
         """Libera as plataformas que conectam o laboratório ao caminho superior."""
         if not self.return_route_active:
@@ -379,33 +434,51 @@ class Level:
             self.dynamic_platforms.extend(self.return_route_platforms)
 
     def call_elevator(self, direction):
-        """Move o elevador; a alavanca volta ao repouso após cinco segundos."""
+        """Move o elevador e agenda o retorno automático após dez segundos."""
         lever_name = "top" if direction == "down" else "bottom"
-        if self.elevator_lever_timers[lever_name] == 0:
-            # Alterna o destino: no alto desce; embaixo sobe.
-            self.elevator_target = (
-                self.elevator_bottom if self.elevator_target == self.elevator_top
-                else self.elevator_top
-            )
-            self.elevator_lever_timers[lever_name] = 300
-            self.set_lever_active(lever_name, True)
+        if self.elevator_lever_timers[lever_name] != 0:
+            return
+        self.elevator_target = self._alternate_target(
+            self.elevator_target,
+            self.elevator_top,
+            self.elevator_bottom,
+        )
+        self.elevator_return_target = self._alternate_target(
+            self.elevator_target,
+            self.elevator_top,
+            self.elevator_bottom,
+        )
+        self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        self.elevator_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
+        self.set_lever_active(lever_name, True)
 
     def elevator_lever_active(self, lever_name):
         return self.elevator_lever_timers[lever_name] > 0
 
     def call_upper_elevator(self, direction):
         lever_name = "bottom" if direction == "up" else "top"
-        if self.upper_lever_timers[lever_name] == 0:
-            # Mesmo comportamento de alternância para o elevador da área superior.
-            self.upper_elevator_target = (
-                self.upper_elevator_bottom if self.upper_elevator_target == self.upper_elevator_top
-                else self.upper_elevator_top
-            )
-            self.upper_lever_timers[lever_name] = 300
-            self.set_lever_active(f"upper_{lever_name}", True)
+        if self.upper_lever_timers[lever_name] != 0:
+            return
+        self.upper_elevator_target = self._alternate_target(
+            self.upper_elevator_target,
+            self.upper_elevator_top,
+            self.upper_elevator_bottom,
+        )
+        self.upper_elevator_return_target = self._alternate_target(
+            self.upper_elevator_target,
+            self.upper_elevator_top,
+            self.upper_elevator_bottom,
+        )
+        self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        self.upper_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
+        self.set_lever_active(f"upper_{lever_name}", True)
 
     def upper_lever_active(self, lever_name):
         return self.upper_lever_timers[lever_name] > 0
+
+    @staticmethod
+    def _alternate_target(current, top, bottom):
+        return bottom if current == top else top
 
     def set_lever_active(self, lever_name, active):
         """Inicia a animação para o estado acionado ou de repouso."""
@@ -429,49 +502,79 @@ class Level:
     def _move_elevator(elevator, target):
         old_y = elevator.y
         if elevator.y < target:
-            elevator.y = min(target, elevator.y + 3)
+            elevator.y = min(target, elevator.y + Level.ELEVATOR_SPEED)
         elif elevator.y > target:
-            elevator.y = max(target, elevator.y - 3)
+            elevator.y = max(target, elevator.y - Level.ELEVATOR_SPEED)
         elevator.dy = elevator.y - old_y
 
     def _make_checkpoints(self):
         if self.tiled_map:
-            return [self._rect_from_object(item) for item in self.tiled_map.entities("checkpoint")]
-        flags = []
-        for platform_number in self.data["checkpoints"]:
-            platform = self.platforms[platform_number]
-            flags.append(pygame.Rect(platform.rect.x + 20, platform.rect.top - 90, 35, 90))
-        return flags
+            return [
+                self._rect_from_object(item)
+                for item in self.tiled_map.entities("checkpoint")
+            ]
+        return [
+            pygame.Rect(
+                self.platforms[number].rect.x + 20,
+                self.platforms[number].rect.top - 90,
+                35,
+                90,
+            )
+            for number in self.data["checkpoints"]
+        ]
 
     def _make_research(self):
         if self.tiled_map:
             return [
-                (self._rect_from_object(item), item["properties"].get("nome", "Pesquisa"))
+                (
+                    self._rect_from_object(item),
+                    item["properties"].get("nome", "Pesquisa"),
+                )
                 for item in self.tiled_map.entities("livro")
             ]
-        items = []
-        for platform_number, name in self.data["research"]:
-            platform = self.platforms[platform_number]
-            items.append((pygame.Rect(platform.rect.centerx - 14, platform.rect.top - 38, 28, 34), name))
-        return items
+        return [
+            (
+                pygame.Rect(
+                    self.platforms[number].rect.centerx - 14,
+                    self.platforms[number].rect.top - 38,
+                    28,
+                    34,
+                ),
+                name,
+            )
+            for number, name in self.data["research"]
+        ]
 
     def _make_enemies(self):
         if self.tiled_map:
-            enemies = []
-            for item in self.tiled_map.entities("slime"):
-                center_x = item["x"] + item["width"] // 2
-                candidates = [
-                    platform for platform in self.platforms
-                    if platform.rect.left - 10 <= center_x <= platform.rect.right + 10
-                ]
-                if candidates:
-                    platform = min(candidates, key=lambda current: abs(current.rect.top - item["y"]))
-                    enemies.append(Slime(platform))
-            return enemies
-        # Em cada fase, os slimes patrulham plataformas espaçadas para não bloquear os saltos iniciais.
-        spawn_numbers = ((3, 8, 12, 15), (2, 8, 17, 25), (6, 14, 22, 30, 36))[self.index]
-        return [Slime(self.platforms[number]) for number in spawn_numbers
-                if number < len(self.platforms)]
+            return self._make_tiled_enemies()
+        spawn_numbers = self.ENEMY_PLATFORM_SPAWNS[self.index]
+        return [
+            Slime(self.platforms[number])
+            for number in spawn_numbers
+            if number < len(self.platforms)
+        ]
+
+    def _make_tiled_enemies(self):
+        enemies = []
+        for item in self.tiled_map.entities("slime"):
+            platform = self._enemy_platform_from_map_object(item)
+            if platform:
+                enemies.append(Slime(platform))
+        return enemies
+
+    def _enemy_platform_from_map_object(self, item):
+        center_x = item["x"] + item["width"] // 2
+        candidates = [
+            platform
+            for platform in self.platforms
+            if platform.rect.left - 10 <= center_x <= platform.rect.right + 10
+        ]
+        return min(
+            candidates,
+            key=lambda platform: abs(platform.rect.top - item["y"]),
+            default=None,
+        )
 
     def update(self):
         for platform in self.platforms:
@@ -479,25 +582,49 @@ class Level:
         for enemy in self.enemies:
             enemy.update()
         if self.is_underground:
-            for name in self.elevator_lever_timers:
-                was_active = self.elevator_lever_timers[name] > 0
-                self.elevator_lever_timers[name] = max(0, self.elevator_lever_timers[name] - 1)
-                if was_active and self.elevator_lever_timers[name] == 0:
-                    self.set_lever_active(name, False)
-            for name in self.upper_lever_timers:
-                was_active = self.upper_lever_timers[name] > 0
-                self.upper_lever_timers[name] = max(0, self.upper_lever_timers[name] - 1)
-                if was_active and self.upper_lever_timers[name] == 0:
-                    self.set_lever_active(f"upper_{name}", False)
+            self._update_lever_timers(self.elevator_lever_timers)
+            self._update_lever_timers(self.upper_lever_timers, "upper_")
+            self._update_elevator_return_timers()
             self.update_lever_animations()
             self._move_elevator(self.elevator, self.elevator_target)
             self._move_elevator(self.upper_elevator, self.upper_elevator_target)
-            self.top_lever.midbottom = (self.elevator.rect.centerx, self.elevator.rect.top)
-            self.upper_bottom_lever.midbottom = (
-                self.upper_elevator.rect.centerx, self.upper_elevator.rect.top
-            )
+            self._update_elevator_lever_positions()
 
-    def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, checkpoint,
+    def _update_lever_timers(self, timers, name_prefix=""):
+        for name, timer in timers.items():
+            was_active = timer > 0
+            timers[name] = max(0, timer - 1)
+            if was_active and timers[name] == 0:
+                self.set_lever_active(f"{name_prefix}{name}", False)
+
+    def _update_elevator_return_timers(self):
+        self.elevator_return_timer = self._update_return_timer(
+            self.elevator_return_timer,
+            self.elevator_return_target,
+            "elevator_target",
+        )
+        self.upper_elevator_return_timer = self._update_return_timer(
+            self.upper_elevator_return_timer,
+            self.upper_elevator_return_target,
+            "upper_elevator_target",
+        )
+
+    def _update_return_timer(self, timer, return_target, target_name):
+        if not timer:
+            return 0
+        timer -= 1
+        if timer == 0:
+            setattr(self, target_name, return_target)
+        return timer
+
+    def _update_elevator_lever_positions(self):
+        self.top_lever.midbottom = (self.elevator.rect.centerx, self.elevator.rect.top)
+        self.upper_bottom_lever.midbottom = (
+            self.upper_elevator.rect.centerx,
+            self.upper_elevator.rect.top,
+        )
+
+    def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
              microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
              university_tiles=None, university_props=None):
@@ -505,12 +632,59 @@ class Level:
             self.tiled_map.draw(surface, camera_x, camera_y)
         if self.index == 1 and self.university_decor:
             self._draw_university_backdrop(surface, camera_x, camera_y, university_props)
+
+        self._draw_platforms(
+            surface,
+            camera_x,
+            camera_y,
+            tiles,
+            school_sprites,
+            university_tiles,
+        )
+        self._draw_school_walls(surface, camera_x, camera_y, school_sprites)
+        self._draw_university_platform_props(
+            surface,
+            camera_x,
+            camera_y,
+            university_props,
+        )
+        self._draw_collectibles(
+            surface,
+            camera_x,
+            camera_y,
+            book_image,
+            checkpoint_image,
+            collected,
+        )
+        if self.is_underground:
+            self._draw_lab(
+                surface,
+                camera_x,
+                camera_y,
+                lever_on,
+                sequence_progress,
+                sequence_solved,
+                microscope_collected,
+                microscope_assembled,
+                puzzle_sprites,
+                text_fn,
+            )
+        for enemy in self.enemies:
+            enemy.draw(surface, camera_x, camera_y, slime_sprites)
+
+    def _draw_platforms(
+        self,
+        surface,
+        camera_x,
+        camera_y,
+        tiles,
+        school_sprites,
+        university_tiles,
+    ):
         for platform in self.platforms:
             if self.index == 0:
-                if (self.tiled_map and platform not in self.dynamic_platforms
-                        and not self._draw_automatic_school_platforms()):
+                if self._should_skip_tiled_platform(platform):
                     continue
-                # Cada plataforma mantém um piso único do início ao fim.
                 floor_name = ("grass_tile", "wood_tile", "brick_tile")[platform.image_index % 3]
                 platform_sprite = school_sprites[floor_name]
                 self._draw_school_platform(surface, platform, camera_x, camera_y, platform_sprite)
@@ -520,28 +694,46 @@ class Level:
                 platform.draw(surface, camera_x, camera_y, skin)
             else:
                 platform.draw(surface, camera_x, camera_y, tiles)
+
+    def _should_skip_tiled_platform(self, platform):
+        return (
+            self.tiled_map
+            and platform not in self.dynamic_platforms
+            and not self._draw_automatic_school_platforms()
+        )
+
+    def _draw_school_walls(self, surface, camera_x, camera_y, school_sprites):
         if self.index == 0 and self._draw_automatic_school_platforms():
             for wall in self.wall_blocks:
                 for x in range(wall.left, wall.right, 32):
                     for y in range(wall.top, wall.bottom, 32):
-                        surface.blit(school_sprites["brick_tile"], (x-camera_x, y-camera_y))
+                        surface.blit(
+                            school_sprites["brick_tile"],
+                            (x - camera_x, y - camera_y),
+                        )
+
+    def _draw_university_platform_props(self, surface, camera_x, camera_y, university_props):
         if self.index == 1 and self.university_decor and university_props:
             for world_x, top_y, prop_name in self.university_decor["on_platform"]:
                 image = university_props[prop_name]
                 surface.blit(image, (world_x - camera_x, top_y - image.get_height() - camera_y))
+
+    def _draw_collectibles(
+        self,
+        surface,
+        camera_x,
+        camera_y,
+        book_image,
+        checkpoint_image,
+        collected,
+    ):
         for cp in self.checkpoints:
             flag_x = cp.centerx - checkpoint_image.get_width() // 2 - camera_x
             flag_y = cp.bottom - checkpoint_image.get_height() - camera_y
             surface.blit(checkpoint_image, (flag_x, flag_y))
         for index, (item, _) in enumerate(self.research):
             if index not in collected:
-                surface.blit(book_image, (item.x-camera_x, item.y-camera_y))
-        if self.is_underground:
-            self._draw_lab(surface, camera_x, camera_y, lever_on, sequence_progress,
-                           sequence_solved, microscope_collected, microscope_assembled,
-                           puzzle_sprites, text_fn)
-        for enemy in self.enemies:
-            enemy.draw(surface, camera_x, camera_y, slime_sprites)
+                surface.blit(book_image, (item.x - camera_x, item.y - camera_y))
 
     def _draw_school_platform(self, surface, platform, camera_x, camera_y, platform_sprite):
         """Repete apenas um tile de piso para cada plataforma, sem misturar estilos."""
