@@ -8,6 +8,7 @@ from level import PHASES, Level
 from player import Player
 from settings import (
     ASSET_DIR,
+    FPS,
     HEIGHT,
     MOTIVATION,
     PLAYER_HEIGHT,
@@ -130,11 +131,25 @@ class Game:
             for name in ("plant_pot", "book_stack", "grad_cap", "banner", "bench", "bush")
         }
 
+    # Fator de velocidade do fundo da caverna em relação à câmera: <1.0 faz o
+    # fundo se mover mais devagar que o primeiro plano (efeito parallax).
+    CAVE_BACKGROUND_PARALLAX = 0.35
+
     def _load_backgrounds(self):
         school_background = self._load_image("backgrounds/background_school.png", alpha=False)
         university_background = self._load_image("backgrounds/ifsp_background.png", alpha=False)
-        self.backgrounds = [school_background, university_background, school_background]
+        cave_background = self._load_scaled_cave_background()
+        self.backgrounds = [school_background, university_background, cave_background]
         self.background_mirror = pygame.transform.flip(university_background, True, False)
+
+    def _load_scaled_cave_background(self):
+        """A arte da caverna vem em baixa resolução (pensada para ladrilhar);
+        aqui ela é ampliada até cobrir a altura do canvas, preservando a
+        proporção, para servir de camada de fundo com parallax."""
+        raw = self._load_image("backgrounds/cave_background_underwater.png", alpha=False)
+        scale = HEIGHT / raw.get_height()
+        size = (round(raw.get_width() * scale), HEIGHT)
+        return pygame.transform.scale(raw, size)
 
     def _load_school_sprites(self):
         sheet = self._load_image("fase_escola_tileset/escola_sheet.png", alpha=False)
@@ -271,7 +286,7 @@ class Game:
         self.message = MOTIVATION
         self.message_timer = 0
 
-    def update(self, keyboard):
+    def update(self, keyboard, dt=1 / FPS):
         dialogue_advance_pressed, attack_pressed, dash_pressed = self._read_input(keyboard)
 
         if self.state == TITLE:
@@ -281,7 +296,7 @@ class Game:
         elif self.dialogue.active:
             self._update_dialogue(dialogue_advance_pressed)
         else:
-            self._update_playing(keyboard, dash_pressed, attack_pressed)
+            self._update_playing(keyboard, dash_pressed, attack_pressed, dt)
 
     def _read_input(self, keyboard):
         interaction_down = keyboard.e or keyboard.RETURN
@@ -334,13 +349,16 @@ class Game:
         else:
             self.dialogue.update()
 
-    def _update_playing(self, keyboard, dash_pressed, attack_pressed):
+    def _update_playing(self, keyboard, dash_pressed, attack_pressed, dt):
         self.player.update_abilities()
-        if dash_pressed:
+        if dash_pressed and not self.player.swimming:
             self.player.start_dash()
         self.player.read_controls(keyboard)
         self._update_attack(attack_pressed)
         self.level.update()
+        if self.level.tiled_map:
+            # Avança a animação dos tiles do Tiled (ex.: água da Fase 3) em ms.
+            self.level.tiled_map.update(dt * 1000)
         self._move_with_platform()
         self.move_player()
         self.player.animate()
@@ -383,32 +401,58 @@ class Game:
         """Registra o clique; o ataque será iniciado no próximo update."""
         self.mouse_attack_requested = True
 
+    # Quadros de tolerância após soltar o encosto na parede em que o wall
+    # jump ainda é aceito (mesma ideia do coyote_time do chão). Sem isso, o
+    # jogador solta a direção pra preparar o pulo, o encosto conta como
+    # perdido no mesmo quadro e o wall jump falha de forma inconsistente.
+    WALL_COYOTE_FRAMES = 8
+
     def move_player(self):
         """Resolve colisões horizontais, verticais e o pulo sobre inimigos."""
         player = self.player
         solids = self._all_solid_rectangles()
         player.wall_side = 0
+        player.swimming = self._player_in_water(player)
+        if player.swimming:
+            player.cancel_dash()
 
         previous_x = player.x
         player.x += player.vx
         self._resolve_horizontal_collisions(player, solids, previous_x)
 
-        player.apply_gravity()
-        if player.wall_side and player.vy > player.WALL_SLIDE_SPEED:
-            player.vy = player.WALL_SLIDE_SPEED
+        if player.wall_side and not player.swimming:
+            player.last_wall_side = player.wall_side
+            player.wall_coyote_time = self.WALL_COYOTE_FRAMES
+        else:
+            player.wall_coyote_time = max(0, player.wall_coyote_time - 1)
+
+        if player.swimming:
+            player.apply_swim_gravity()
+        else:
+            player.apply_gravity()
+            if player.wall_side and player.vy > player.WALL_SLIDE_SPEED:
+                player.vy = player.WALL_SLIDE_SPEED
 
         previous_y = player.y
         previous_bottom = previous_y + PLAYER_HEIGHT
         player.y += player.vy
 
-        if self._stomp_enemy_if_possible(player, previous_bottom):
+        if not player.swimming and self._stomp_enemy_if_possible(player, previous_bottom):
             return
 
         landed = self._resolve_vertical_collisions(player, previous_y, previous_bottom)
-        player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
-        if landed:
-            player.wall_jump_used = False
+        if player.swimming:
+            # Sem chão firme nem parede pra reaproveitar debaixo d'água.
+            player.coyote_time = 0
+            player.wall_jump_used = True
+        else:
+            player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
+            if landed:
+                player.wall_jump_used = False
         player.try_jump()
+
+    def _player_in_water(self, player):
+        return any(player.rect.colliderect(zone) for zone in self.level.water_zones)
 
     def _all_solid_rectangles(self):
         return (
@@ -483,6 +527,11 @@ class Game:
             self.respawn()
             return
 
+        if self._update_oxygen(player):
+            return
+        if self._check_hazards(player):
+            return
+
         self.check_enemies()
         if self.state != PLAYING:
             return
@@ -493,6 +542,30 @@ class Game:
         if self._start_pending_dialogue(player):
             return
         self._advance_level_if_ready(player)
+
+    def _update_oxygen(self, player):
+        """Consome o fôlego enquanto a cabeça está submersa em alguma zona de
+        água (Level.water_zones); recarrega assim que ela sai. Como o rect da
+        cabeça só limpa a zona onde o teto tem uma folga acima da superfície
+        (bolsão de ar), isso já implementa naturalmente os bolsões de ar da
+        caverna submersa sem precisar de geometria especial por bolsão."""
+        head = player.head_rect
+        breathing = not any(head.colliderect(zone) for zone in self.level.water_zones)
+        if breathing:
+            player.oxygen = min(player.OXYGEN_MAX_FRAMES, player.oxygen + player.OXYGEN_REFILL_PER_FRAME)
+            return False
+        player.oxygen = max(0, player.oxygen - player.OXYGEN_DRAIN_PER_FRAME)
+        if player.oxygen <= 0:
+            self.respawn()
+            return True
+        return False
+
+    def _check_hazards(self, player):
+        for hazard in self.level.hazards:
+            if player.rect.colliderect(hazard):
+                self.respawn()
+                return True
+        return False
 
     def _check_checkpoints(self, player):
         for checkpoint in self.level.checkpoints:
@@ -675,6 +748,10 @@ class Game:
             self.draw_school_background(surface)
         elif self.level.index == 1:
             self.draw_university_background(surface)
+        elif self.level.index == 2:
+            self._draw_repeating_background(
+                surface, self.backgrounds[2], parallax=self.CAVE_BACKGROUND_PARALLAX
+            )
         else:
             self._draw_repeating_background(surface, self.backgrounds[self.level.index])
 
@@ -684,9 +761,12 @@ class Game:
         if self.player.y > 780:
             surface.blit(self.underground_filter, (0, 0))
 
-    def _draw_repeating_background(self, surface, background):
+    def _draw_repeating_background(self, surface, background, parallax=1.0):
+        """Ladrilha o fundo horizontalmente. Com parallax<1.0 o fundo anda
+        mais devagar que a câmera, dando sensação de profundidade."""
         image_width = background.get_width()
-        start_x = -int(self.camera_x) % image_width - image_width
+        offset = int(self.camera_x * parallax)
+        start_x = -offset % image_width - image_width
         for x in range(start_x, WIDTH, image_width):
             surface.blit(background, (x, 0))
 
@@ -729,6 +809,12 @@ class Game:
         surface.blit(self.player_light, (light_x, light_y))
 
     def _draw_interface(self, surface):
+        show_oxygen = bool(self.level.water_zones) and (
+            self.player.swimming or self.player.oxygen < self.player.OXYGEN_MAX_FRAMES
+        )
+        oxygen_ratio = (
+            self.player.oxygen / self.player.OXYGEN_MAX_FRAMES if show_oxygen else None
+        )
         draw_hud(
             surface,
             self.level.data["name"],
@@ -740,6 +826,7 @@ class Game:
             len(self.microscope_collected),
             len(self.level.microscope_parts),
             self.microscope_assembled,
+            oxygen_ratio,
         )
         draw_ability_ui(
             surface,

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tileset version="1.10" tiledversion="1.12.2" name="fase3_cave_tileset_32x32" tilewidth="32" tileheight="32" tilecount="154" columns="8">
+  <image source="fase3_cave_tileset_32x32.png" width="256" height="640"/>
+  <tile id="54">
+    <animation>
+      <frame tileid="54" duration="180"/>
+      <frame tileid="55" duration="180"/>
+      <frame tileid="56" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="57">
+    <animation>
+      <frame tileid="57" duration="180"/>
+      <frame tileid="58" duration="180"/>
+      <frame tileid="59" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="60">
+    <animation>
+      <frame tileid="60" duration="180"/>
+      <frame tileid="61" duration="180"/>
+      <frame tileid="62" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="63">
+    <animation>
+      <frame tileid="63" duration="180"/>
+      <frame tileid="64" duration="180"/>
+      <frame tileid="65" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="66">
+    <animation>
+      <frame tileid="66" duration="180"/>
+      <frame tileid="67" duration="180"/>
+      <frame tileid="68" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="69">
+    <animation>
+      <frame tileid="69" duration="180"/>
+      <frame tileid="70" duration="180"/>
+      <frame tileid="71" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="72">
+    <animation>
+      <frame tileid="72" duration="180"/>
+      <frame tileid="73" duration="180"/>
+      <frame tileid="74" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="75">
+    <animation>
+      <frame tileid="75" duration="180"/>
+      <frame tileid="76" duration="180"/>
+      <frame tileid="77" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="78">
+    <animation>
+      <frame tileid="78" duration="180"/>
+      <frame tileid="79" duration="180"/>
+      <frame tileid="80" duration="180"/>
+    </animation>
+  </tile>
+  <tile id="141">
+    <animation>
+      <frame tileid="141" duration="100"/>
+      <frame tileid="142" duration="100"/>
+      <frame tileid="143" duration="100"/>
+      <frame tileid="144" duration="100"/>
+    </animation>
+  </tile>
+  <tile id="145">
+    <animation>
+      <frame tileid="145" duration="100"/>
+      <frame tileid="146" duration="100"/>
+      <frame tileid="147" duration="100"/>
+      <frame tileid="148" duration="100"/>
+    </animation>
+  </tile>
+  <tile id="149">
+    <animation>
+      <frame tileid="149" duration="100"/>
+      <frame tileid="150" duration="100"/>
+      <frame tileid="151" duration="100"/>
+      <frame tileid="152" duration="100"/>
+    </animation>
+  </tile>
+</tileset>

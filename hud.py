@@ -36,6 +36,7 @@ def draw_hud(
     microscope_parts=0,
     microscope_total=0,
     microscope_assembled=False,
+    oxygen_ratio=None,
 ):
     """Desenha informações persistentes da fase e a mensagem temporária."""
     draw_text(surface, level_name, (24, 20), 27)
@@ -45,8 +46,21 @@ def draw_hud(
     if microscope_total:
         status = "montado" if microscope_assembled else f"{microscope_parts}/{microscope_total}"
         draw_text(surface, f"Microscópio: {status}", (24, 121), 19, "#9de3bb")
+    if oxygen_ratio is not None:
+        _draw_oxygen_bar(surface, oxygen_ratio)
     if message_timer:
         _draw_message(surface, message)
+
+
+def _draw_oxygen_bar(surface, ratio):
+    """Barra de fôlego, exibida enquanto a Lia está na água (ou logo após
+    sair). Fica vermelha nos últimos instantes pra avisar do afogamento."""
+    x, y, width, height = 24, 150, 220, 16
+    pygame.draw.rect(surface, (12, 25, 43), (x - 3, y - 3, width + 6, height + 6), border_radius=8)
+    color = "#5fc9ff" if ratio > 0.3 else "#ff5c5c"
+    pygame.draw.rect(surface, (30, 45, 66), (x, y, width, height), border_radius=6)
+    pygame.draw.rect(surface, pygame.Color(color), (x, y, int(width * max(0, ratio)), height), border_radius=6)
+    draw_text(surface, "FÔLEGO", (x + width // 2, y + 8), 12, "#0b1420", True)
 
 
 def _draw_message(surface, message):

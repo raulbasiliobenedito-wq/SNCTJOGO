@@ -5,6 +5,15 @@ from settings import ASSET_DIR, PLAYER_HEIGHT
 from tiled_map import TiledMap
 
 
+class _StaticZone:
+    """Área fixa com um atributo .rect, para reaproveitar código (como o
+    patrulhamento do Slime) que espera algo com essa interface, mesmo sem
+    ser uma Platform de verdade — ex.: chão pintado direto no Tiled."""
+
+    def __init__(self, rect):
+        self.rect = rect
+
+
 PHASES = [
     {
         "name": "Fase 1 — Escola", "subtitle": "A primeira pergunta pode mudar o mundo.",
@@ -51,8 +60,11 @@ PHASES = [
         "heights": (650, 570, 485, 550, 440, 525, 410, 500, 585, 475),
         "checkpoints": (17, 34),
         "research": ((9, "Testes"), (21, "Resultados"), (32, "Cura"), (37, "Pesquisa completa")),
+        # Posições em x ao longo da descida (mundo agora tem 9600px de largura,
+        # ver maps/fase3_pesquisa.tmx v4): a segunda fala dispara perto do
+        # fim do percurso, já depois da câmara submersa.
         "dialogues": ((170, "Dra. Sofia", "Lia, ciência é feita por muitas mãos e muitas histórias."),
-                      (4550, "Lia", "Chegou a hora de compartilhar a pesquisa com o congresso!")),
+                      (8900, "Lia", "Chegou a hora de compartilhar a pesquisa com o congresso!")),
         "moving": ((8, 190, 90, "x"), (16, 140, 110, "y"), (25, 220, 90, "x"), (37, 150, 110, "y")),
     },
 ]
@@ -73,16 +85,28 @@ class Level:
         (6, 14, 22, 30, 36),
     )
 
+    # Mapa do Tiled por fase (índice em PHASES). Fases sem entrada aqui, ou cujo
+    # arquivo ainda não existe em maps/, caem no percurso gerado por código.
+    TILED_MAP_FILES = {0: "fase1_escola.tmx", 2: "fase3_pesquisa.tmx"}
+
     def __init__(self, index):
         self.index = index
         self.data = PHASES[index]
-        self.tiled_map = self._load_school_map() if index == 0 else None
+        self.tiled_map = self._load_tiled_map()
         self._configure_world_dimensions()
         self.is_underground = index == 0
-        self.grounds = []
+        # Tiles pintados numa camada colisao=true (ou chamada "Colisão"/"Collision")
+        # viram blocos sólidos automaticamente, sem precisar desenhar objetos.
+        self.grounds = list(self.tiled_map.tile_collisions) if self.tiled_map else []
         self.dynamic_platforms = []
         self.platforms = self._build_course()
         self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
+        # Espinhos (morte instantânea ao toque) e zonas de água (o jogador
+        # nada livremente dentro delas — ver Game.move_player). Ambos vêm de
+        # objetos tipados na camada "Entidades" do Tiled, sem precisar de
+        # nenhum código novo de parsing (mesmo padrão de spawn/checkpoint/livro).
+        self.hazards = self._make_hazards()
+        self.water_zones = self._make_water_zones()
         self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
         self.surface_return = self.DEFAULT_SURFACE_RETURN
         self.enemies = self._make_enemies()
@@ -126,14 +150,13 @@ class Level:
         self.return_route_platforms = []
         self.return_route_active = False
 
-    @staticmethod
-    def _map_path():
-        return ASSET_DIR.parent / "maps" / "fase1_escola.tmx"
-
-    def _load_school_map(self):
-        path = self._map_path()
+    def _load_tiled_map(self):
+        filename = self.TILED_MAP_FILES.get(self.index)
+        if not filename:
+            return None
+        path = ASSET_DIR.parent / "maps" / filename
         # Mantém o jogo abrindo caso o arquivo seja removido por acidente. O pacote
-        # entregue já inclui o TMX, e o fallback preserva a fase anterior.
+        # entregue já inclui os TMX, e o fallback preserva o percurso gerado por código.
         return TiledMap(path) if path.exists() else None
 
     @staticmethod
@@ -142,11 +165,22 @@ class Level:
 
     @classmethod
     def _platform_from_object(cls, item):
+        """Cria uma Platform a partir de um objeto do Tiled. Se o objeto tiver as
+        propriedades opcionais "percurso" (pixels) e "periodo" (quadros), a
+        plataforma se move sozinha ao longo do eixo "eixo" (x ou y, padrão x) —
+        útil para plataformas flutuantes na caverna da Fase 3."""
+        properties = item["properties"]
+        travel = int(properties.get("percurso", 0) or 0)
+        period = int(properties.get("periodo", 0) or 0)
+        axis = properties.get("eixo", "x")
         return Platform(
             item["x"],
             item["y"],
             item["width"],
             cls._object_style(item),
+            travel,
+            period,
+            axis,
         )
 
     @staticmethod
@@ -157,6 +191,24 @@ class Level:
         numeric_style = int(text) if text.lstrip("-").isdigit() else 0
         return styles.get(text.casefold(), numeric_style)
 
+    def _make_hazards(self):
+        if not self.tiled_map:
+            return []
+        return [
+            self._rect_from_object(item)
+            for item in self.tiled_map.entities("espinho")
+            if item["width"] > 0 and item["height"] > 0
+        ]
+
+    def _make_water_zones(self):
+        if not self.tiled_map:
+            return []
+        return [
+            self._rect_from_object(item)
+            for item in self.tiled_map.entities("agua")
+            if item["width"] > 0 and item["height"] > 0
+        ]
+
     def _map_spawn(self):
         item = self.tiled_map.entity("spawn")
         if not item:
@@ -165,12 +217,17 @@ class Level:
 
     def _build_course(self):
         if self.index == 0:
-            tiled_platforms = self._build_school_tiled_course() if self.tiled_map else []
+            tiled_platforms = self._build_tiled_object_platforms() if self.tiled_map else []
             if tiled_platforms:
                 return tiled_platforms
             return self._build_school_course()
         if self.index == 1:
             return self._build_university_course()
+        if self.index == 2 and self.tiled_map:
+            # A caverna da Fase 3 apoia o chão na camada de colisão pintada no
+            # Tiled (self.grounds); esta lista cobre só as plataformas extras
+            # (flutuantes/móveis) desenhadas como objetos.
+            return self._build_tiled_object_platforms()
         return self._build_generated_course()
 
     def _build_generated_course(self):
@@ -203,11 +260,15 @@ class Level:
             return Platform(x, y, width, image_index, travel, period, axis)
         return Platform(x, y, width, image_index)
 
-    def _build_school_tiled_course(self):
-        """Cria as colisões das plataformas a partir da camada Plataformas."""
+    def _build_tiled_object_platforms(self):
+        """Cria plataformas a partir de objetos retangulares do Tiled (grupos
+        Plataformas/Plataformas Móveis/Colisões/Collision). Usado pela Fase 1
+        (escola) e pela Fase 3 (caverna) quando um mapa do Tiled está carregado."""
         return [
             self._platform_from_object(item)
-            for item in self.tiled_map.objects("Plataformas", "Colisoes", "Collision")
+            for item in self.tiled_map.objects(
+                "Plataformas", "Plataformas Móveis", "Colisoes", "Collision"
+            )
             if item["width"] > 0 and item["height"] > 0
         ]
 
@@ -570,11 +631,44 @@ class Level:
             for platform in self.platforms
             if platform.rect.left - 10 <= center_x <= platform.rect.right + 10
         ]
-        return min(
+        best = min(
             candidates,
             key=lambda platform: abs(platform.rect.top - item["y"]),
             default=None,
         )
+        # Na caverna da Fase 3 o chão normalmente vem da camada de colisão
+        # pintada no Tiled (self.grounds), não de objetos Platform — nesse
+        # caso, funde os tiles de chão contíguos sob o slime numa área de
+        # patrulha.
+        return best or self._ground_zone_at(item)
+
+    def _ground_zone_at(self, item):
+        """Funde os tiles de solo contíguos (mesma linha) mais próximos do
+        objeto num único retângulo, para o slime patrulhar sobre chão
+        pintado direto no Tiled (sem objeto Platform)."""
+        center_x = item["x"] + item["width"] // 2
+        column_rects = [rect for rect in self.grounds if rect.left <= center_x < rect.right]
+        if not column_rects:
+            return None
+        surface = min(column_rects, key=lambda rect: rect.top)
+        row_rects = sorted(
+            (rect for rect in self.grounds if rect.top == surface.top),
+            key=lambda rect: rect.left,
+        )
+        index = row_rects.index(surface)
+        left = index
+        while left > 0 and row_rects[left - 1].right == row_rects[left].left:
+            left -= 1
+        right = index
+        while right < len(row_rects) - 1 and row_rects[right + 1].left == row_rects[right].right:
+            right += 1
+        span = pygame.Rect(
+            row_rects[left].left,
+            surface.top,
+            row_rects[right].right - row_rects[left].left,
+            surface.height,
+        )
+        return _StaticZone(span)
 
     def update(self):
         for platform in self.platforms:

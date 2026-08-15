@@ -49,9 +49,15 @@ class TiledMap:
         self.properties = self._properties(root)
         self.tilesets = self._load_tilesets(root)
         self.tiles = []
+        self.animated_tiles = []
         self.tile_collisions = []
         self.object_groups = {}
+        self.elapsed_ms = 0.0
         self._read_layers(root)
+
+    def update(self, dt_ms):
+        """Avança o relógio das animações de tile (ex.: água) em milissegundos."""
+        self.elapsed_ms += dt_ms
 
     @staticmethod
     def _properties(element):
@@ -87,7 +93,30 @@ class TiledMap:
             "columns": int(tileset_root.get("columns", 1)),
             "tile_width": int(tileset_root.get("tilewidth", self.tile_width)),
             "tile_height": int(tileset_root.get("tileheight", self.tile_height)),
+            "animations": self._load_animations(tileset_root),
         }
+
+    @staticmethod
+    def _load_animations(tileset_root):
+        """Lê as animações de tile do Tiled (ex.: água), quadro a quadro.
+
+        No editor: selecione o tile no tileset, aba "Tile Animation Editor",
+        monte a sequência de quadros e salve o .tsx. Cada quadro guarda o id
+        local do tile e sua duração em milissegundos.
+        """
+        animations = {}
+        for tile in tileset_root.findall("tile"):
+            animation = tile.find("animation")
+            if animation is None:
+                continue
+            local_id = int(tile.get("id", 0))
+            frames = [
+                (int(frame.get("tileid", 0)), int(frame.get("duration", 100)))
+                for frame in animation.findall("frame")
+            ]
+            if frames:
+                animations[local_id] = frames
+        return animations
 
     def _read_layers(self, root):
         for layer in root.findall("layer"):
@@ -113,9 +142,13 @@ class TiledMap:
                 self.tile_collisions.append(
                     pygame.Rect(x, y, self.tile_width, self.tile_height)
                 )
-            image = self._image_for_gid(gid)
-            if image is not None:
-                self.tiles.append((x, y, image))
+            tileset, local_id = self._tileset_for_gid(gid)
+            if tileset is None:
+                continue
+            if local_id in tileset["animations"]:
+                self.animated_tiles.append((x, y, tileset, local_id))
+            else:
+                self.tiles.append((x, y, self._tile_image(tileset, local_id)))
 
     def _is_collision_layer(self, layer):
         """Reconhece a propriedade colisao=true ou nomes convencionais."""
@@ -187,18 +220,40 @@ class TiledMap:
             "properties": self._properties(node),
         }
 
-    def _image_for_gid(self, gid):
+    def _tileset_for_gid(self, gid):
+        """Localiza o tileset e o id local (dentro do tileset) de um gid."""
         for tileset in reversed(self.tilesets):
             if tileset["first_gid"] <= gid <= tileset["last_gid"]:
-                tile_id = gid - tileset["first_gid"]
-                source = pygame.Rect(
-                    (tile_id % tileset["columns"]) * tileset["tile_width"],
-                    (tile_id // tileset["columns"]) * tileset["tile_height"],
-                    tileset["tile_width"],
-                    tileset["tile_height"],
-                )
-                return tileset["image"].subsurface(source)
-        return None
+                return tileset, gid - tileset["first_gid"]
+        return None, None
+
+    @staticmethod
+    def _tile_image(tileset, local_id):
+        source = pygame.Rect(
+            (local_id % tileset["columns"]) * tileset["tile_width"],
+            (local_id // tileset["columns"]) * tileset["tile_height"],
+            tileset["tile_width"],
+            tileset["tile_height"],
+        )
+        return tileset["image"].subsurface(source)
+
+    def _image_for_gid(self, gid):
+        tileset, local_id = self._tileset_for_gid(gid)
+        return self._tile_image(tileset, local_id) if tileset else None
+
+    def _current_frame_image(self, tileset, local_id):
+        """Resolve o quadro atual de um tile animado (ex.: água), a partir do
+        relógio acumulado em self.elapsed_ms e das durações do Tiled."""
+        frames = tileset["animations"][local_id]
+        total_duration = sum(duration for _, duration in frames)
+        if total_duration <= 0:
+            return self._tile_image(tileset, local_id)
+        elapsed = self.elapsed_ms % total_duration
+        for frame_id, duration in frames:
+            if elapsed < duration:
+                return self._tile_image(tileset, frame_id)
+            elapsed -= duration
+        return self._tile_image(tileset, frames[-1][0])
 
     def objects(self, *group_names):
         result = []
@@ -222,9 +277,18 @@ class TiledMap:
         """Desenha apenas os tiles que cruzam a área visível."""
         right = camera_x + surface.get_width()
         bottom = camera_y + surface.get_height()
-        for x, y, image in self.tiles:
+
+        def visible(x, y):
             if x + self.tile_width < camera_x or x > right:
-                continue
+                return False
             if y + self.tile_height < camera_y or y > bottom:
-                continue
-            surface.blit(image, (x - camera_x, y - camera_y))
+                return False
+            return True
+
+        for x, y, image in self.tiles:
+            if visible(x, y):
+                surface.blit(image, (x - camera_x, y - camera_y))
+        for x, y, tileset, local_id in self.animated_tiles:
+            if visible(x, y):
+                image = self._current_frame_image(tileset, local_id)
+                surface.blit(image, (x - camera_x, y - camera_y))

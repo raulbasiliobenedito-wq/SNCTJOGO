@@ -2,6 +2,7 @@ import pygame
 
 from settings import (
     ASSET_DIR,
+    FPS,
     GRAVITY,
     JUMP_SPEED,
     MAX_FALL_SPEED,
@@ -22,6 +23,20 @@ class Player:
     WALL_SLIDE_SPEED = 3.2
     WALL_JUMP_SPEED = -14.0
     WALL_JUMP_PUSH = 9.0
+
+    # --- Mecânica de natação (água da Fase 3) ---
+    SWIM_SPEED = 2.6
+    SWIM_SINK_GRAVITY = 0.16
+    SWIM_MAX_SINK = 2.0
+    SWIM_RISE_ACCEL = 0.55
+    SWIM_MAX_RISE = -2.5
+    # Fôlego: 7 segundos debaixo d'água (com a cabeça submersa) antes de
+    # começar a se afogar. Respirar (cabeça fora d'água) recarrega mais
+    # rápido do que consome, pra não punir mergulhos rápidos.
+    OXYGEN_MAX_FRAMES = 7 * FPS
+    OXYGEN_DRAIN_PER_FRAME = 1
+    OXYGEN_REFILL_PER_FRAME = 3
+    HEAD_HEIGHT = 10
 
     ACCELERATION = 0.55
     DECELERATION = 0.70
@@ -81,6 +96,17 @@ class Player:
         self.dash_direction = 1
         self.wall_side = 0
         self.wall_jump_used = False
+        # Tolerância (em quadros) após soltar o encosto na parede em que o
+        # wall jump ainda conta — evita que soltar a direção pra preparar o
+        # pulo derrube o "grude" um quadro antes do pulo registrar.
+        self.wall_coyote_time = 0
+        self.last_wall_side = 0
+        # Natação: Game.move_player() atualiza `swimming` a cada quadro
+        # (colisão com Level.water_zones); `up_held` reflete a tecla de
+        # subir sendo segurada (não é um pulso único como o jump_buffer).
+        self.swimming = False
+        self.up_held = False
+        self.oxygen = self.OXYGEN_MAX_FRAMES
 
     def update_abilities(self):
         """Atualiza recarga e duração do dash a cada quadro."""
@@ -103,20 +129,30 @@ class Player:
 
     def read_controls(self, keyboard):
         direction = int(keyboard.right or keyboard.d) - int(keyboard.left or keyboard.a)
-        if self.dashing:
+        up_down = keyboard.space or keyboard.up or keyboard.w
+        self.up_held = up_down
+
+        if self.dashing and not self.swimming:
             # O dash conserva a direção escolhida até terminar.
             self.vx = self.dash_direction * self.DASH_SPEED
             return
 
-        self._update_horizontal_speed(direction)
+        speed_limit = self.SWIM_SPEED if self.swimming else MOVE_SPEED
+        self._update_horizontal_speed(direction, speed_limit)
         if direction:
             self.facing_right = direction > 0
-        if keyboard.space or keyboard.up or keyboard.w:
+
+        if self.swimming:
+            # Debaixo d'água não há pulo por impulso: subir é contínuo
+            # enquanto a tecla é segurada (ver apply_swim_gravity).
+            self.jump_buffer = 0
+            return
+        if up_down:
             self.jump_buffer = self.JUMP_BUFFER_DURATION
         self.jump_buffer = max(0, self.jump_buffer - 1)
 
-    def _update_horizontal_speed(self, direction):
-        target_speed = direction * MOVE_SPEED
+    def _update_horizontal_speed(self, direction, speed_limit=MOVE_SPEED):
+        target_speed = direction * speed_limit
         if direction:
             self.vx = self._approach(self.vx, target_speed, self.ACCELERATION)
         elif self.vx > 0:
@@ -135,19 +171,38 @@ class Player:
     def apply_gravity(self):
         self.vy = min(self.vy + GRAVITY, MAX_FALL_SPEED)
 
+    def apply_swim_gravity(self):
+        """Debaixo d'água a gravidade normal dá lugar a um afundar suave;
+        segurar a tecla de subir (up_held) inverte isso em uma subida
+        contínua, em vez do impulso único de um pulo."""
+        if self.up_held:
+            self.vy = max(self.SWIM_MAX_RISE, self.vy - self.SWIM_RISE_ACCEL)
+        else:
+            self.vy = min(self.SWIM_MAX_SINK, self.vy + self.SWIM_SINK_GRAVITY)
+
+    @property
+    def head_rect(self):
+        """Fatia fina no topo do hitbox: usada para checar se a cabeça está
+        para fora d'água (respirando) ou submersa (consumindo oxigênio)."""
+        body = self.rect
+        return pygame.Rect(body.x, round(self.y), body.width, self.HEAD_HEIGHT)
+
     def try_jump(self):
         if not self.jump_buffer:
             return False
         if self.coyote_time:
             self.vy, self.coyote_time, self.jump_buffer = JUMP_SPEED, 0, 0
             return True
-        if self.wall_side and not self.wall_jump_used:
-            # Um salto por parede antes de tocar o chão novamente.
+        if self.wall_coyote_time and not self.wall_jump_used:
+            # Um salto por parede antes de tocar o chão novamente. Usa
+            # last_wall_side (persiste durante a tolerância) em vez de
+            # wall_side (que já pode ter voltado a 0 nesse quadro).
             self.vy = self.WALL_JUMP_SPEED
-            self.vx = -self.wall_side * self.WALL_JUMP_PUSH
+            self.vx = -self.last_wall_side * self.WALL_JUMP_PUSH
             self.facing_right = self.vx > 0
             self.wall_jump_used = True
             self.jump_buffer = 0
+            self.wall_coyote_time = 0
             self.cancel_dash()
             return True
         return False

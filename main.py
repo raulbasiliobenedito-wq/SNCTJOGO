@@ -28,8 +28,8 @@ game = Game()
 logical_screen = LogicalScreen()
 
 
-def update():
-    game.update(keyboard)
+def update(dt):
+    game.update(keyboard, dt)
 
 
 def draw():
