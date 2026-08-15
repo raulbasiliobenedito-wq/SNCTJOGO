@@ -54,10 +54,57 @@ class TiledMap:
         self.object_groups = {}
         self.elapsed_ms = 0.0
         self._read_layers(root)
+        # Chunks de CHUNK_TILES x CHUNK_TILES tiles: o draw() só percorre os
+        # tiles dos chunks que cruzam a câmera, em vez de checar a
+        # visibilidade de TODO tile do mapa a cada quadro. Numa fase grande
+        # (300x100 tiles, várias camadas), isso corta a lista percorrida por
+        # quadro de milhares de tiles pra só uma centena.
+        self._tile_chunks = self._build_chunks(self.tiles)
+        self._animated_chunks = self._build_chunks(self.animated_tiles)
+        # Imagem atual de cada animação (uma por par tileset+local_id, não
+        # uma por instância de tile) — recalculada uma vez em update(), não a
+        # cada tile animado desenhado. Populada já aqui pra existir mesmo se
+        # draw() rodar antes do primeiro update().
+        self._current_frames = {}
+        self._recompute_animation_frames()
+
+    CHUNK_TILES = 8
+
+    def _chunk_key(self, x, y):
+        return (x // (self.CHUNK_TILES * self.tile_width), y // (self.CHUNK_TILES * self.tile_height))
+
+    def _build_chunks(self, entries):
+        chunks = {}
+        for entry in entries:
+            x, y = entry[0], entry[1]
+            chunks.setdefault(self._chunk_key(x, y), []).append(entry)
+        return chunks
 
     def update(self, dt_ms):
         """Avança o relógio das animações de tile (ex.: água) em milissegundos."""
         self.elapsed_ms += dt_ms
+        self._recompute_animation_frames()
+
+    def _recompute_animation_frames(self):
+        """Resolve o quadro atual de CADA animação (poucas dezenas no máximo)
+        uma única vez por quadro de jogo. draw() só faz uma busca O(1) nesse
+        cache pra cada instância de tile animado, em vez de recalcular o
+        quadro (e refatiar a imagem) tile por tile."""
+        for tileset in self.tilesets:
+            frames_by_id = tileset["animation_frames"]
+            for local_id, frames in frames_by_id.items():
+                self._current_frames[(id(tileset), local_id)] = self._resolve_frame(frames)
+
+    def _resolve_frame(self, frames):
+        total_duration = sum(duration for _, duration in frames)
+        if total_duration <= 0:
+            return frames[0][0]
+        elapsed = self.elapsed_ms % total_duration
+        for image, duration in frames:
+            if elapsed < duration:
+                return image
+            elapsed -= duration
+        return frames[-1][0]
 
     @staticmethod
     def _properties(element):
@@ -86,7 +133,7 @@ class TiledMap:
             return None
 
         image_path = base_dir / image.get("source", "")
-        return {
+        tileset = {
             "first_gid": first_gid,
             "last_gid": first_gid + int(tileset_root.get("tilecount", 0)) - 1,
             "image": pygame.image.load(image_path).convert_alpha(),
@@ -95,6 +142,20 @@ class TiledMap:
             "tile_height": int(tileset_root.get("tileheight", self.tile_height)),
             "animations": self._load_animations(tileset_root),
         }
+        # Pré-recorta o quadro de cada passo de animação uma única vez aqui
+        # (em vez de fatiar a mesma imagem de novo a cada instância de tile
+        # animado, todo quadro — ver _current_frame_image). Numa fase com
+        # centenas de tiles de água/lava, isso evita centenas de subsurface()
+        # redundantes por quadro, já que todas as instâncias do mesmo tile
+        # (ex.: "água - corpo") compartilham a mesma imagem em cada instante.
+        tileset["animation_frames"] = {
+            local_id: [
+                (self._tile_image(tileset, frame_id), duration)
+                for frame_id, duration in frames
+            ]
+            for local_id, frames in tileset["animations"].items()
+        }
+        return tileset
 
     @staticmethod
     def _load_animations(tileset_root):
@@ -241,20 +302,6 @@ class TiledMap:
         tileset, local_id = self._tileset_for_gid(gid)
         return self._tile_image(tileset, local_id) if tileset else None
 
-    def _current_frame_image(self, tileset, local_id):
-        """Resolve o quadro atual de um tile animado (ex.: água), a partir do
-        relógio acumulado em self.elapsed_ms e das durações do Tiled."""
-        frames = tileset["animations"][local_id]
-        total_duration = sum(duration for _, duration in frames)
-        if total_duration <= 0:
-            return self._tile_image(tileset, local_id)
-        elapsed = self.elapsed_ms % total_duration
-        for frame_id, duration in frames:
-            if elapsed < duration:
-                return self._tile_image(tileset, frame_id)
-            elapsed -= duration
-        return self._tile_image(tileset, frames[-1][0])
-
     def objects(self, *group_names):
         result = []
         for name in group_names:
@@ -274,7 +321,9 @@ class TiledMap:
         return entities[0] if entities else None
 
     def draw(self, surface, camera_x, camera_y):
-        """Desenha apenas os tiles que cruzam a área visível."""
+        """Desenha só os tiles dos chunks que cruzam a área visível — em vez
+        de checar tile por tile do mapa inteiro a cada quadro (ver
+        _build_chunks), só os chunks perto da câmera são percorridos."""
         right = camera_x + surface.get_width()
         bottom = camera_y + surface.get_height()
 
@@ -285,10 +334,22 @@ class TiledMap:
                 return False
             return True
 
-        for x, y, image in self.tiles:
-            if visible(x, y):
-                surface.blit(image, (x - camera_x, y - camera_y))
-        for x, y, tileset, local_id in self.animated_tiles:
-            if visible(x, y):
-                image = self._current_frame_image(tileset, local_id)
-                surface.blit(image, (x - camera_x, y - camera_y))
+        chunk_w = self.CHUNK_TILES * self.tile_width
+        chunk_h = self.CHUNK_TILES * self.tile_height
+        # camera_x/camera_y chegam como float (suavização da câmera em
+        # game.py) — int() antes do range(), que só aceita inteiros.
+        first_col = int(camera_x // chunk_w) - 1
+        last_col = int(right // chunk_w) + 1
+        first_row = int(camera_y // chunk_h) - 1
+        last_row = int(bottom // chunk_h) + 1
+
+        for chunk_row in range(first_row, last_row + 1):
+            for chunk_col in range(first_col, last_col + 1):
+                key = (chunk_col, chunk_row)
+                for x, y, image in self._tile_chunks.get(key, ()):
+                    if visible(x, y):
+                        surface.blit(image, (x - camera_x, y - camera_y))
+                for x, y, tileset, local_id in self._animated_chunks.get(key, ()):
+                    if visible(x, y):
+                        image = self._current_frames[(id(tileset), local_id)]
+                        surface.blit(image, (x - camera_x, y - camera_y))

@@ -6,6 +6,7 @@ from dialogue import DialogueBox
 from hud import draw_ability_ui, draw_hud, draw_text
 from level import PHASES, Level
 from player import Player
+from vfx import VFXManager
 from settings import (
     ASSET_DIR,
     FPS,
@@ -102,6 +103,10 @@ class Game:
         self.checkpoint_flag = self._load_image("objects/checkpoint_flag.png")
         self.puzzle_sprites = self._load_puzzle_sprites()
         self.slime_sprites = self._load_slime_sprites()
+        self.stag_sprites = self._load_stag_sprites()
+        self.wraith_sprites = self._load_wraith_sprites()
+        self.vfx = VFXManager(ASSET_DIR / "vfx" / "vfx.png")
+        self.lava_lake_frames = self._load_lava_lake_frames()
 
     @staticmethod
     def _load_image(relative_path, alpha=True):
@@ -146,7 +151,7 @@ class Game:
         """A arte da caverna vem em baixa resolução (pensada para ladrilhar);
         aqui ela é ampliada até cobrir a altura do canvas, preservando a
         proporção, para servir de camada de fundo com parallax."""
-        raw = self._load_image("backgrounds/cave_background_underwater.png", alpha=False)
+        raw = self._load_image("backgrounds/cave_background_v2.png", alpha=False)
         scale = HEIGHT / raw.get_height()
         size = (round(raw.get_width() * scale), HEIGHT)
         return pygame.transform.scale(raw, size)
@@ -166,9 +171,56 @@ class Game:
         return sprites
 
     def _create_scene_filters(self):
-        self.background_filter = self._solid_overlay((38, 53, 76, 72))
-        self.university_filter = self._solid_overlay((55, 65, 80, 85))
-        self.underground_filter = self._solid_overlay((8, 12, 27, 155))
+        # Cores base dos filtros (mantidas apenas como referência/compat).
+        bg_color = (38, 53, 76, 72)
+        university_color = (55, 65, 80, 85)
+        underground_color = (8, 12, 27, 155)
+        self.background_filter = self._solid_overlay(bg_color)
+        self.university_filter = self._solid_overlay(university_color)
+        self.underground_filter = self._solid_overlay(underground_color)
+
+        # Cada nível pode empilhar até 3 filtros translúcidos por cima do
+        # fundo (background + university + underground) todo quadro, e
+        # blitar múltiplas surfaces SRCALPHA de tela cheia é a operação de
+        # desenho mais cara do jogo. Como cada filtro é uma cor sólida
+        # constante (não depende do conteúdo por baixo além da própria
+        # fórmula de mistura "over"), dá pra pré-combinar as camadas numa
+        # única cor equivalente, uma vez, no carregamento — o resultado
+        # pixel a pixel é idêntico a aplicar as camadas em sequência, mas
+        # custa 1 blit em vez de até 3.
+        self._overlay_plain = self.background_filter
+        self._overlay_underground = self._solid_overlay(
+            self._combine_overlay_colors(bg_color, underground_color)
+        )
+        self._overlay_university = self._solid_overlay(
+            self._combine_overlay_colors(bg_color, university_color)
+        )
+        self._overlay_university_underground = self._solid_overlay(
+            self._combine_overlay_colors(bg_color, university_color, underground_color)
+        )
+
+    @staticmethod
+    def _combine_overlay_colors(*colors):
+        """Compõe cores RGBA sólidas (alpha compositing 'over', em sequência)
+        numa única cor equivalente. Aplicar essa cor combinada uma vez
+        produz o mesmo resultado, pixel a pixel, que aplicar cada cor em
+        sequência."""
+        accum_r = accum_g = accum_b = 0.0
+        alpha_acc = 0.0
+        for cr, cg, cb, ca in colors:
+            a = ca / 255
+            accum_r = cr * a + accum_r * (1 - a)
+            accum_g = cg * a + accum_g * (1 - a)
+            accum_b = cb * a + accum_b * (1 - a)
+            alpha_acc = 1 - (1 - alpha_acc) * (1 - a)
+        if alpha_acc <= 0:
+            return (0, 0, 0, 0)
+        return (
+            round(accum_r / alpha_acc),
+            round(accum_g / alpha_acc),
+            round(accum_b / alpha_acc),
+            round(alpha_acc * 255),
+        )
 
     @staticmethod
     def _solid_overlay(color):
@@ -239,6 +291,67 @@ class Game:
         """Copia um elemento do sprite sheet."""
         return sheet.subsurface(pygame.Rect(rectangle)).copy()
 
+    @staticmethod
+    def _load_grid_sheet(path, frame_width, frame_height, rows_frame_counts, scale=1.0):
+        """Recorta uma spritesheet em grade (várias linhas de animação, uma
+        contagem de quadros por linha) numa lista de listas de superfícies,
+        uma lista por linha. Usado pelo cervo de cristal e pela sombra.
+        `scale` amplia cada quadro depois de recortado (os quadros originais
+        de crystal_stag/dark_wraith são pequenos perto do sprite da Lia)."""
+        sheet = pygame.image.load(path).convert_alpha()
+        size = (round(frame_width * scale), round(frame_height * scale))
+        rows = []
+        for row, count in enumerate(rows_frame_counts):
+            frames = []
+            for column in range(count):
+                frame = sheet.subsurface(
+                    pygame.Rect(column * frame_width, row * frame_height, frame_width, frame_height)
+                ).copy()
+                if scale != 1.0:
+                    frame = pygame.transform.scale(frame, size)
+                frames.append(frame)
+            rows.append(frames)
+        return rows
+
+    # Fatores de ampliação dos inimigos novos — os quadros crus (40x34 e
+    # 48x48) ficam pequenos demais perto do sprite da Lia e do slime.
+    STAG_SCALE = 1.8
+    WRAITH_SCALE = 1.6
+
+    def _load_stag_sprites(self):
+        """crystal_stag.png: quadro 40x34, grade 14x4 — repouso(8)/marcha(8)
+        /dano(4)/mineralização(14)."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "crystal_stag.png", 40, 34, [8, 8, 4, 14], scale=self.STAG_SCALE
+        )
+        return {"idle": rows[0], "walk": rows[1], "hurt": rows[2], "dead": rows[3]}
+
+    def _load_wraith_sprites(self):
+        """dark_wraith.png: quadro 48x48, grade 14x4 — repouso(8)/investida(7)
+        /dano(4)/dissolução(14)."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "dark_wraith.png", 48, 48, [8, 7, 4, 14], scale=self.WRAITH_SCALE
+        )
+        return {"idle": rows[0], "lunge": rows[1], "hurt": rows[2], "dead": rows[3]}
+
+    # Tamanho de cada lago de lava esculpido pelo gerador de mapa (ver
+    # LAKE_WIDTH/LAKE_DEPTH em build_fase3_map_v6.py) — os 8 quadros de
+    # lava_lake.png (160x96 cada) são pré-ampliados pra esse tamanho uma
+    # única vez no load, em vez de re-escalar a cada quadro desenhado.
+    LAVA_LAKE_SIZE = (7 * 32, 6 * 32)
+    LAVA_LAKE_FPS = 10
+
+    def _load_lava_lake_frames(self):
+        sheet = self._load_image("lava_lake.png")
+        frame_width = 160
+        frame_height = sheet.get_height()
+        count = sheet.get_width() // frame_width
+        frames = [
+            self._sheet_crop(sheet, (i * frame_width, 0, frame_width, frame_height))
+            for i in range(count)
+        ]
+        return [pygame.transform.scale(frame, self.LAVA_LAKE_SIZE) for frame in frames]
+
     def load_level(self, index):
         """Inicia uma fase sem modificar a quantidade atual de vidas."""
         self.level = Level(index)
@@ -254,6 +367,8 @@ class Game:
         self.riding_platform = None
         self._reset_combat_state()
         self._reset_input_state()
+        self._reset_vfx_state()
+        self._reset_status_state()
         self.camera_x = 0
         self.camera_y = 0
         self.message = self.level.data["subtitle"]
@@ -272,8 +387,26 @@ class Game:
         self.dash_was_down = False
         self.dialogue_advance_was_down = False
 
+    def _reset_vfx_state(self):
+        self.vfx.active = []
+        self.dust_timer = 0
+        self.was_swimming = False
+        self.player_grounded = False
+        self.lava_lake_anim = 0
+
+    # Quadros de invencibilidade após renascer: sem isso, se o checkpoint (ou
+    # o próprio spawn) ficar perto de um espinho/inimigo, o toque volta a
+    # acontecer nos quadros seguintes e consome as 3 vidas quase instantaneamente
+    # — parecendo "morte direta" mesmo cada toque só custando 1 vida.
+    INVULN_FRAMES = 90
+
+    def _reset_status_state(self):
+        self.invuln_timer = 0
+
     def respawn(self):
+        self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
         self.lives -= 1
+        self.invuln_timer = self.INVULN_FRAMES
         if self.lives <= 0:
             self.state = GAME_OVER
             self.game_over_fade = 0
@@ -362,6 +495,7 @@ class Game:
         self._move_with_platform()
         self.move_player()
         self.player.animate()
+        self._update_vfx()
         self._update_camera()
         self.message_timer = max(0, self.message_timer - 1)
         self.handle_interactions()
@@ -396,6 +530,34 @@ class Game:
             self.level.world_top,
             min(self.camera_y, self.level.world_height - HEIGHT),
         )
+
+    # Distância mínima entre poeiras consecutivas enquanto anda (em quadros).
+    DUST_INTERVAL = 10
+
+    def _update_vfx(self):
+        """Avança as partículas ativas e dispara poeira ao andar / respingo
+        ao entrar na água. O impacto (dano) é disparado nos próprios pontos
+        onde o dano acontece — ver respawn() e check_enemies()."""
+        self.vfx.update()
+        self.lava_lake_anim += 1
+        player = self.player
+
+        walking = (
+            not player.swimming
+            and self.player_grounded
+            and abs(player.vx) > 0.2
+        )
+        if walking:
+            self.dust_timer -= 1
+            if self.dust_timer <= 0:
+                self.vfx.spawn("dust", player.rect.centerx, player.rect.bottom)
+                self.dust_timer = self.DUST_INTERVAL
+        else:
+            self.dust_timer = 0
+
+        if player.swimming and not self.was_swimming:
+            self.vfx.spawn("splash", player.rect.centerx, player.rect.centery)
+        self.was_swimming = player.swimming
 
     def request_mouse_attack(self):
         """Registra o clique; o ataque será iniciado no próximo update."""
@@ -441,6 +603,7 @@ class Game:
             return
 
         landed = self._resolve_vertical_collisions(player, previous_y, previous_bottom)
+        self.player_grounded = landed
         if player.swimming:
             # Sem chão firme nem parede pra reaproveitar debaixo d'água.
             player.coyote_time = 0
@@ -487,6 +650,7 @@ class Game:
                 and previous_bottom <= enemy.rect.top + 12
             ):
                 enemy.stomp()
+                self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                 player.y = enemy.rect.top - PLAYER_HEIGHT
                 player.vy = -10.5
                 return True
@@ -527,6 +691,7 @@ class Game:
             self.respawn()
             return
 
+        self.invuln_timer = max(0, self.invuln_timer - 1)
         if self._update_oxygen(player):
             return
         if self._check_hazards(player):
@@ -561,8 +726,14 @@ class Game:
         return False
 
     def _check_hazards(self, player):
+        if self.invuln_timer > 0:
+            return False
         for hazard in self.level.hazards:
             if player.rect.colliderect(hazard):
+                self.respawn()
+                return True
+        for lake in self.level.lava_lakes:
+            if player.rect.colliderect(lake):
                 self.respawn()
                 return True
         return False
@@ -623,8 +794,9 @@ class Game:
             if not enemy.alive:
                 continue
             if attack_box and attack_box.colliderect(enemy.rect):
-                enemy.take_hit(self.attack_power)
-            elif self.player.rect.colliderect(enemy.rect):
+                if enemy.take_hit(self.attack_power):
+                    self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+            elif self.invuln_timer <= 0 and self.player.rect.colliderect(enemy.rect):
                 self.respawn()
                 return
 
@@ -739,6 +911,7 @@ class Game:
         self._draw_player_light(surface)
         self.draw_dash_trail(surface)
         self.player.draw(surface, self.camera_x, self.camera_y)
+        self.vfx.draw(surface, self.camera_x, self.camera_y)
         self.draw_attack(surface)
         self._draw_interface(surface)
         self._draw_state_overlay(surface)
@@ -755,11 +928,12 @@ class Game:
         else:
             self._draw_repeating_background(surface, self.backgrounds[self.level.index])
 
-        surface.blit(self.background_filter, (0, 0))
+        underground = self.player.y > 780
         if self.level.index == 1:
-            surface.blit(self.university_filter, (0, 0))
-        if self.player.y > 780:
-            surface.blit(self.underground_filter, (0, 0))
+            overlay = self._overlay_university_underground if underground else self._overlay_university
+        else:
+            overlay = self._overlay_underground if underground else self._overlay_plain
+        surface.blit(overlay, (0, 0))
 
     def _draw_repeating_background(self, surface, background, parallax=1.0):
         """Ladrilha o fundo horizontalmente. Com parallax<1.0 o fundo anda
@@ -791,7 +965,22 @@ class Game:
             draw_text,
             self.university_tiles,
             self.university_props,
+            self.stag_sprites,
+            self.wraith_sprites,
         )
+        self._draw_lava_lakes(surface)
+
+    def _draw_lava_lakes(self, surface):
+        lakes = getattr(self.level, "lava_lakes", None)
+        if not lakes or not self.lava_lake_frames:
+            return
+        frame_index = (self.lava_lake_anim * self.LAVA_LAKE_FPS // FPS) % len(self.lava_lake_frames)
+        frame = self.lava_lake_frames[frame_index]
+        for lake in lakes:
+            image = frame
+            if (lake.width, lake.height) != self.LAVA_LAKE_SIZE:
+                image = pygame.transform.scale(frame, (lake.width, lake.height))
+            surface.blit(image, (lake.x - self.camera_x, lake.y - self.camera_y))
 
     def _draw_player_light(self, surface):
         light_x = int(

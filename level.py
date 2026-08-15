@@ -1,5 +1,5 @@
 import pygame
-from enemy import Slime
+from enemy import CrystalStag, DarkWraith, Slime
 from platform import Platform
 from settings import ASSET_DIR, PLAYER_HEIGHT
 from tiled_map import TiledMap
@@ -98,6 +98,14 @@ class Level:
         # Tiles pintados numa camada colisao=true (ou chamada "Colisão"/"Collision")
         # viram blocos sólidos automaticamente, sem precisar desenhar objetos.
         self.grounds = list(self.tiled_map.tile_collisions) if self.tiled_map else []
+        # Pra cada coluna (x de tile), guarda só o retângulo sólido mais alto
+        # dessa coluna — a superfície de fato pisável. Sem isso, montar uma
+        # zona de patrulha (ver _ground_zone_at) confundia uma célula de
+        # preenchimento enterrada (o "miolo" de rocha de um segmento vizinho
+        # mais alto, que por acaso cai na mesma linha absoluta) com a
+        # superfície real, e o inimigo acabava patrulhando por baixo do chão
+        # visível nos trechos em "escada" da descida.
+        self.column_tops = self._build_column_tops()
         self.dynamic_platforms = []
         self.platforms = self._build_course()
         self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
@@ -107,6 +115,9 @@ class Level:
         # nenhum código novo de parsing (mesmo padrão de spawn/checkpoint/livro).
         self.hazards = self._make_hazards()
         self.water_zones = self._make_water_zones()
+        # Lagos de lava usam a arte pronta (lava_lake.png) desenhada por cima
+        # do buraco esculpido no chão — ver Game._draw_lava_lakes.
+        self.lava_lakes = self._make_lava_lakes()
         self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
         self.surface_return = self.DEFAULT_SURFACE_RETURN
         self.enemies = self._make_enemies()
@@ -206,6 +217,15 @@ class Level:
         return [
             self._rect_from_object(item)
             for item in self.tiled_map.entities("agua")
+            if item["width"] > 0 and item["height"] > 0
+        ]
+
+    def _make_lava_lakes(self):
+        if not self.tiled_map:
+            return []
+        return [
+            self._rect_from_object(item)
+            for item in self.tiled_map.entities("lago_lava")
             if item["width"] > 0 and item["height"] > 0
         ]
 
@@ -622,6 +642,12 @@ class Level:
             platform = self._enemy_platform_from_map_object(item)
             if platform:
                 enemies.append(Slime(platform))
+        for item in self.tiled_map.entities("cervo"):
+            platform = self._enemy_platform_from_map_object(item)
+            if platform:
+                enemies.append(CrystalStag(platform))
+        for item in self.tiled_map.entities("sombra"):
+            enemies.append(DarkWraith(_StaticZone(self._rect_from_object(item))))
         return enemies
 
     def _enemy_platform_from_map_object(self, item):
@@ -630,6 +656,11 @@ class Level:
             platform
             for platform in self.platforms
             if platform.rect.left - 10 <= center_x <= platform.rect.right + 10
+            # Só aceita uma Platform de verdade se a altura bater (+-80px);
+            # caso contrário cai pro chão pintado no Tiled, que é o caso comum
+            # na Fase 3. Sem esse limite, qualquer plataforma cujo x cruzasse
+            # o do inimigo era aceita mesmo estando muito acima/abaixo dele.
+            and abs(platform.rect.top - item["y"]) <= 80
         ]
         best = min(
             candidates,
@@ -642,32 +673,52 @@ class Level:
         # patrulha.
         return best or self._ground_zone_at(item)
 
+    def _build_column_tops(self):
+        """Pra cada coluna (agrupando por rect.left), guarda só o tile sólido
+        mais alto — a superfície de fato pisável dessa coluna."""
+        tops = {}
+        for rect in self.grounds:
+            current = tops.get(rect.left)
+            if current is None or rect.top < current.top:
+                tops[rect.left] = rect
+        return tops
+
     def _ground_zone_at(self, item):
-        """Funde os tiles de solo contíguos (mesma linha) mais próximos do
-        objeto num único retângulo, para o slime patrulhar sobre chão
-        pintado direto no Tiled (sem objeto Platform)."""
+        """Funde as colunas vizinhas que têm sua PRÓPRIA superfície na mesma
+        linha, pra montar a área de patrulha de um inimigo sobre chão pintado
+        direto no Tiled (sem objeto Platform).
+
+        Importante: a fusão original comparava tiles de qualquer coluna que
+        caíssem na mesma linha absoluta (rect.top), sem checar se aquele
+        tile era realmente a superfície da sua coluna — numa descida em
+        "escada", o preenchimento profundo (bedrock) de um degrau mais alto
+        cai, por coincidência, na mesma linha da superfície do degrau vizinho
+        mais baixo, e os dois eram fundidos numa zona só. O inimigo então
+        herdava a altura errada em parte do percurso e patrulhava por baixo
+        do chão visível. Usar self.column_tops (só a superfície real de cada
+        coluna) evita essa fusão incorreta."""
         center_x = item["x"] + item["width"] // 2
-        column_rects = [rect for rect in self.grounds if rect.left <= center_x < rect.right]
-        if not column_rects:
+        tile_width = self.tiled_map.tile_width if self.tiled_map else 32
+        col_left = (center_x // tile_width) * tile_width
+        surface = self.column_tops.get(col_left)
+        if surface is None:
             return None
-        surface = min(column_rects, key=lambda rect: rect.top)
-        row_rects = sorted(
-            (rect for rect in self.grounds if rect.top == surface.top),
-            key=lambda rect: rect.left,
-        )
-        index = row_rects.index(surface)
-        left = index
-        while left > 0 and row_rects[left - 1].right == row_rects[left].left:
-            left -= 1
-        right = index
-        while right < len(row_rects) - 1 and row_rects[right + 1].left == row_rects[right].right:
-            right += 1
-        span = pygame.Rect(
-            row_rects[left].left,
-            surface.top,
-            row_rects[right].right - row_rects[left].left,
-            surface.height,
-        )
+
+        left = surface.left
+        while True:
+            neighbor = self.column_tops.get(left - tile_width)
+            if neighbor is None or neighbor.top != surface.top:
+                break
+            left -= tile_width
+
+        right = surface.right
+        while True:
+            neighbor = self.column_tops.get(right)
+            if neighbor is None or neighbor.top != surface.top:
+                break
+            right += tile_width
+
+        span = pygame.Rect(left, surface.top, right - left, surface.height)
         return _StaticZone(span)
 
     def update(self):
@@ -721,7 +772,7 @@ class Level:
     def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
              microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
-             university_tiles=None, university_props=None):
+             university_tiles=None, university_props=None, stag_sprites=None, wraith_sprites=None):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
         if self.index == 1 and self.university_decor:
@@ -764,7 +815,12 @@ class Level:
                 text_fn,
             )
         for enemy in self.enemies:
-            enemy.draw(surface, camera_x, camera_y, slime_sprites)
+            if isinstance(enemy, CrystalStag):
+                enemy.draw(surface, camera_x, camera_y, stag_sprites)
+            elif isinstance(enemy, DarkWraith):
+                enemy.draw(surface, camera_x, camera_y, wraith_sprites)
+            else:
+                enemy.draw(surface, camera_x, camera_y, slime_sprites)
 
     def _draw_platforms(
         self,
