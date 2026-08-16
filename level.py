@@ -1,5 +1,8 @@
 import pygame
-from enemy import CrystalStag, DarkWraith, Slime
+from enemy import (
+    CrystalStag, DarkWraith, Dragon, JanitorGuardian, Librarian, PossessedStudent,
+    Slime, SlimeKing, SmallSlime, Specimen,
+)
 from platform import Platform
 from settings import ASSET_DIR, PLAYER_HEIGHT
 from tiled_map import TiledMap
@@ -43,8 +46,11 @@ PHASES = [
         ),
         "checkpoints": (11, 24),
         "research": ((6, "Método"), (15, "Dados"), (20, "Análise")),
+        # Posições recalibradas pro corredor->biblioteca->laboratório do
+        # Tiled (ver maps/fase2_universidade.tmx, 6912px de largura); a
+        # segunda fala dispara perto da saída, já no fim do laboratório.
         "dialogues": ((170, "Mentora Beatriz", "Na universidade, errar também é aprender a investigar."),
-                      (3650, "Lia", "Cada dado me aproxima de uma resposta responsável.")),
+                      (6500, "Lia", "Cada dado me aproxima de uma resposta responsável.")),
         "moving": ((4, 90, 110, "x"), (9, 70, 130, "y"), (13, 75, 100, "x"),
                     (18, 80, 140, "y"), (22, 70, 115, "x"), (26, 70, 125, "y")),
         # Decoração puramente visual (não sólida): itens sobre plataformas, bancos
@@ -87,10 +93,20 @@ class Level:
 
     # Mapa do Tiled por fase (índice em PHASES). Fases sem entrada aqui, ou cujo
     # arquivo ainda não existe em maps/, caem no percurso gerado por código.
-    TILED_MAP_FILES = {0: "fase1_escola.tmx", 2: "fase3_pesquisa.tmx"}
+    TILED_MAP_FILES = {0: "fase1_escola.tmx", 1: "fase2_universidade.tmx", 2: "fase3_pesquisa.tmx"}
 
-    def __init__(self, index):
+    # Salas secundárias, acessadas por uma porta interativa no corredor
+    # principal (ver Game.enter_room/_use_doors) — não fazem parte da
+    # progressão principal de nenhuma fase (self.index não muda ao entrar
+    # numa sala; só self.room passa a apontar pra ela).
+    ROOM_MAP_FILES = {
+        "laboratorio": "fase2_laboratorio_sala.tmx",
+        "biblioteca": "fase2_biblioteca_sala.tmx",
+    }
+
+    def __init__(self, index, room=None):
         self.index = index
+        self.room = room
         self.data = PHASES[index]
         self.tiled_map = self._load_tiled_map()
         self._configure_world_dimensions()
@@ -115,16 +131,37 @@ class Level:
         # nenhum código novo de parsing (mesmo padrão de spawn/checkpoint/livro).
         self.hazards = self._make_hazards()
         self.water_zones = self._make_water_zones()
+        # Portas (ver LEIA-ME das salas) e achados opcionais: ambos vêm de
+        # objetos tipados na camada Entidades, mesmo padrão de sempre. Achados
+        # (self.artifacts) são deliberadamente separados de self.research —
+        # eles recompensam quem explora a sala, mas nunca bloqueiam o avanço
+        # de fase (ver Game._advance_level_if_ready, que só olha research).
+        self.doors = self._make_doors()
+        self.artifacts = self._make_artifacts()
         # Lagos de lava usam a arte pronta (lava_lake.png) desenhada por cima
         # do buraco esculpido no chão — ver Game._draw_lava_lakes.
         self.lava_lakes = self._make_lava_lakes()
         self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
         self.surface_return = self.DEFAULT_SURFACE_RETURN
         self.enemies = self._make_enemies()
+        # Chefes de arena (Rei Slime na Fase 1, Dragão na Fase 3): não vêm de
+        # objeto do Tiled como os outros inimigos — são posicionados em
+        # código, no fim do percurso de cada fase, cada um com uma zona de
+        # câmera travada (ver Game._active_boss_arena). self.boss_arenas
+        # fica vazio nas salas e na Fase 2 (sem chefe de arena própria; os
+        # chefes dela — Espécime/Bibliotecário — já travam a tela pequena o
+        # bastante da sala secundária sem precisar de trava de câmera).
+        self.boss_arenas = self._make_boss_arenas()
         self.checkpoints = self._make_checkpoints()
         self.research = self._make_research()
         self._reset_lab_state()
-        self.university_decor = self._make_university_decor() if self.index == 1 else None
+        # A decoração procedural antiga (bancos/flâmulas/itens sobre
+        # plataforma) só faz sentido pro percurso de plataformas geradas à
+        # mão — com o mapa do Tiled, o cenário inteiro (armários, estantes,
+        # bancadas etc.) já vem pintado nas camadas Fundo/Decoração.
+        self.university_decor = (
+            self._make_university_decor() if self.index == 1 and not self.tiled_map else None
+        )
         if self.is_underground:
             self._build_underground_lab()
 
@@ -162,13 +199,40 @@ class Level:
         self.return_route_active = False
 
     def _load_tiled_map(self):
-        filename = self.TILED_MAP_FILES.get(self.index)
+        if self.room:
+            filename = self.ROOM_MAP_FILES.get(self.room)
+        else:
+            filename = self.TILED_MAP_FILES.get(self.index)
         if not filename:
             return None
         path = ASSET_DIR.parent / "maps" / filename
         # Mantém o jogo abrindo caso o arquivo seja removido por acidente. O pacote
         # entregue já inclui os TMX, e o fallback preserva o percurso gerado por código.
         return TiledMap(path) if path.exists() else None
+
+    def _make_doors(self):
+        """Portas interativas (objeto tipo "porta", propriedade "destino"):
+        no corredor "destino" é a chave de ROOM_MAP_FILES (ex.: "laboratorio");
+        dentro da sala, "destino" é "sair" para voltar ao corredor. Ver
+        Game._use_doors."""
+        if not self.tiled_map:
+            return []
+        doors = []
+        for item in self.tiled_map.entities("porta"):
+            target = item["properties"].get("destino", "sair")
+            doors.append({"rect": self._rect_from_object(item), "target": target})
+        return doors
+
+    def _make_artifacts(self):
+        """Achado opcional (objeto tipo "artefato"): mesmo formato de
+        self.research (rect, nome), mas coletado à parte (Game.artifacts_
+        collected) para nunca travar o avanço de fase."""
+        if not self.tiled_map:
+            return []
+        return [
+            (self._rect_from_object(item), item["properties"].get("nome", "Achado"))
+            for item in self.tiled_map.entities("artefato")
+        ]
 
     @staticmethod
     def _rect_from_object(item):
@@ -242,6 +306,8 @@ class Level:
                 return tiled_platforms
             return self._build_school_course()
         if self.index == 1:
+            if self.tiled_map:
+                return self._build_tiled_object_platforms()
             return self._build_university_course()
         if self.index == 2 and self.tiled_map:
             # A caverna da Fase 3 apoia o chão na camada de colisão pintada no
@@ -648,7 +714,73 @@ class Level:
                 enemies.append(CrystalStag(platform))
         for item in self.tiled_map.entities("sombra"):
             enemies.append(DarkWraith(_StaticZone(self._rect_from_object(item))))
+        # Estudante/zelador usam uma zona de patrulha explícita (largura
+        # própria do objeto do Tiled), não a fusão automática de colunas do
+        # chão (_ground_zone_at). Na Fase 2 o piso é uma única camada de
+        # colisão contínua e plana do corredor inteiro — sem essa zona
+        # explícita, TODOS os inimigos de chão se fundiriam numa única zona
+        # gigante (o mapa inteiro) e nasceriam empilhados no centro dela.
+        for item in self.tiled_map.entities("estudante"):
+            enemies.append(PossessedStudent(_StaticZone(self._rect_from_object(item))))
+        for item in self.tiled_map.entities("zelador"):
+            enemies.append(JanitorGuardian(_StaticZone(self._rect_from_object(item))))
+        # Espécime só existe na sala do laboratório velho, mesma lógica de
+        # zona explícita (piso contínuo, sem fusão automática de colunas).
+        for item in self.tiled_map.entities("especime"):
+            enemies.append(Specimen(_StaticZone(self._rect_from_object(item))))
+        # Bibliotecário só existe na sala da biblioteca.
+        for item in self.tiled_map.entities("bibliotecario"):
+            enemies.append(Librarian(_StaticZone(self._rect_from_object(item))))
         return enemies
+
+    # Plataforma nova, criada em código logo depois da última do percurso da
+    # Fase 1 (ver _make_boss_arenas) — a única forma de seguir em frente é
+    # atravessá-la, então o Rei Slime vira porta obrigatória sem precisar
+    # editar o TMX. Largura múltipla de 32 (Platform.TILE_SIZE) pra desenhar
+    # limpo, mesma altura das plataformas vizinhas nesse trecho do mapa.
+    SLIME_KING_ARENA_WIDTH = 800
+    SLIME_KING_ARENA_TOP = 520
+    SLIME_KING_ARENA_MARGIN = 300
+
+    # A arena do Dragão, ao contrário, reaproveita um trecho de chão já
+    # pintado na caverna da Fase 3 (self.column_tops) perto do fim do mapa —
+    # tem piso de verdade vindo do Tiled, então não precisa de uma Platform
+    # nova nem de estender world_width.
+    # x alinhado a um tile (múltiplo de 32) — precisa bater com uma chave de
+    # self.column_tops, que só guarda o topo real de cada COLUNA de tile.
+    DRAGON_ARENA_LEFT = 8576
+    DRAGON_ARENA_WIDTH = 350
+
+    def _make_boss_arenas(self):
+        arenas = []
+        if self.index == 0 and not self.room and self.tiled_map:
+            platform = self._add_slime_king_platform()
+            boss = SlimeKing(platform)
+            self.enemies.append(boss)
+            zone = pygame.Rect(
+                platform.rect.left - 60, 0, platform.rect.width + 120, self.world_height,
+            )
+            arenas.append({"zone": zone, "enemy": boss})
+        if self.index == 2 and not self.room and self.tiled_map:
+            floor = self.column_tops.get(self.DRAGON_ARENA_LEFT)
+            if floor is not None:
+                span = pygame.Rect(self.DRAGON_ARENA_LEFT, floor.top, self.DRAGON_ARENA_WIDTH, floor.height)
+                boss = Dragon(_StaticZone(span))
+                self.enemies.append(boss)
+                zone = pygame.Rect(span.left - 60, 0, span.width + 120, self.world_height)
+                arenas.append({"zone": zone, "enemy": boss})
+        return arenas
+
+    def _add_slime_king_platform(self):
+        """Estende o mundo da Fase 1 (só a colisão — o fundo já é desenhado
+        proceduralmente por sala, ver Game.draw_school_background, então não
+        depende de tile nenhum do Tiled além daqui pra frente) com uma
+        plataforma nova bem no fim do percurso existente."""
+        last_edge = max((p.rect.right for p in self.platforms), default=0)
+        platform = Platform(last_edge, self.SLIME_KING_ARENA_TOP, self.SLIME_KING_ARENA_WIDTH, 0)
+        self.platforms.append(platform)
+        self.world_width = max(self.world_width, platform.rect.right + self.SLIME_KING_ARENA_MARGIN)
+        return platform
 
     def _enemy_platform_from_map_object(self, item):
         center_x = item["x"] + item["width"] // 2
@@ -726,6 +858,7 @@ class Level:
             platform.update()
         for enemy in self.enemies:
             enemy.update()
+            self._drain_pending_spawns(enemy)
         if self.is_underground:
             self._update_lever_timers(self.elevator_lever_timers)
             self._update_lever_timers(self.upper_lever_timers, "upper_")
@@ -734,6 +867,26 @@ class Level:
             self._move_elevator(self.elevator, self.elevator_target)
             self._move_elevator(self.upper_elevator, self.upper_elevator_target)
             self._update_elevator_lever_positions()
+
+    # Zona (largura) em que os filhotes da Cisão se espalham ao redor do
+    # ponto onde nasceram — não a arena inteira, só um pedaço em volta do
+    # Rei Slime, senão eles patrulhariam a plataforma toda.
+    CISAO_SPAWN_ZONE_WIDTH = 150
+
+    def _drain_pending_spawns(self, enemy):
+        """SlimeKing.pending_spawns guarda posições (x, y) registradas pelo
+        ataque Cisão — um Enemy não tem referência à Level pra se
+        auto-inserir em self.enemies, então isso é feito aqui, todo quadro,
+        pra qualquer inimigo que exponha essa fila (só o Rei Slime, por
+        enquanto)."""
+        spawns = getattr(enemy, "pending_spawns", None)
+        if not spawns:
+            return
+        half = self.CISAO_SPAWN_ZONE_WIDTH // 2
+        for x, y in spawns:
+            zone = pygame.Rect(x - half, y, self.CISAO_SPAWN_ZONE_WIDTH, 32)
+            self.enemies.append(SmallSlime(_StaticZone(zone)))
+        spawns.clear()
 
     def _update_lever_timers(self, timers, name_prefix=""):
         for name, timer in timers.items():
@@ -772,7 +925,10 @@ class Level:
     def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
              microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
-             university_tiles=None, university_props=None, stag_sprites=None, wraith_sprites=None):
+             university_tiles=None, university_props=None, stag_sprites=None, wraith_sprites=None,
+             student_sprites=None, janitor_sprites=None, specimen_sprites=None,
+             artifact_image=None, artifacts_collected=None, librarian_sprites=None,
+             small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
         if self.index == 1 and self.university_decor:
@@ -801,6 +957,8 @@ class Level:
             checkpoint_image,
             collected,
         )
+        if artifact_image is not None:
+            self._draw_artifacts(surface, camera_x, camera_y, artifact_image, artifacts_collected or set())
         if self.is_underground:
             self._draw_lab(
                 surface,
@@ -819,8 +977,41 @@ class Level:
                 enemy.draw(surface, camera_x, camera_y, stag_sprites)
             elif isinstance(enemy, DarkWraith):
                 enemy.draw(surface, camera_x, camera_y, wraith_sprites)
+            elif isinstance(enemy, PossessedStudent):
+                enemy.draw(surface, camera_x, camera_y, student_sprites)
+            elif isinstance(enemy, JanitorGuardian):
+                enemy.draw(surface, camera_x, camera_y, janitor_sprites)
+            elif isinstance(enemy, Specimen):
+                enemy.draw(surface, camera_x, camera_y, specimen_sprites)
+            elif isinstance(enemy, Librarian):
+                enemy.draw(surface, camera_x, camera_y, librarian_sprites)
+            elif isinstance(enemy, SlimeKing):
+                enemy.draw(surface, camera_x, camera_y, slime_king_sprites)
+            elif isinstance(enemy, Dragon):
+                enemy.draw(surface, camera_x, camera_y, dragon_sprites)
+            elif isinstance(enemy, SmallSlime):
+                enemy.draw(surface, camera_x, camera_y, small_slime_sprites)
             else:
                 enemy.draw(surface, camera_x, camera_y, slime_sprites)
+        self._draw_enemy_attack_hazards(surface, camera_x, camera_y)
+
+    def _draw_enemy_attack_hazards(self, surface, camera_x, camera_y):
+        """Pinta um aviso translúcido sobre cada hazard de ataque ativo (o
+        feixe do jato, a onda do Silêncio, os tomos do Errata) — sem isso o
+        jogador só veria a hitbox por levar dano, não por enxergar a ameaça,
+        o oposto do que os LEIA-ME pedem ("comunicar a mecânica sem
+        tutorial")."""
+        for enemy in self.enemies:
+            if not enemy.alive:
+                continue
+            get_hazards = getattr(enemy, "active_hazards", None)
+            color = getattr(enemy, "HAZARD_COLOR", None)
+            if not get_hazards or not color:
+                continue
+            for rect in enemy.active_hazards():
+                overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                overlay.fill(color)
+                surface.blit(overlay, (rect.x - camera_x, rect.y - camera_y))
 
     def _draw_platforms(
         self,
@@ -839,9 +1030,15 @@ class Level:
                 platform_sprite = school_sprites[floor_name]
                 self._draw_school_platform(surface, platform, camera_x, camera_y, platform_sprite)
             elif self.index == 1:
-                self._draw_shadow(surface, platform, camera_x, camera_y)
-                skin = university_tiles[platform.image_index % len(university_tiles)]
-                platform.draw(surface, camera_x, camera_y, skin)
+                if self.tiled_map:
+                    # O piso e as paredes já vêm pintados no Tiled — objetos
+                    # de plataforma aqui (se houver) usam a mesma pele
+                    # genérica da Fase 3.
+                    platform.draw(surface, camera_x, camera_y, tiles)
+                else:
+                    self._draw_shadow(surface, platform, camera_x, camera_y)
+                    skin = university_tiles[platform.image_index % len(university_tiles)]
+                    platform.draw(surface, camera_x, camera_y, skin)
             else:
                 platform.draw(surface, camera_x, camera_y, tiles)
 
@@ -884,6 +1081,11 @@ class Level:
         for index, (item, _) in enumerate(self.research):
             if index not in collected:
                 surface.blit(book_image, (item.x - camera_x, item.y - camera_y))
+
+    def _draw_artifacts(self, surface, camera_x, camera_y, artifact_image, artifacts_collected):
+        for index, (item, _) in enumerate(self.artifacts):
+            if index not in artifacts_collected:
+                surface.blit(artifact_image, (item.x - camera_x, item.y - camera_y))
 
     def _draw_school_platform(self, surface, platform, camera_x, camera_y, platform_sprite):
         """Repete apenas um tile de piso para cada plataforma, sem misturar estilos."""

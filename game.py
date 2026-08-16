@@ -1,9 +1,11 @@
 """Orquestra o ciclo de jogo, as interações e a renderização."""
 
+import random
+
 import pygame
 
 from dialogue import DialogueBox
-from hud import draw_ability_ui, draw_hud, draw_text
+from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
 from level import PHASES, Level
 from player import Player
 from vfx import VFXManager
@@ -25,6 +27,56 @@ GAME_OVER = "game_over"
 COMPLETE = "complete"
 
 STARTING_LIVES = 3
+MAX_LIVES = 5
+
+# Itens (LEIA-ME_bosses_e_itens.md, items.png 16x16, 4 quadros/6fps, 7
+# linhas). "consumable" tem efeito imediato ao usar (tecla própria);
+# "quest" é drop garantido de chefe e só destrava o avanço da fase em que
+# nasceu — nunca é "usado" pelo jogador.
+ITEM_DEFS = {
+    "gororoba": {"row": 0, "name": "Gororoba", "kind": "consumable", "heal": 1, "shield": 0, "key": "k_1"},
+    "essencia_slime": {"row": 1, "name": "Essência de Slime", "kind": "quest", "phase": 0},
+    "carcaca_robo": {"row": 2, "name": "Carcaça de Robô", "kind": "consumable", "heal": 0, "shield": 1, "key": "k_2"},
+    "livro_magico": {"row": 3, "name": "Livro Mágico", "kind": "quest", "phase": 1},
+    "amostra_especime": {"row": 4, "name": "Amostra de Espécime", "kind": "quest", "phase": 1},
+    "dark_crystal": {"row": 5, "name": "Dark Crystal", "kind": "consumable", "heal": 1, "shield": 1, "key": "k_3"},
+    "sangue_dragao": {"row": 6, "name": "Sangue do Dragão", "kind": "quest", "phase": 2},
+}
+ITEM_ORDER = (
+    "gororoba", "essencia_slime", "carcaca_robo", "livro_magico",
+    "amostra_especime", "dark_crystal", "sangue_dragao",
+)
+# Itens de pesquisa exigidos por fase pra liberar o avanço (ver
+# _advance_level_if_ready) — Fase 2 depende dos dois chefes de sala
+# (biblioteca e laboratório), então os dois deixam de ser opcionais.
+PHASE_REQUIRED_ITEMS = {
+    0: ("essencia_slime",),
+    1: ("livro_magico", "amostra_especime"),
+    2: ("sangue_dragao",),
+}
+# Tecla pgzero -> item consumível (derivado de ITEM_DEFS, só pros 3 que têm
+# uso ativo; os 4 de pesquisa nunca são "usados").
+ITEM_USE_KEYS = {
+    definition["key"]: key for key, definition in ITEM_DEFS.items() if definition["kind"] == "consumable"
+}
+
+# Drop garantido (100%) de cada chefe — LEIA-ME_bosses_e_itens.md §4: os 4
+# itens de pesquisa nunca são sorteados, sempre caem.
+BOSS_DROP_TABLE = {
+    "SlimeKing": "essencia_slime",
+    "Librarian": "livro_magico",
+    "Specimen": "amostra_especime",
+    "Dragon": "sangue_dragao",
+}
+# Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
+ENEMY_DROP_TABLE = {
+    "Slime": ("gororoba", 0.40),
+    "PossessedStudent": ("carcaca_robo", 0.40),
+    "JanitorGuardian": ("carcaca_robo", 0.40),
+    "CrystalStag": ("dark_crystal", 0.30),
+    "DarkWraith": ("dark_crystal", 0.30),
+}
+DROP_PICKUP_RADIUS = 22
 ATTACK_DURATION = 11
 ATTACK_COOLDOWN = 20
 STANDARD_ATTACK_POWER = 1
@@ -52,6 +104,22 @@ SCIENCE_FACTS = {
     "Pesquisa completa": "A ciência avança quando muitas pessoas fazem perguntas, compartilham dados e persistem juntas.",
 }
 DEFAULT_SCIENCE_FACT = "Toda descoberta começa com uma pergunta e cresce com persistência."
+
+# Lore dos achados opcionais nas salas secundárias (portas) — ao contrário
+# de SCIENCE_FACTS, não é sobre cientistas reais: é a história da própria
+# universidade amaldiçoada, contada em pedaços pra quem explora fora do
+# caminho principal.
+ROOM_LORE = {
+    "Amostra do Espécime 07": (
+        "Um frasco rachado, ainda quente. A etiqueta diz \"ESPÉCIME 07 — NÃO "
+        "REMOVER DO TANQUE\", mas alguém removeu mesmo assim."
+    ),
+    "Página Arrancada": (
+        "Uma página solta, arrancada na pressa. A letra muda no meio da "
+        "frase — como se quem escrevia tivesse parado de ser humano."
+    ),
+}
+DEFAULT_ROOM_LORE = "Um resquício de algo que este lugar preferia esquecer."
 
 SCHOOL_SPRITE_RECTS = {
     "chalkboard": (72, 54, 205, 124),
@@ -82,6 +150,14 @@ class Game:
         self.player = Player()
         self.dialogue = DialogueBox()
         self.lives = STARTING_LIVES
+        # Inventário e escudo atravessam trocas de fase normais (Lia não
+        # perde os itens ao avançar) — só zeram ao reiniciar o jogo do zero
+        # (ver _update_end_state). self.pending_drops é o oposto: reseta a
+        # cada load_level/enter_room/exit_room, porque um item largado no
+        # chão de uma sala não faz sentido reaparecer em outro mapa.
+        self.inventory = {}
+        self.shield = 0
+        self.pending_drops = []
         self.camera_x = 0
         self.camera_y = 0
         self.game_over_fade = 0
@@ -105,8 +181,29 @@ class Game:
         self.slime_sprites = self._load_slime_sprites()
         self.stag_sprites = self._load_stag_sprites()
         self.wraith_sprites = self._load_wraith_sprites()
-        self.vfx = VFXManager(ASSET_DIR / "vfx" / "vfx.png")
+        self.student_sprites = self._load_student_sprites()
+        self.janitor_sprites = self._load_janitor_sprites()
+        self.specimen_sprites = self._load_specimen_sprites()
+        self.librarian_sprites = self._load_librarian_sprites()
+        self.small_slime_sprites = self._load_small_slime_sprites()
+        self.slime_king_sprites = self._load_slime_king_sprites()
+        self.dragon_sprites = self._load_dragon_sprites()
+        self.item_icons = self._load_item_icons()
+        self.artifact_image = self._load_scaled_image("items/artifact_lab.png", (28, 28))
+        self.artifact_library_image = self._load_scaled_image("items/artifact_library.png", (28, 28))
+        self.vfx = VFXManager(
+            ASSET_DIR / "vfx" / "vfx.png",
+            {
+                "fase2": ASSET_DIR / "vfx" / "vfx_university.png",
+                "lab": ASSET_DIR / "vfx" / "vfx_lab.png",
+                "library": ASSET_DIR / "vfx" / "vfx_library.png",
+            },
+        )
         self.lava_lake_frames = self._load_lava_lake_frames()
+        self.lab_background = self._load_scaled_background("backgrounds/lab_background.png")
+        self.lab_background_mirror = pygame.transform.flip(self.lab_background, True, False)
+        self.library_background = self._load_scaled_background("backgrounds/library_background.png")
+        self.library_background_mirror = pygame.transform.flip(self.library_background, True, False)
 
     @staticmethod
     def _load_image(relative_path, alpha=True):
@@ -142,16 +239,17 @@ class Game:
 
     def _load_backgrounds(self):
         school_background = self._load_image("backgrounds/background_school.png", alpha=False)
-        university_background = self._load_image("backgrounds/ifsp_background.png", alpha=False)
-        cave_background = self._load_scaled_cave_background()
+        university_background = self._load_scaled_background("backgrounds/university_background.png")
+        cave_background = self._load_scaled_background("backgrounds/cave_background_v2.png")
         self.backgrounds = [school_background, university_background, cave_background]
         self.background_mirror = pygame.transform.flip(university_background, True, False)
 
-    def _load_scaled_cave_background(self):
-        """A arte da caverna vem em baixa resolução (pensada para ladrilhar);
-        aqui ela é ampliada até cobrir a altura do canvas, preservando a
-        proporção, para servir de camada de fundo com parallax."""
-        raw = self._load_image("backgrounds/cave_background_v2.png", alpha=False)
+    def _load_scaled_background(self, relative_path):
+        """Várias artes de fundo (universidade, caverna) vêm em baixa
+        resolução (pensadas pra ladrilhar); aqui elas são ampliadas até
+        cobrir a altura do canvas, preservando a proporção, pra servir de
+        camada de fundo com parallax."""
+        raw = self._load_image(relative_path, alpha=False)
         scale = HEIGHT / raw.get_height()
         size = (round(raw.get_width() * scale), HEIGHT)
         return pygame.transform.scale(raw, size)
@@ -334,6 +432,113 @@ class Game:
         )
         return {"idle": rows[0], "lunge": rows[1], "hurt": rows[2], "dead": rows[3]}
 
+    def _load_student_sprites(self):
+        """possessed_student.png: quadro 48x48, grade 12x5 — repouso(8)/
+        marcha(8)/ataque(6, não usado)/dano(4)/morte(12). Já nasce no mesmo
+        tamanho da Lia (48px), sem precisar ampliar."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "possessed_student.png", 48, 48, [8, 8, 6, 4, 12]
+        )
+        return {"idle": rows[0], "walk": rows[1], "hurt": rows[3], "dead": rows[4]}
+
+    def _load_janitor_sprites(self):
+        """janitor_guardian.png: quadro 64x64, grade 12x6 — repouso(8)/
+        marcha(8)/varrida(8, não usada)/pancada(8, não usada)/dano(4)/
+        morte(12). 64px já lê como "maior" que a Lia/o estudante sem precisar
+        ampliar (ver LEIA-ME_fase2.md — a escala é o que dá peso de chefe)."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "janitor_guardian.png", 64, 64, [8, 8, 8, 8, 4, 12]
+        )
+        return {"idle": rows[0], "walk": rows[1], "hurt": rows[4], "dead": rows[5]}
+
+    # Os dois chefes de sala também cresceram nesta leva (LEIA-ME_bosses_e_
+    # itens.md pede "aumentar o tamanho dos bosses" — não só os dois novos):
+    # mesma técnica de ampliação pós-recorte usada em STAG_SCALE/WRAITH_SCALE.
+    SPECIMEN_SCALE = 1.3
+    LIBRARIAN_SCALE = 1.25
+
+    def _load_specimen_sprites(self):
+        """lab_specimen.png: quadro 56x48, grade 12x6 — repouso(8)/rastejo(8)
+        /ataque 1 jato(7)/ataque 2 investida(8)/dano(4)/morte(12)."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "lab_specimen.png", 56, 48, [8, 8, 7, 8, 4, 12], scale=self.SPECIMEN_SCALE
+        )
+        return {
+            "idle": rows[0], "walk": rows[1],
+            "jet": rows[2], "lunge": rows[3],
+            "hurt": rows[4], "dead": rows[5],
+        }
+
+    def _load_librarian_sprites(self):
+        """librarian_boss.png: quadro 64x64, grade 14x6 — repouso(8)/
+        deslize(8)/ataque A silêncio(9)/ataque B errata(10)/dano(4)/
+        morte(14). Os tomos do ataque B reaproveitam o ícone de livro da
+        pesquisa (self.book) — mesma silhueta, sem precisar de arte nova."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "librarian_boss.png", 64, 64, [8, 8, 9, 10, 4, 14], scale=self.LIBRARIAN_SCALE
+        )
+        return {
+            "idle": rows[0], "walk": rows[1],
+            "attack_a": rows[2], "attack_b": rows[3],
+            "hurt": rows[4], "dead": rows[5],
+            "tome": self.book,
+        }
+
+    def _load_small_slime_sprites(self):
+        """slime_common.png: quadro 32x32, grade 8x4 — repouso(6, não usado)
+        /pulo(8)/dano(3)/morte(6). Mesmo corpo do Rei Slime sem coroa nem
+        núcleo, usado pelos filhotes da Cisão."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "slime_common.png", 32, 32, [6, 8, 3, 6]
+        )
+        return {"walk": rows[1], "hurt": rows[2], "dead": rows[3]}
+
+    # slime_king.png/dragon.png já nascem grandes (64x64/112x96); esta escala
+    # é só o empurrão extra pedido no LEIA-ME pra eles lerem como os maiores
+    # do jogo, o topo da hierarquia de tamanho.
+    SLIME_KING_SCALE = 1.3
+    DRAGON_SCALE = 1.25
+
+    def _load_slime_king_sprites(self):
+        """slime_king.png: quadro 64x64, grade 12x6 — repouso(8)/pulo(8)/
+        ataque A esmagar(9)/ataque B cisão(10)/dano(4)/morte(12)."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "slime_king.png", 64, 64, [8, 8, 9, 10, 4, 12], scale=self.SLIME_KING_SCALE
+        )
+        return {
+            "idle": rows[0], "walk": rows[1],
+            "attack_a": rows[2], "attack_b": rows[3],
+            "hurt": rows[4], "dead": rows[5],
+        }
+
+    def _load_dragon_sprites(self):
+        """dragon.png: quadro 112x96, grade 14x6 — repouso(8)/marcha(8)/
+        ataque A sopro(10)/ataque B brasas(10)/dano(4)/morte(14). As pedras
+        das Brasas usam dragon_rock.png (24x24, 8 quadros: queda/impacto/
+        explosão), desenhadas à parte pelo próprio Dragon.draw."""
+        rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "dragon.png", 112, 96, [8, 8, 10, 10, 4, 14], scale=self.DRAGON_SCALE
+        )
+        rock_rows = self._load_grid_sheet(ASSET_DIR / "enemies" / "dragon_rock.png", 24, 24, [8])
+        return {
+            "idle": rows[0], "walk": rows[1],
+            "attack_a": rows[2], "attack_b": rows[3],
+            "hurt": rows[4], "dead": rows[5],
+            "rock": rock_rows[0],
+        }
+
+    def _load_item_icons(self):
+        """items.png: quadro 16x16, 4 col x 7 lin, 6fps — usa só o primeiro
+        quadro de cada linha como ícone estático do inventário/HUD (ver
+        hud.draw_inventory); a animação de 4 quadros fica pro chão, se algum
+        dia o item ganhar uma versão "largada" animada."""
+        rows = self._load_grid_sheet(ASSET_DIR / "items" / "items.png", 16, 16, [4] * 7)
+        icons = {}
+        for key, definition in ITEM_DEFS.items():
+            frame = rows[definition["row"]][0]
+            icons[key] = pygame.transform.scale(frame, (28, 28))
+        return icons
+
     # Tamanho de cada lago de lava esculpido pelo gerador de mapa (ver
     # LAKE_WIDTH/LAKE_DEPTH em build_fase3_map_v6.py) — os 8 quadros de
     # lava_lake.png (160x96 cada) são pré-ampliados pra esse tamanho uma
@@ -358,6 +563,12 @@ class Game:
         self.checkpoint = self.level.spawn
         self.player.reset(*self.checkpoint)
         self.collected = set()
+        self.artifacts_collected = set()
+        # Enquanto self._base_level não for None, self.level aponta pra uma
+        # sala (biblioteca/laboratório) e self._base_level guarda a fase
+        # principal, intacta, pra restaurar ao sair — ver enter_room/exit_room.
+        self._base_level = None
+        self._base_state = None
         self.seen_dialogues = set()
         self.lever_on = False
         self.sequence_solved = False
@@ -365,6 +576,7 @@ class Game:
         self.sequence_progress = 0
         self.microscope_collected = set()
         self.riding_platform = None
+        self.pending_drops = []
         self._reset_combat_state()
         self._reset_input_state()
         self._reset_vfx_state()
@@ -374,6 +586,39 @@ class Game:
         self.message = self.level.data["subtitle"]
         self.message_timer = 0
         self.state = PLAYING
+
+    def enter_room(self, room_key):
+        """Troca para uma sala secundária (porta interativa no corredor),
+        preservando a fase principal intacta (inimigos, pesquisa coletada)
+        pra restaurar exatamente como estava ao sair — ver exit_room."""
+        self._base_level = self.level
+        self._base_state = (self.player.x, self.player.y, self.camera_x, self.camera_y)
+        self.level = Level(self.level.index, room=room_key)
+        self.player.reset(*self.level.spawn)
+        self.riding_platform = None
+        self.pending_drops = []
+        self.camera_x = self.camera_y = 0
+        # Suprime o [E] desta troca de tela: sem isso, segurar a tecla ao
+        # atravessar a porta reaciona a interação do outro lado no mesmo
+        # quadro (ex.: entrar e sair de novo instantaneamente).
+        self.interact_was_down = True
+        self.message = self.level.data["subtitle"]
+        self.message_timer = 0
+
+    def exit_room(self):
+        """Volta da sala pra fase principal, no ponto exato de onde Lia
+        entrou pela porta."""
+        if self._base_level is None:
+            return
+        self.level = self._base_level
+        self._base_level = None
+        player_x, player_y, camera_x, camera_y = self._base_state
+        self._base_state = None
+        self.player.reset(player_x, player_y)
+        self.riding_platform = None
+        self.pending_drops = []
+        self.camera_x, self.camera_y = camera_x, camera_y
+        self.interact_was_down = True
 
     def _reset_combat_state(self):
         self.attack_timer = 0
@@ -386,6 +631,7 @@ class Game:
         self.attack_was_down = False
         self.dash_was_down = False
         self.dialogue_advance_was_down = False
+        self._item_key_was_down = {}
 
     def _reset_vfx_state(self):
         self.vfx.active = []
@@ -404,7 +650,28 @@ class Game:
         self.invuln_timer = 0
 
     def respawn(self):
-        self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
+        # Carcaça de robô/Dark Crystal (ver ITEM_DEFS): 1 ponto de escudo
+        # absorve o PRÓXIMO dano por completo, sem tirar vida nem reiniciar
+        # a posição — vale pra qualquer fonte (espinho, chefe, queda, afogar).
+        if self.shield > 0:
+            self.shield -= 1
+            self.invuln_timer = self.INVULN_FRAMES
+            self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
+            self.message = "O escudo absorveu o dano!"
+            self.message_timer = 90
+            return
+        # Na universidade, o "toque que mata" costuma ser vidro quebrado ou
+        # a poça química — o estilhaço de vidro combina melhor com o tema do
+        # que o impacto genérico usado nas outras fases.
+        if self.level.room == "laboratorio":
+            vfx_kind = "acid_burn"
+        elif self.level.room == "biblioteca":
+            vfx_kind = "ink_splash"
+        elif self.level.index == 1:
+            vfx_kind = "glass"
+        else:
+            vfx_kind = "impact"
+        self.vfx.spawn(vfx_kind, self.player.rect.centerx, self.player.rect.centery)
         self.lives -= 1
         self.invuln_timer = self.INVULN_FRAMES
         if self.lives <= 0:
@@ -413,9 +680,17 @@ class Game:
             self.game_over_characters = 0
             return
 
-        self.player.reset(*self.checkpoint)
+        if self._base_level is not None:
+            # Machucar-se numa sala te tira dela: mais simples e mais
+            # temático (Lia cambaleia de volta pro corredor) do que tentar
+            # achar um checkpoint dentro de um espaço tão pequeno. exit_room
+            # já restaura a câmera exata de antes da porta, então não zera
+            # camera_y como no respawn normal por checkpoint.
+            self.exit_room()
+        else:
+            self.player.reset(*self.checkpoint)
+            self.camera_y = 0
         self.riding_platform = None
-        self.camera_y = 0
         self.message = MOTIVATION
         self.message_timer = 0
 
@@ -429,6 +704,7 @@ class Game:
         elif self.dialogue.active:
             self._update_dialogue(dialogue_advance_pressed)
         else:
+            self._read_item_use(keyboard)
             self._update_playing(keyboard, dash_pressed, attack_pressed, dt)
 
     def _read_input(self, keyboard):
@@ -455,6 +731,42 @@ class Game:
         self.dash_was_down = dash_down
         return dialogue_advance_pressed, attack_pressed, dash_pressed
 
+    def _read_item_use(self, keyboard):
+        """Teclas 1/2/3 (ver ITEM_USE_KEYS) consomem um consumível do
+        inventário — os 4 itens de pesquisa nunca aparecem aqui, eles só
+        destravam o avanço de fase ao serem coletados (ver
+        _advance_level_if_ready)."""
+        for key_name, item_key in ITEM_USE_KEYS.items():
+            down = bool(getattr(keyboard, key_name, False))
+            was_down = self._item_key_was_down.get(key_name, False)
+            if down and not was_down:
+                self._use_item(item_key)
+            self._item_key_was_down[key_name] = down
+
+    def _use_item(self, item_key):
+        count = self.inventory.get(item_key, 0)
+        if count <= 0:
+            return
+        definition = ITEM_DEFS[item_key]
+        if definition["kind"] != "consumable":
+            return
+        heal = definition["heal"]
+        shield = definition["shield"]
+        if heal and not shield and self.lives >= MAX_LIVES:
+            self.message = "Vidas já estão cheias."
+            self.message_timer = 90
+            return
+        self.inventory[item_key] = count - 1
+        if self.inventory[item_key] <= 0:
+            del self.inventory[item_key]
+        if heal:
+            self.lives = min(MAX_LIVES, self.lives + heal)
+        if shield:
+            self.shield += shield
+        self.message = f"{definition['name']} usado!"
+        self.message_timer = 90
+        self.vfx.spawn("dust", self.player.rect.centerx, self.player.rect.centery)
+
     def _update_title(self, keyboard):
         if keyboard.space or keyboard.RETURN:
             self.lives = STARTING_LIVES
@@ -467,6 +779,9 @@ class Game:
                 self.game_over_characters += 0.75
         if keyboard.r:
             self.lives = STARTING_LIVES
+            self.shield = 0
+            if self.state == COMPLETE:
+                self.inventory = {}
             level_index = 0 if self.state == COMPLETE else self.level.index
             self.load_level(level_index)
 
@@ -494,6 +809,7 @@ class Game:
             self.level.tiled_map.update(dt * 1000)
         self._move_with_platform()
         self.move_player()
+        self._apply_boss_arena_clamp()
         self.player.animate()
         self._update_vfx()
         self._update_camera()
@@ -519,10 +835,56 @@ class Game:
             self.player.x += self.riding_platform.dx
             self.player.y += self.riding_platform.dy
 
+    def _active_boss_arena(self):
+        """Zona do chefe que Lia está atravessando agora, com o chefe ainda
+        vivo (ver Level._make_boss_arenas: Rei Slime na Fase 1, Dragão na
+        Fase 3) — None fora dela, ou depois do chefe morrer, o que libera a
+        câmera/o limite horizontal de volta ao normal automaticamente."""
+        for arena in getattr(self.level, "boss_arenas", ()):
+            if arena["enemy"].alive and self.player.rect.colliderect(arena["zone"]):
+                return arena["zone"]
+        return None
+
+    def _apply_boss_arena_clamp(self):
+        """Enquanto dentro da arena de um chefe vivo, Lia não sai pelos
+        lados (LEIA-ME_bosses_e_itens.md: "que Lia não consiga sair daquele
+        campo de visão") — mesma ideia de trava de câmera de outros jogos,
+        aqui aplicada também ao próprio jogador, não só à câmera."""
+        zone = self._active_boss_arena()
+        if not zone:
+            return
+        min_x = zone.left - PLAYER_HITBOX_OFFSET_X
+        max_x = zone.right - PLAYER_HITBOX_OFFSET_X - PLAYER_HITBOX_WIDTH
+        if max_x < min_x:
+            max_x = min_x
+        self.player.x = max(min_x, min(self.player.x, max_x))
+
     def _update_camera(self):
+        arena_zone = self._active_boss_arena()
+        if arena_zone:
+            self._update_boss_camera(arena_zone)
+            return
         target_x = self.player.x - WIDTH * CAMERA_X_FOCUS
         self.camera_x += (target_x - self.camera_x) * CAMERA_X_SMOOTHING
         self.camera_x = max(0, min(self.camera_x, self.level.world_width - WIDTH))
+
+        target_y = self.player.y - HEIGHT * CAMERA_Y_FOCUS
+        self.camera_y += (target_y - self.camera_y) * CAMERA_Y_SMOOTHING
+        self.camera_y = max(
+            self.level.world_top,
+            min(self.camera_y, self.level.world_height - HEIGHT),
+        )
+
+    def _update_boss_camera(self, zone):
+        """Foca a arena inteira na tela (as duas são bem mais estreitas que
+        WIDTH) em vez de seguir Lia — é isso que lê como "a câmera focou no
+        chefe" em vez do scroll normal continuar."""
+        if zone.width <= WIDTH:
+            target_x = zone.centerx - WIDTH / 2
+        else:
+            target_x = self.player.x - WIDTH * CAMERA_X_FOCUS
+        target_x = max(0, min(target_x, self.level.world_width - WIDTH))
+        self.camera_x += (target_x - self.camera_x) * CAMERA_X_SMOOTHING
 
         target_y = self.player.y - HEIGHT * CAMERA_Y_FOCUS
         self.camera_y += (target_y - self.camera_y) * CAMERA_Y_SMOOTHING
@@ -651,10 +1013,52 @@ class Game:
             ):
                 enemy.stomp()
                 self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+                self._on_enemy_defeated(enemy)
                 player.y = enemy.rect.top - PLAYER_HEIGHT
                 player.vy = -10.5
                 return True
         return False
+
+    def _on_enemy_defeated(self, enemy):
+        """Chamado uma única vez, no quadro exato em que um inimigo morre
+        (stomp() sempre mata; take_hit() só às vezes — ver check_enemies).
+        Chefe larga o item de pesquisa garantido (BOSS_DROP_TABLE); inimigo
+        comum sorteia contra ENEMY_DROP_TABLE. Slimes pequenos da Cisão e
+        os dois chefes de sala antigos sem entrada em nenhuma tabela não
+        largam nada."""
+        name = type(enemy).__name__
+        quest_item = BOSS_DROP_TABLE.get(name)
+        if quest_item:
+            self._spawn_drop(quest_item, enemy.rect.centerx, enemy.rect.centery)
+            return
+        entry = ENEMY_DROP_TABLE.get(name)
+        if entry and random.random() < entry[1]:
+            self._spawn_drop(entry[0], enemy.rect.centerx, enemy.rect.centery)
+
+    def _spawn_drop(self, item_key, x, y):
+        self.pending_drops.append({"item": item_key, "x": x, "y": y})
+
+    def _collect_drops(self, player):
+        """Itens largados no chão (ver _spawn_drop) somem da lista assim que
+        Lia encosta neles e entram no inventário — igual à pesquisa/achados,
+        mas numa lista à parte (pending_drops), porque um item largado numa
+        sala não deve reaparecer depois de sair dela (ver enter_room/
+        exit_room/load_level, que zeram essa lista)."""
+        if not self.pending_drops:
+            return
+        remaining = []
+        for drop in self.pending_drops:
+            pickup = pygame.Rect(0, 0, DROP_PICKUP_RADIUS * 2, DROP_PICKUP_RADIUS * 2)
+            pickup.center = (drop["x"], drop["y"])
+            if player.rect.colliderect(pickup):
+                key = drop["item"]
+                self.inventory[key] = self.inventory.get(key, 0) + 1
+                self.message = f"Item obtido: {ITEM_DEFS[key]['name']}"
+                self.message_timer = 0
+                self.vfx.spawn("dust", drop["x"], drop["y"])
+            else:
+                remaining.append(drop)
+        self.pending_drops = remaining
 
     def _resolve_vertical_collisions(self, player, previous_y, previous_bottom):
         landed = False
@@ -696,9 +1100,18 @@ class Game:
             return
         if self._check_hazards(player):
             return
+        if self._check_enemy_attack_hazards(player):
+            return
 
         self.check_enemies()
         if self.state != PLAYING:
+            return
+        self._collect_drops(self.player)
+        if self.level.room:
+            # Dentro de uma sala secundária não há checkpoint, pesquisa
+            # obrigatória nem avanço de fase — só o achado opcional e a
+            # porta de saída (tratada em handle_interactions).
+            self._collect_artifacts(player)
             return
         self._check_checkpoints(player)
         if self._collect_research(player):
@@ -707,6 +1120,18 @@ class Game:
         if self._start_pending_dialogue(player):
             return
         self._advance_level_if_ready(player)
+
+    def _collect_artifacts(self, player):
+        for index, (item, name) in enumerate(self.level.artifacts):
+            if index in self.artifacts_collected or not player.rect.colliderect(item):
+                continue
+            self.artifacts_collected.add(index)
+            self.message = f"Achado: {name}"
+            self.message_timer = 0
+            lore = ROOM_LORE.get(name, DEFAULT_ROOM_LORE)
+            self.dialogue.start("Lia", lore)
+            return True
+        return False
 
     def _update_oxygen(self, player):
         """Consome o fôlego enquanto a cabeça está submersa em alguma zona de
@@ -736,6 +1161,25 @@ class Game:
             if player.rect.colliderect(lake):
                 self.respawn()
                 return True
+        return False
+
+    def _check_enemy_attack_hazards(self, player):
+        """Feixe do jato do espécime, onda do Silêncio e tomos do Errata: os
+        três alcançam além da hitbox do próprio inimigo (ver
+        Enemy.active_hazards em enemy.py), então não bastam o teste de
+        colisão corpo-a-corpo normal de check_enemies."""
+        if self.invuln_timer > 0:
+            return False
+        for enemy in self.level.enemies:
+            if not enemy.alive:
+                continue
+            get_hazards = getattr(enemy, "active_hazards", None)
+            if not get_hazards:
+                continue
+            for hazard in get_hazards():
+                if player.rect.colliderect(hazard):
+                    self.respawn()
+                    return True
         return False
 
     def _check_checkpoints(self, player):
@@ -778,8 +1222,17 @@ class Game:
             return
 
         needs_microscope = self.level.is_underground and not self.microscope_assembled
+        missing_items = [
+            key for key in PHASE_REQUIRED_ITEMS.get(self.level.index, ())
+            if self.inventory.get(key, 0) <= 0
+        ]
         if len(self.collected) < len(self.level.research) or needs_microscope:
             self.message = "Encontre todas as partes da pesquisa antes de avançar."
+            self.message_timer = 0
+            player.x = self.level.world_width - 160
+        elif missing_items:
+            names = ", ".join(ITEM_DEFS[key]["name"] for key in missing_items)
+            self.message = f"Ainda falta: {names}."
             self.message_timer = 0
             player.x = self.level.world_width - 160
         elif self.level.index == len(PHASES) - 1:
@@ -796,6 +1249,8 @@ class Game:
             if attack_box and attack_box.colliderect(enemy.rect):
                 if enemy.take_hit(self.attack_power):
                     self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+                    if not enemy.alive:
+                        self._on_enemy_defeated(enemy)
             elif self.invuln_timer <= 0 and self.player.rect.colliderect(enemy.rect):
                 self.respawn()
                 return
@@ -812,8 +1267,13 @@ class Game:
         return self.player.rect.move(offset, 4).inflate(reach, 10)
 
     def handle_interactions(self):
-        """Processa elevadores, painel, botões e bancada do laboratório."""
-        if not self.level.is_underground or not self.interact_pressed:
+        """Processa portas (qualquer fase) e, na Fase 1 subterrânea,
+        elevadores, painel, botões e bancada do laboratório."""
+        if not self.interact_pressed:
+            return
+        if self._use_doors():
+            return
+        if not self.level.is_underground:
             return
 
         player = self.player
@@ -824,6 +1284,20 @@ class Game:
         if self._use_sequence_button(player):
             return
         self._use_microscope_bench(player)
+
+    DOOR_INTERACT_RANGE = 40
+
+    def _use_doors(self):
+        player = self.player
+        for door in self.level.doors:
+            if not player.rect.colliderect(door["rect"].inflate(self.DOOR_INTERACT_RANGE, self.DOOR_INTERACT_RANGE)):
+                continue
+            if door["target"] == "sair":
+                self.exit_room()
+            else:
+                self.enter_room(door["target"])
+            return True
+        return False
 
     def _use_elevator_lever(self, player):
         if self.level.top_lever and player.rect.colliderect(self.level.top_lever.inflate(55, 55)):
@@ -908,6 +1382,7 @@ class Game:
         surface.fill((6, 14, 29))
         self._draw_background(surface)
         self._draw_world(surface)
+        self._draw_door_prompts(surface)
         self._draw_player_light(surface)
         self.draw_dash_trail(surface)
         self.player.draw(surface, self.camera_x, self.camera_y)
@@ -917,7 +1392,11 @@ class Game:
         self._draw_state_overlay(surface)
 
     def _draw_background(self, surface):
-        if self.level.index == 0:
+        if self.level.room == "laboratorio":
+            self._draw_repeating_background(surface, self.lab_background)
+        elif self.level.room == "biblioteca":
+            self._draw_repeating_background(surface, self.library_background)
+        elif self.level.index == 0:
             self.draw_school_background(surface)
         elif self.level.index == 1:
             self.draw_university_background(surface)
@@ -967,8 +1446,38 @@ class Game:
             self.university_props,
             self.stag_sprites,
             self.wraith_sprites,
+            self.student_sprites,
+            self.janitor_sprites,
+            self.specimen_sprites,
+            self._current_artifact_image(),
+            self.artifacts_collected,
+            self.librarian_sprites,
+            self.small_slime_sprites,
+            self.slime_king_sprites,
+            self.dragon_sprites,
         )
         self._draw_lava_lakes(surface)
+        self._draw_drops(surface)
+
+    def _draw_drops(self, surface):
+        """Itens largados no chão (ver _spawn_drop/_collect_drops) — ícone
+        de items.png com um pulso leve, pra ficar claramente "pegável" e não
+        parecer decoração ou parte do cenário."""
+        if not self.pending_drops:
+            return
+        pulse = 3 * abs((pygame.time.get_ticks() % 900) / 450 - 1)
+        for drop in self.pending_drops:
+            icon = self.item_icons.get(drop["item"])
+            if not icon:
+                continue
+            x = drop["x"] - icon.get_width() / 2 - self.camera_x
+            y = drop["y"] - icon.get_height() / 2 - self.camera_y - pulse
+            surface.blit(icon, (x, y))
+
+    def _current_artifact_image(self):
+        if self.level.room == "biblioteca":
+            return self.artifact_library_image
+        return self.artifact_image
 
     def _draw_lava_lakes(self, surface):
         lakes = getattr(self.level, "lava_lakes", None)
@@ -981,6 +1490,26 @@ class Game:
             if (lake.width, lake.height) != self.LAVA_LAKE_SIZE:
                 image = pygame.transform.scale(frame, (lake.width, lake.height))
             surface.blit(image, (lake.x - self.camera_x, lake.y - self.camera_y))
+
+    DOOR_PROMPT_RANGE = 60
+
+    def _draw_door_prompts(self, surface):
+        """Mostra "[E] ENTRAR"/"[E] SAIR" só quando Lia está perto o
+        bastante da porta pra interagir — mesmo raio usado em _use_doors."""
+        player_rect = self.player.rect
+        for door in self.level.doors:
+            if not player_rect.colliderect(door["rect"].inflate(self.DOOR_PROMPT_RANGE, self.DOOR_PROMPT_RANGE)):
+                continue
+            label = "[E] SAIR" if door["target"] == "sair" else "[E] ENTRAR"
+            rect = door["rect"]
+            draw_text(
+                surface,
+                label,
+                (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
+                14,
+                "#f4e4a5",
+                True,
+            )
 
     def _draw_player_light(self, surface):
         light_x = int(
@@ -1016,7 +1545,9 @@ class Game:
             len(self.level.microscope_parts),
             self.microscope_assembled,
             oxygen_ratio,
+            self.shield,
         )
+        draw_inventory(surface, self.inventory, self.item_icons, ITEM_ORDER)
         draw_ability_ui(
             surface,
             self.player.dash_cooldown,

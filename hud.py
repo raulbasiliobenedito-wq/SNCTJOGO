@@ -2,7 +2,7 @@ from functools import lru_cache
 
 import pygame
 
-from settings import FONT_PATH, WIDTH
+from settings import FONT_PATH, HEIGHT, WIDTH
 
 
 ABILITY_PANEL_WIDTH = 232
@@ -37,10 +37,15 @@ def draw_hud(
     microscope_total=0,
     microscope_assembled=False,
     oxygen_ratio=None,
+    shield=0,
 ):
     """Desenha informações persistentes da fase e a mensagem temporária."""
     draw_text(surface, level_name, (24, 20), 27)
-    draw_text(surface, "Vidas: " + "♥ " * lives, (24, 55), 25, "#ff6379")
+    hearts = "♥ " * lives
+    draw_text(surface, "Vidas: " + hearts, (24, 55), 25, "#ff6379")
+    if shield:
+        shield_x = 24 + get_font(25, True).size("Vidas: " + hearts)[0] + 14
+        draw_text(surface, "◆ " * shield, (shield_x, 55), 25, "#7cd6ff")
     draw_text(surface, f"Pesquisa: {found}/{total}", (24, 88), 22, "#ffe47a")
 
     if microscope_total:
@@ -50,6 +55,34 @@ def draw_hud(
         _draw_oxygen_bar(surface, oxygen_ratio)
     if message_timer:
         _draw_message(surface, message)
+
+
+ITEM_KEY_LABELS = {"gororoba": "1", "carcaca_robo": "2", "dark_crystal": "3"}
+
+
+def draw_inventory(surface, inventory, item_icons, item_order):
+    """Barra de itens no canto inferior esquerdo: um slot por tipo já
+    coletado (consumíveis mostram a tecla de uso; itens de pesquisa não têm
+    tecla — eles só destravam o avanço de fase ao serem obtidos)."""
+    owned = [key for key in item_order if inventory.get(key, 0) > 0]
+    if not owned:
+        return
+    slot = 46
+    gap = 8
+    x = 24
+    y = HEIGHT - 90
+    for key in owned:
+        icon = item_icons.get(key)
+        pygame.draw.rect(surface, (12, 25, 43), (x, y, slot, slot), border_radius=8)
+        pygame.draw.rect(surface, (74, 96, 122), (x, y, slot, slot), 2, border_radius=8)
+        if icon:
+            surface.blit(icon, (x + slot // 2 - icon.get_width() // 2, y + slot // 2 - icon.get_height() // 2 - 4))
+        count = inventory.get(key, 0)
+        draw_text(surface, f"x{count}", (x + slot - 4, y + slot - 6), 13, "#ffffff", False)
+        key_label = ITEM_KEY_LABELS.get(key)
+        if key_label:
+            draw_text(surface, f"[{key_label}]", (x + slot // 2, y - 12), 12, "#ffe47a", True)
+        x += slot + gap
 
 
 def _draw_oxygen_bar(surface, ratio):

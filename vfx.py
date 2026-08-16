@@ -12,19 +12,46 @@ class VFXManager:
     FRAME_SIZE = 32
 
     # linha na spritesheet, número de quadros usados e fps de reprodução —
-    # direto do LEIA-ME_integracao.md (seção "vfx.png").
+    # direto do LEIA-ME_integracao.md (seção "vfx.png"). Efeitos com
+    # "sheet": "fase2" vêm de vfx_university.png (LEIA-ME_fase2.md) em vez
+    # da folha genérica.
     DEFS = {
         "impact": {"row": 0, "frames": 6, "fps": 18, "loop": False},
         "dust": {"row": 1, "frames": 5, "fps": 16, "loop": False},
         "splash": {"row": 2, "frames": 5, "fps": 16, "loop": False},
         "ember": {"row": 3, "frames": 8, "fps": 6, "loop": True},
         "slash": {"row": 4, "frames": 4, "fps": 20, "loop": False},
+        "chalk": {"row": 0, "frames": 6, "fps": 18, "loop": False, "sheet": "fase2"},
+        "glass": {"row": 1, "frames": 5, "fps": 16, "loop": False, "sheet": "fase2"},
+        "chem_splash": {"row": 2, "frames": 5, "fps": 16, "loop": False, "sheet": "fase2"},
+        "spark": {"row": 3, "frames": 5, "fps": 20, "loop": False, "sheet": "fase2"},
+        "paper": {"row": 4, "frames": 6, "fps": 12, "loop": True, "sheet": "fase2"},
+        # vfx_lab.png (LEIA-ME_laboratorio.md) — sala do laboratório velho.
+        "acid_burn": {"row": 0, "frames": 6, "fps": 17, "loop": False, "sheet": "lab"},
+        "steam": {"row": 1, "frames": 6, "fps": 14, "loop": True, "sheet": "lab"},
+        "toxic_cloud": {"row": 2, "frames": 8, "fps": 11, "loop": True, "sheet": "lab"},
+        "containment_break": {"row": 3, "frames": 6, "fps": 16, "loop": False, "sheet": "lab"},
+        "lab_spark": {"row": 4, "frames": 5, "fps": 20, "loop": False, "sheet": "lab"},
+        # vfx_library.png (LEIA-ME_biblioteca.md) — sala da biblioteca.
+        "page_burst": {"row": 0, "frames": 6, "fps": 17, "loop": False, "sheet": "library"},
+        "book_dust": {"row": 1, "frames": 5, "fps": 14, "loop": False, "sheet": "library"},
+        "candle_flare": {"row": 2, "frames": 4, "fps": 12, "loop": False, "sheet": "library"},
+        "ink_splash": {"row": 3, "frames": 5, "fps": 15, "loop": False, "sheet": "library"},
+        "silence_wave": {"row": 4, "frames": 6, "fps": 15, "loop": False, "sheet": "library"},
     }
 
-    def __init__(self, sheet_path):
-        sheet = pygame.image.load(sheet_path).convert_alpha()
+    def __init__(self, sheet_path, extra_sheets=None):
+        """`extra_sheets` é um dict {nome: caminho} — cada DEF pode apontar
+        pra um desses via a chave "sheet" (ver DEFS acima). `nome` "primary"
+        é reservado pra `sheet_path`."""
+        sheets = {"primary": pygame.image.load(sheet_path).convert_alpha()}
+        for name, path in (extra_sheets or {}).items():
+            sheets[name] = pygame.image.load(path).convert_alpha()
         self.frames = {}
         for name, info in self.DEFS.items():
+            sheet = sheets.get(info.get("sheet", "primary"))
+            if sheet is None:
+                continue
             row = info["row"]
             self.frames[name] = [
                 sheet.subsurface(
