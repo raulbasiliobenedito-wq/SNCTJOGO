@@ -213,5 +213,10 @@
    </properties>
   </object>
   <object id="64" type="bancada" x="4940" y="870" width="110" height="80"/>
+  <object id="65" type="cientista" x="170" y="602" width="48" height="48">
+   <properties>
+    <property name="nome" value="Rosalind Franklin"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

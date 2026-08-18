@@ -255,5 +255,10 @@
     <property name="nome" value="Página Arrancada"/>
    </properties>
   </object>
+  <object id="5" type="cientista" x="250" y="496" width="48" height="48">
+   <properties>
+    <property name="nome" value="Ada Lovelace"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

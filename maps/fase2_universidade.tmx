@@ -337,5 +337,10 @@
     <property name="destino" value="laboratorio"/>
    </properties>
   </object>
+  <object id="21" type="cientista" x="198" y="528" width="48" height="48">
+   <properties>
+    <property name="nome" value="Katherine Johnson"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

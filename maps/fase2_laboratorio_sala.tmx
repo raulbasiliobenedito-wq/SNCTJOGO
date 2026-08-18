@@ -255,5 +255,10 @@
    </properties>
   </object>
   <object id="5" type="espinho" x="832" y="558.333" width="64" height="81.6667"/>
+  <object id="6" type="cientista" x="250" y="496" width="48" height="48">
+   <properties>
+    <property name="nome" value="Marie Curie"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

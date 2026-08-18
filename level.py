@@ -24,8 +24,11 @@ PHASES = [
         "heights": (650, 575, 505, 560, 470, 540, 600, 515),
         "checkpoints": (6, 11, 15),
         "research": ((4, "Curiosidade"), (7, "Observação"), (10, "Hipótese")),
-        "dialogues": ((170, "Professora Ana", "Lia, toda grande descoberta começa com uma pergunta."),
-                      (2500, "Lia", "Há um laboratório sob a escola. Talvez eu encontre novas pistas lá.")),
+        # Os diálogos automáticos por posição (professores/Lia) saíram —
+        # substituídos pela cientista-NPC de cada local (objeto "cientista"
+        # no .tmx, ver Level._make_npcs/game.NPC_DIALOGUES), que só fala
+        # quando Lia chega perto e aperta [E].
+        "dialogues": (),
         "moving": (),
     },
     {
@@ -49,8 +52,7 @@ PHASES = [
         # Posições recalibradas pro corredor->biblioteca->laboratório do
         # Tiled (ver maps/fase2_universidade.tmx, 6912px de largura); a
         # segunda fala dispara perto da saída, já no fim do laboratório.
-        "dialogues": ((170, "Mentora Beatriz", "Na universidade, errar também é aprender a investigar."),
-                      (6500, "Lia", "Cada dado me aproxima de uma resposta responsável.")),
+        "dialogues": (),
         "moving": ((4, 90, 110, "x"), (9, 70, 130, "y"), (13, 75, 100, "x"),
                     (18, 80, 140, "y"), (22, 70, 115, "x"), (26, 70, 125, "y")),
         # Decoração puramente visual (não sólida): itens sobre plataformas, bancos
@@ -69,8 +71,7 @@ PHASES = [
         # Posições em x ao longo da descida (mundo agora tem 9600px de largura,
         # ver maps/fase3_pesquisa.tmx v4): a segunda fala dispara perto do
         # fim do percurso, já depois da câmara submersa.
-        "dialogues": ((170, "Dra. Sofia", "Lia, ciência é feita por muitas mãos e muitas histórias."),
-                      (8900, "Lia", "Chegou a hora de compartilhar a pesquisa com o congresso!")),
+        "dialogues": (),
         "moving": ((8, 190, 90, "x"), (16, 140, 110, "y"), (25, 220, 90, "x"), (37, 150, 110, "y")),
     },
 ]
@@ -152,6 +153,13 @@ class Level:
         # chefes dela — Espécime/Bibliotecário — já travam a tela pequena o
         # bastante da sala secundária sem precisar de trava de câmera).
         self.boss_arenas = self._make_boss_arenas()
+        # As cientistas-NPC (objeto "cientista" no .tmx de cada local, ver
+        # _make_npcs/game.NPC_DIALOGUES) — uma por local (Fase 1, corredor/
+        # laboratório/biblioteca da Fase 2, Fase 3). Não são Enemy nem
+        # bloqueiam passagem: só existem pra Game desenhar e checar
+        # proximidade/[E].
+        self.npcs = self._make_npcs()
+        self.npc_animation = 0
         self.checkpoints = self._make_checkpoints()
         self.research = self._make_research()
         self._reset_lab_state()
@@ -782,6 +790,32 @@ class Level:
         self.world_width = max(self.world_width, platform.rect.right + self.SLIME_KING_ARENA_MARGIN)
         return platform
 
+    NPC_WIDTH = 48
+    NPC_HEIGHT = 48
+    NPC_GROUND_LIFT = 3
+
+    # Uma cientista por local (chave = (índice da fase, sala)); o nome bate
+    # com NPC_DIALOGUES/NPC_SPRITE_ROWS em game.py — level.py só guarda
+    # posição e nome, igual ao padrão já usado por research/artifacts (o
+    # texto de verdade mora do lado de Game, não aqui). O deslocamento em x é
+    # só o suficiente pra cair sobre o mesmo chão sólido do spawn (checado
+    # manualmente contra cada mapa), nunca sobre uma borda/vão.
+    def _make_npcs(self):
+        """Objeto tipo "cientista" (propriedade "nome") na camada Entidades
+        de cada mapa — mesmo padrão de livro/artefato/porta. Editável no
+        Tiled: dá pra arrastar a cientista pra qualquer lugar do mapa sem
+        mexer em código, só reabrir o .tmx correspondente (fase1_escola,
+        fase2_universidade, fase2_laboratorio_sala, fase2_biblioteca_sala ou
+        fase3_pesquisa) e mover o objeto."""
+        if not self.tiled_map:
+            return []
+        npcs = []
+        for item in self.tiled_map.entities("cientista"):
+            name = item["properties"].get("nome", "")
+            rect = pygame.Rect(item["x"], item["y"], self.NPC_WIDTH, self.NPC_HEIGHT)
+            npcs.append({"rect": rect, "name": name})
+        return npcs
+
     def _enemy_platform_from_map_object(self, item):
         center_x = item["x"] + item["width"] // 2
         candidates = [
@@ -854,6 +888,7 @@ class Level:
         return _StaticZone(span)
 
     def update(self):
+        self.npc_animation += 1
         for platform in self.platforms:
             platform.update()
         for enemy in self.enemies:
@@ -928,7 +963,8 @@ class Level:
              university_tiles=None, university_props=None, stag_sprites=None, wraith_sprites=None,
              student_sprites=None, janitor_sprites=None, specimen_sprites=None,
              artifact_image=None, artifacts_collected=None, librarian_sprites=None,
-             small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None):
+             small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None,
+             scientist_sprites=None, scientist_rows=None):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
         if self.index == 1 and self.university_decor:
@@ -959,6 +995,8 @@ class Level:
         )
         if artifact_image is not None:
             self._draw_artifacts(surface, camera_x, camera_y, artifact_image, artifacts_collected or set())
+        if scientist_sprites is not None:
+            self._draw_npcs(surface, camera_x, camera_y, scientist_sprites, scientist_rows or {})
         if self.is_underground:
             self._draw_lab(
                 surface,
@@ -1086,6 +1124,26 @@ class Level:
         for index, (item, _) in enumerate(self.artifacts):
             if index not in artifacts_collected:
                 surface.blit(artifact_image, (item.x - camera_x, item.y - camera_y))
+
+    # 8 quadros a 8fps (cientistas_idle.png) — ver LEIA-ME_cientistas.md.
+    NPC_ANIMATION_TICKS_PER_FRAME = 7
+    NPC_FRAME_COUNT = 8
+
+    def _draw_npcs(self, surface, camera_x, camera_y, scientist_sprites, scientist_rows):
+        """O quadro desenhado pode ser maior que npc["rect"] (Game.NPC_SCALE
+        amplia o sprite cru) — centraliza pelo mesmo formato usado nos
+        inimigos: X centralizado, Y apoiado no chão da hitbox + GROUND_LIFT."""
+        frame_index = (self.npc_animation // self.NPC_ANIMATION_TICKS_PER_FRAME) % self.NPC_FRAME_COUNT
+        for npc in self.npcs:
+            row = scientist_rows.get(npc["name"])
+            if row is None:
+                continue
+            frame = scientist_sprites[row][frame_index]
+            rect = npc["rect"]
+            frame_w, frame_h = frame.get_size()
+            offset_x = (frame_w - rect.width) // 2
+            offset_y = frame_h - rect.height - self.NPC_GROUND_LIFT
+            surface.blit(frame, (rect.x - offset_x - camera_x, rect.y - offset_y - camera_y))
 
     def _draw_school_platform(self, surface, platform, camera_x, camera_y, platform_sprite):
         """Repete apenas um tile de piso para cada plataforma, sem misturar estilos."""

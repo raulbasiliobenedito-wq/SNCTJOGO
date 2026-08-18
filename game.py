@@ -121,6 +121,40 @@ ROOM_LORE = {
 }
 DEFAULT_ROOM_LORE = "Um resquício de algo que este lugar preferia esquecer."
 
+# As 5 cientistas-NPC (LEIA-ME_cientistas.md) — uma por local (ver
+# Level.NPC_PLACEMENT). NPC_SPRITE_ROWS bate com a ordem de linhas de
+# cientistas_idle.png; NPC_DIALOGUES é o texto fixo mostrado ao apertar [E]
+# perto delas, substituindo os antigos diálogos automáticos dos professores.
+NPC_SPRITE_ROWS = {
+    "Marie Curie": 0,
+    "Ada Lovelace": 1,
+    "Katherine Johnson": 2,
+    "Jaqueline Goes de Jesus": 3,
+    "Rosalind Franklin": 4,
+}
+NPC_DIALOGUES = {
+    "Rosalind Franklin": (
+        "Minha Foto 51 revelou a estrutura do DNA. Olhe com atenção para o "
+        "que os outros ignoram, Lia."
+    ),
+    "Katherine Johnson": (
+        "Calculei à mão as trajetórias que levaram naves ao espaço. Confie "
+        "na sua própria conta."
+    ),
+    "Marie Curie": (
+        "Passei anos isolando o rádio, grama por grama. A ciência exige "
+        "coragem tanto quanto método."
+    ),
+    "Ada Lovelace": (
+        "Escrevi o primeiro algoritmo antes mesmo de existir a máquina "
+        "para executá-lo. Os livros aqui guardam mais do que respostas."
+    ),
+    "Jaqueline Goes de Jesus": (
+        "Sequenciei o genoma do coronavírus com uma equipe inteira ao meu "
+        "lado. Compartilhe o que aprendeu, Lia."
+    ),
+}
+
 SCHOOL_SPRITE_RECTS = {
     "chalkboard": (72, 54, 205, 124),
     "whiteboard": (281, 54, 190, 124),
@@ -189,6 +223,7 @@ class Game:
         self.slime_king_sprites = self._load_slime_king_sprites()
         self.dragon_sprites = self._load_dragon_sprites()
         self.item_icons = self._load_item_icons()
+        self.scientist_sprites = self._load_scientist_sprites()
         self.artifact_image = self._load_scaled_image("items/artifact_lab.png", (28, 28))
         self.artifact_library_image = self._load_scaled_image("items/artifact_library.png", (28, 28))
         self.vfx = VFXManager(
@@ -526,6 +561,19 @@ class Game:
             "hurt": rows[4], "dead": rows[5],
             "rock": rock_rows[0],
         }
+
+    # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
+    # destacarem melhor perto dela sem deixar de ler como "gente", mesma
+    # técnica de ampliação pós-recorte usada nos inimigos/chefes.
+    NPC_SCALE = 1.65
+
+    def _load_scientist_sprites(self):
+        """cientistas_idle.png: quadro 48x48, grade 8x5 — uma linha por
+        cientista (ver NPC_SPRITE_ROWS), 8 quadros a 8fps, sem espelhamento
+        (elas são desenhadas sempre de frente, LEIA-ME_cientistas.md)."""
+        return self._load_grid_sheet(
+            ASSET_DIR / "npcs" / "cientistas_idle.png", 48, 48, [8, 8, 8, 8, 8], scale=self.NPC_SCALE
+        )
 
     def _load_item_icons(self):
         """items.png: quadro 16x16, 4 col x 7 lin, 6fps — usa só o primeiro
@@ -1273,6 +1321,8 @@ class Game:
             return
         if self._use_doors():
             return
+        if self._talk_to_npc():
+            return
         if not self.level.is_underground:
             return
 
@@ -1296,6 +1346,22 @@ class Game:
                 self.exit_room()
             else:
                 self.enter_room(door["target"])
+            return True
+        return False
+
+    NPC_INTERACT_RANGE = 40
+
+    def _talk_to_npc(self):
+        """As cientistas nunca são consumidas — dá pra falar com elas quantas
+        vezes quiser, sempre a mesma fala fixa (ver NPC_DIALOGUES). Mesmo
+        raio/padrão de detecção das portas, só que contra Level.npcs."""
+        player = self.player
+        for npc in self.level.npcs:
+            if not player.rect.colliderect(npc["rect"].inflate(self.NPC_INTERACT_RANGE, self.NPC_INTERACT_RANGE)):
+                continue
+            text = NPC_DIALOGUES.get(npc["name"])
+            if text:
+                self.dialogue.start(npc["name"], text)
             return True
         return False
 
@@ -1383,6 +1449,7 @@ class Game:
         self._draw_background(surface)
         self._draw_world(surface)
         self._draw_door_prompts(surface)
+        self._draw_npc_prompts(surface)
         self._draw_player_light(surface)
         self.draw_dash_trail(surface)
         self.player.draw(surface, self.camera_x, self.camera_y)
@@ -1455,6 +1522,8 @@ class Game:
             self.small_slime_sprites,
             self.slime_king_sprites,
             self.dragon_sprites,
+            self.scientist_sprites,
+            NPC_SPRITE_ROWS,
         )
         self._draw_lava_lakes(surface)
         self._draw_drops(surface)
@@ -1505,6 +1574,26 @@ class Game:
             draw_text(
                 surface,
                 label,
+                (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
+                14,
+                "#f4e4a5",
+                True,
+            )
+
+    NPC_PROMPT_RANGE = 60
+
+    def _draw_npc_prompts(self, surface):
+        """"APERTE E PARA FALAR" acima da cientista, só quando Lia está perto
+        o bastante pra falar com ela — mesmo raio/padrão de _draw_door_
+        prompts, contra Level.npcs em vez de Level.doors."""
+        player_rect = self.player.rect
+        for npc in self.level.npcs:
+            rect = npc["rect"]
+            if not player_rect.colliderect(rect.inflate(self.NPC_PROMPT_RANGE, self.NPC_PROMPT_RANGE)):
+                continue
+            draw_text(
+                surface,
+                "APERTE E PARA FALAR",
                 (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
                 14,
                 "#f4e4a5",
