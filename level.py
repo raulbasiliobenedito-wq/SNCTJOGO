@@ -3,7 +3,7 @@ from enemy import (
     CrystalStag, DarkWraith, Dragon, JanitorGuardian, Librarian, PossessedStudent,
     Slime, SlimeKing, SmallSlime, Specimen,
 )
-from platform import Platform
+from plataform import Platform
 from settings import ASSET_DIR, PLAYER_HEIGHT
 from tiled_map import TiledMap
 
@@ -185,11 +185,13 @@ class Level:
         self.top_lever = self.bottom_lever = self.panel_lever = None
         self.elevator = None
         self.elevator_target = None
+        self.elevator_home = None
         self.elevator_return_timer = 0
         self.elevator_return_target = None
         self.elevator_lever_timers = {"top": 0, "bottom": 0}
         self.upper_elevator = None
         self.upper_elevator_target = None
+        self.upper_elevator_home = None
         self.upper_elevator_return_timer = 0
         self.upper_elevator_return_target = None
         self.upper_lever_timers = {"bottom": 0, "top": 0}
@@ -447,6 +449,11 @@ class Level:
             self._build_tiled_underground_lab()
         else:
             self._build_default_underground_lab()
+        # Posição de "descanso" de cada elevador (onde ele nasce no mapa) — usada
+        # por call_elevator/call_upper_elevator pra só agendar o retorno automático
+        # quando o acionamento afasta o elevador dela (ver comentário lá).
+        self.elevator_home = self.elevator_target
+        self.upper_elevator_home = self.upper_elevator_target
 
     def _build_default_underground_lab(self):
         """Mantém o laboratório manual como fallback para a Fase 1."""
@@ -589,7 +596,11 @@ class Level:
             self.dynamic_platforms.extend(self.return_route_platforms)
 
     def call_elevator(self, direction):
-        """Move o elevador e agenda o retorno automático após dez segundos."""
+        """Move o elevador. Só agenda o retorno automático (após dez segundos)
+        quando o acionamento o afasta de self.elevator_home — se ele já está
+        indo para casa, não agenda retorno nenhum, senão um toque acidental
+        na alavanca logo depois poderia mandá-lo embora de novo sozinho,
+        deixando o elevador impossível de chamar de volta."""
         lever_name = "top" if direction == "down" else "bottom"
         if self.elevator_lever_timers[lever_name] != 0:
             return
@@ -598,12 +609,11 @@ class Level:
             self.elevator_top,
             self.elevator_bottom,
         )
-        self.elevator_return_target = self._alternate_target(
-            self.elevator_target,
-            self.elevator_top,
-            self.elevator_bottom,
-        )
-        self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        if self.elevator_target != self.elevator_home:
+            self.elevator_return_target = self.elevator_home
+            self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        else:
+            self.elevator_return_timer = 0
         self.elevator_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(lever_name, True)
 
@@ -611,6 +621,9 @@ class Level:
         return self.elevator_lever_timers[lever_name] > 0
 
     def call_upper_elevator(self, direction):
+        """Mesma regra do elevador principal (ver call_elevator): só agenda
+        retorno automático se o acionamento afastar o elevador de
+        self.upper_elevator_home."""
         lever_name = "bottom" if direction == "up" else "top"
         if self.upper_lever_timers[lever_name] != 0:
             return
@@ -619,12 +632,11 @@ class Level:
             self.upper_elevator_top,
             self.upper_elevator_bottom,
         )
-        self.upper_elevator_return_target = self._alternate_target(
-            self.upper_elevator_target,
-            self.upper_elevator_top,
-            self.upper_elevator_bottom,
-        )
-        self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        if self.upper_elevator_target != self.upper_elevator_home:
+            self.upper_elevator_return_target = self.upper_elevator_home
+            self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        else:
+            self.upper_elevator_return_timer = 0
         self.upper_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(f"upper_{lever_name}", True)
 
