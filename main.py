@@ -14,9 +14,6 @@ from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 # Resolução de exibição. A lógica continua usando o canvas interno.
 WIDTH = GAME_WIDTH
 HEIGHT = GAME_HEIGHT
-FULLSCREEN = True
-
-
 class LogicalScreen:
     """Adaptador para o Game desenhar em uma superfície interna fixa."""
 

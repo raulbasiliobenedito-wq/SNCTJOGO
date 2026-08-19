@@ -185,11 +185,13 @@ class Level:
         self.top_lever = self.bottom_lever = self.panel_lever = None
         self.elevator = None
         self.elevator_target = None
+        self.elevator_home = None
         self.elevator_return_timer = 0
         self.elevator_return_target = None
         self.elevator_lever_timers = {"top": 0, "bottom": 0}
         self.upper_elevator = None
         self.upper_elevator_target = None
+        self.upper_elevator_home = None
         self.upper_elevator_return_timer = 0
         self.upper_elevator_return_target = None
         self.upper_lever_timers = {"bottom": 0, "top": 0}
@@ -447,6 +449,11 @@ class Level:
             self._build_tiled_underground_lab()
         else:
             self._build_default_underground_lab()
+        # Posição de "descanso" de cada elevador (onde ele nasce no mapa) — usada
+        # por call_elevator/call_upper_elevator pra só agendar o retorno automático
+        # quando o acionamento afasta o elevador dela (ver comentário lá).
+        self.elevator_home = self.elevator_target
+        self.upper_elevator_home = self.upper_elevator_target
 
     def _build_default_underground_lab(self):
         """Mantém o laboratório manual como fallback para a Fase 1."""
