@@ -1,0 +1,18 @@
+# Bytecode compilado do Python — gerado automaticamente a cada execução,
+# não precisa (e não deve) ir pro repositório.
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambientes virtuais, caso alguém crie um aqui.
+.venv/
+venv/
+env/
+
+# Build gerado pelo pygbag (main_web.py) — reproduzível a partir do código,
+# não precisa versionar o resultado.
+build/
+
+# Arquivos de sistema/editor comuns.
+.DS_Store
+Thumbs.db
