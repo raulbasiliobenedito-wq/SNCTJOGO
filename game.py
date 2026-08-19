@@ -4,6 +4,7 @@ import random
 
 import pygame
 
+from cutscene import IntroCutscene
 from dialogue import DialogueBox
 from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
 from level import PHASES, Level
@@ -22,6 +23,7 @@ from settings import (
 
 
 TITLE = "title"
+INTRO = "intro"
 PLAYING = "playing"
 GAME_OVER = "game_over"
 COMPLETE = "complete"
@@ -183,6 +185,10 @@ class Game:
         self._load_assets()
         self.player = Player()
         self.dialogue = DialogueBox()
+        # Cutscene inicial (mãe de Lia no hospital) — reaproveita a mesma
+        # DialogueBox acima pro texto e o quadro parado de Lia pro retrato,
+        # ver cutscene.IntroCutscene. Só toca entre TITLE e PLAYING.
+        self.intro = IntroCutscene(self.dialogue, self.player.frames[0])
         self.lives = STARTING_LIVES
         # Inventário e escudo atravessam trocas de fase normais (Lia não
         # perde os itens ao avançar) — só zeram ao reiniciar o jogo do zero
@@ -747,6 +753,8 @@ class Game:
 
         if self.state == TITLE:
             self._update_title(keyboard)
+        elif self.state == INTRO:
+            self._update_intro(keyboard, dialogue_advance_pressed)
         elif self.state in (GAME_OVER, COMPLETE):
             self._update_end_state(keyboard)
         elif self.dialogue.active:
@@ -818,6 +826,18 @@ class Game:
     def _update_title(self, keyboard):
         if keyboard.space or keyboard.RETURN:
             self.lives = STARTING_LIVES
+            self.state = INTRO
+            self.intro.start()
+
+    def _update_intro(self, keyboard, dialogue_advance_pressed):
+        """A mãe de Lia no hospital (ver cutscene.IntroCutscene) — ESC pula
+        direto pra Fase 1, senão a cena avança do mesmo jeito que qualquer
+        outro diálogo do jogo (E/Enter/Espaço)."""
+        if getattr(keyboard, "escape", False):
+            self.intro.skip()
+        else:
+            self.intro.update(dialogue_advance_pressed)
+        if not self.intro.active:
             self.state = PLAYING
 
     def _update_end_state(self, keyboard):
@@ -1446,6 +1466,9 @@ class Game:
     def draw(self, screen):
         surface = screen.surface
         surface.fill((6, 14, 29))
+        if self.state == INTRO:
+            self.intro.draw(surface, draw_text)
+            return
         self._draw_background(surface)
         self._draw_world(surface)
         self._draw_door_prompts(surface)
@@ -1656,7 +1679,8 @@ class Game:
             self.overlay(
                 surface,
                 "Pesquisa apresentada no congresso!",
-                "Lia mostrou que ciência se faz com persistência.\nPressione R para jogar novamente",
+                "Lia corre pra contar tudo pra mãe: a pesquisa vai continuar,\n"
+                "e agora ela sabe que não está sozinha nisso.\nPressione R para jogar novamente",
             )
 
     def draw_university_background(self, surface):

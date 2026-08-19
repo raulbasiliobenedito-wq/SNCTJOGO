@@ -3,7 +3,7 @@ from enemy import (
     CrystalStag, DarkWraith, Dragon, JanitorGuardian, Librarian, PossessedStudent,
     Slime, SlimeKing, SmallSlime, Specimen,
 )
-from platform import Platform
+from plataform import Platform
 from settings import ASSET_DIR, PLAYER_HEIGHT
 from tiled_map import TiledMap
 
@@ -454,12 +454,17 @@ class Level:
         self.elevator_top, self.elevator_bottom = 650, 1090
         self.elevator = Platform(2670, self.elevator_top, 160, 2)
         self.elevator_target = self.elevator_top
+        # Posição "de casa" do elevador — pra onde ele volta sozinho depois
+        # de dez segundos longe dela (ver call_elevator). Fixa, capturada
+        # uma vez aqui; nunca recalculada a partir do alvo do momento.
+        self.elevator_home = self.elevator_target
         self.platforms.append(self.elevator)
 
         # Segundo elevador: leva à área suspensa onde ficam os botões do painel.
         self.upper_elevator_bottom, self.upper_elevator_top = 575, 100
         self.upper_elevator = Platform(1750, self.upper_elevator_bottom, 160, 1)
         self.upper_elevator_target = self.upper_elevator_bottom
+        self.upper_elevator_home = self.upper_elevator_target
         self.platforms.append(self.upper_elevator)
 
         upper_platforms = [
@@ -543,12 +548,15 @@ class Level:
         self.elevator_bottom = int(lower["properties"].get("bottom", lower["y"]))
         self.elevator = self._platform_from_object(lower)
         self.elevator_target = self.elevator.y
+        # Ver o comentário equivalente em _build_default_underground_lab.
+        self.elevator_home = self.elevator_target
         self._add_dynamic_platform(self.elevator)
 
         self.upper_elevator_top = int(upper["properties"].get("top", upper["y"]))
         self.upper_elevator_bottom = int(upper["properties"].get("bottom", upper["y"]))
         self.upper_elevator = self._platform_from_object(upper)
         self.upper_elevator_target = self.upper_elevator.y
+        self.upper_elevator_home = self.upper_elevator_target
         self._add_dynamic_platform(self.upper_elevator)
 
         self.return_route_platforms = [
@@ -589,7 +597,12 @@ class Level:
             self.dynamic_platforms.extend(self.return_route_platforms)
 
     def call_elevator(self, direction):
-        """Move o elevador e agenda o retorno automático após dez segundos."""
+        """Move o elevador. Ele só agenda o retorno automático (dez
+        segundos) quando o alvo novo o tira de "casa" (elevator_home); se o
+        alvo novo já É a posição original, ele fica ali parado até ser
+        chamado de novo — sem isso, apertar o botão de volta antes do
+        retorno automático reagendava um retorno pra posição ERRADA (sempre
+        "o oposto de onde ele estava indo"), e ele nunca mais ficava parado."""
         lever_name = "top" if direction == "down" else "bottom"
         if self.elevator_lever_timers[lever_name] != 0:
             return
@@ -598,12 +611,11 @@ class Level:
             self.elevator_top,
             self.elevator_bottom,
         )
-        self.elevator_return_target = self._alternate_target(
-            self.elevator_target,
-            self.elevator_top,
-            self.elevator_bottom,
-        )
-        self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        if self.elevator_target == self.elevator_home:
+            self.elevator_return_timer = 0
+        else:
+            self.elevator_return_target = self.elevator_home
+            self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
         self.elevator_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(lever_name, True)
 
@@ -611,6 +623,7 @@ class Level:
         return self.elevator_lever_timers[lever_name] > 0
 
     def call_upper_elevator(self, direction):
+        """Mesma correção de call_elevator, pro segundo elevador."""
         lever_name = "bottom" if direction == "up" else "top"
         if self.upper_lever_timers[lever_name] != 0:
             return
@@ -619,12 +632,11 @@ class Level:
             self.upper_elevator_top,
             self.upper_elevator_bottom,
         )
-        self.upper_elevator_return_target = self._alternate_target(
-            self.upper_elevator_target,
-            self.upper_elevator_top,
-            self.upper_elevator_bottom,
-        )
-        self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
+        if self.upper_elevator_target == self.upper_elevator_home:
+            self.upper_elevator_return_timer = 0
+        else:
+            self.upper_elevator_return_target = self.upper_elevator_home
+            self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
         self.upper_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(f"upper_{lever_name}", True)
 
