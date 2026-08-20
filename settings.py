@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 # Canvas lógico fixo: a janela apenas amplia esta área de jogo em 16:9.
-WIDTH = 1600
-HEIGHT = 900
+WIDTH = 1920
+HEIGHT = 1080
 TITLE = "Echoes of Life"
 FPS = 60
 
