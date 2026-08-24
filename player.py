@@ -41,15 +41,35 @@ class Player:
     ACCELERATION = 0.55
     DECELERATION = 0.70
     JUMP_BUFFER_DURATION = 7
-    OUTLINE_COLOR = (14, 23, 42, 255)
-    OUTLINE_OFFSETS = (
-        (-1, 0), (1, 0), (0, -1), (0, 1),
-        (-1, -1), (1, -1), (-1, 1), (1, 1),
-    )
+
+    # Índices na sheet nova (14 quadros, ver player_sheet.png):
+    # 0 idle · 1-4 andar · 5-7 pulo (subindo/no ar/caindo) · 8-11 combo de
+    # ataque corpo a corpo (Game cuida de exibir esses, ver
+    # Game._apply_attack_frame) · 12-13 morte (ver Game._apply_death_frame).
+    FRAME_COUNT = 14
+    # O arquivo em disco vem 64x96 por quadro — o dobro do tamanho final em
+    # jogo (PLAYER_WIDTH/HEIGHT, ver settings.py). _load_frames recorta
+    # nesse tamanho e reduz pela metade, porque em tela ela ficava enorme
+    # (pedido do Raul) sem precisar mudar resolução nem hitbox.
+    SHEET_FRAME_WIDTH = 64
+    SHEET_FRAME_HEIGHT = 96
+    IDLE_FRAME = 0
+    WALK_FRAMES = (1, 2, 3, 4)
+    JUMP_RISE_FRAME = 5
+    JUMP_APEX_FRAME = 6
+    JUMP_FALL_FRAME = 7
+    # Zona "no ar" (quase parada verticalmente) em vez de só subindo/caindo
+    # — abaixo desse módulo de vy ela tá perto do ápice do pulo.
+    JUMP_APEX_VY_THRESHOLD = 1.5
+    # Índice = combo_count - 1 (Game._apply_attack_frame); 4 quadros, o
+    # último (combo_count==4) é o golpe de finalização com dano em dobro.
+    ATTACK_FRAMES = (8, 9, 10, 11)
+    # Índice = quantos quadros já se passaram desde a morte // (duração /
+    # len) (Game._apply_death_frame).
+    DEATH_FRAMES = (12, 13)
 
     def __init__(self):
         self.frames = self._load_frames()
-        self.outlines = [self._make_outline(frame) for frame in self.frames]
         self.facing_right = True
         self.frame = 0
         self.animation = 0
@@ -57,22 +77,23 @@ class Player:
 
     @staticmethod
     def _load_frames():
+        """Recorta cada quadro no tamanho real do arquivo (64x96) e reduz
+        pela metade pro tamanho final em jogo (PLAYER_WIDTH/HEIGHT,
+        32x48) — pygame.transform.scale (sem suavizar) mantém a arte
+        chapada, sem borrar; como é exatamente metade, não sobra pixel
+        quebrado."""
         sheet_path = ASSET_DIR / "player" / "player_sheet.png"
         sheet = pygame.image.load(sheet_path).convert_alpha()
-        return [
-            sheet.subsurface(
-                pygame.Rect(frame * PLAYER_WIDTH, 0, PLAYER_WIDTH, PLAYER_HEIGHT)
+        frames = []
+        for frame in range(Player.FRAME_COUNT):
+            raw = sheet.subsurface(
+                pygame.Rect(
+                    frame * Player.SHEET_FRAME_WIDTH, 0,
+                    Player.SHEET_FRAME_WIDTH, Player.SHEET_FRAME_HEIGHT,
+                )
             )
-            for frame in range(7)
-        ]
-
-    @classmethod
-    def _make_outline(cls, frame):
-        mask = pygame.mask.from_surface(frame)
-        return mask.to_surface(
-            setcolor=cls.OUTLINE_COLOR,
-            unsetcolor=(0, 0, 0, 0),
-        ).convert_alpha()
+            frames.append(pygame.transform.scale(raw, (PLAYER_WIDTH, PLAYER_HEIGHT)))
+        return frames
 
     @property
     def rect(self):
@@ -91,6 +112,10 @@ class Player:
         """Restaura apenas o estado transitório da personagem."""
         self.x, self.y = x, y
         self.vx = self.vy = 0
+        # Atualizado de fora por Game.move_player logo antes de animate()
+        # rodar (ver comentário lá) — usado só pra decidir entre os 3
+        # frames de pulo e o idle/andar, então começa "no chão" por padrão.
+        self.grounded = True
         self.coyote_time = self.jump_buffer = 0
         self.dash_timer = self.dash_cooldown = 0
         self.dash_direction = 1
@@ -208,23 +233,34 @@ class Player:
         return False
 
     def animate(self):
+        """Sobreposto por fora quando ela ataca ou morre (ver
+        Game._apply_attack_frame/_apply_death_frame, chamados depois desse
+        método) — aqui só cobre parada/andando/pulando."""
         self.animation += 1
-        if abs(self.vy) > 1:
-            self.frame = 5 if self.vy < 0 else 6
+        if not self.grounded:
+            # Pulo de 3 fases (pedido do Raul): subindo rápido, "flutuando"
+            # perto do ápice, e caindo — sem o `grounded` isso ia disparar
+            # também parada no chão, já que vy fica pertinho de 0 ali também
+            # (ver Player.grounded, atualizado por Game.move_player).
+            if self.vy < -self.JUMP_APEX_VY_THRESHOLD:
+                self.frame = self.JUMP_RISE_FRAME
+            elif self.vy > self.JUMP_APEX_VY_THRESHOLD:
+                self.frame = self.JUMP_FALL_FRAME
+            else:
+                self.frame = self.JUMP_APEX_FRAME
         elif self.vx:
             self.frame = 1 + (self.animation // 7) % 4
         else:
-            self.frame = 0
+            self.frame = self.IDLE_FRAME
 
     def draw(self, surface, camera_x, camera_y):
+        """Sem contorno gerado por máscara (a arte nova já vem com contorno
+        desenhado à mão — ver player_sheet.png/LEIA-ME correspondente —,
+        dobrar por cima ficaria com uma borda grossa/errada)."""
         image = self.frames[self.frame]
-        outline = self.outlines[self.frame]
         if not self.facing_right:
             image = pygame.transform.flip(image, True, False)
-            outline = pygame.transform.flip(outline, True, False)
 
         draw_x = self.x - camera_x
         draw_y = self.y - camera_y
-        for offset_x, offset_y in self.OUTLINE_OFFSETS:
-            surface.blit(outline, (draw_x + offset_x, draw_y + offset_y))
         surface.blit(image, (draw_x, draw_y))

@@ -1,7 +1,25 @@
 """Ponto de entrada do Pygame Zero.
 
-Execute com pgzrun main.py. A lógica usa um canvas interno para manter a
-mesma proporção e a mesma jogabilidade em qualquer resolução de tela.
+Execute com pgzrun main.py. A janela abre em tela cheia (FULLSCREEN=True)
+na resolução lógica do próprio jogo (GAME_WIDTH x GAME_HEIGHT, ver
+settings.py) — o Windows/driver de vídeo escala isso pra caber na tela de
+verdade sozinho, sem o jogo precisar descobrir a resolução do monitor.
+
+IMPORTANTE: a janela é criada UMA VEZ SÓ, pelo próprio Pygame Zero, a
+partir de WIDTH/HEIGHT/FULLSCREEN definidos aqui embaixo (é assim que o
+pgzero sabe pra abrir direto em tela cheia). Chamar pygame.display.set_mode
+de novo depois, na mão (como uma versão anterior deste arquivo fazia
+dentro de update(), tentando recriar a janela em SCALED todo quadro) é o
+que causava o "pygame.error: failed to create renderer" — a maioria dos
+drivers de vídeo não gosta de recriar a janela/renderer depois que ela já
+existe, ainda mais toda vez que o loop passa por ali.
+
+WIDTH/HEIGHT usam a resolução lógica do jogo (não a do monitor): tentar
+detectar a resolução real via pygame.display.Info() antes do Pygame Zero
+criar a janela se mostrou instável (abriu uma janela minúscula em vez de
+tela cheia) — trocar pra um modo exclusivo de tela cheia numa resolução
+"estranha" costuma ser o que dá errado. Ficar na resolução do próprio jogo
+é o modo mais confiável de abrir em tela cheia sem esse risco.
 """
 
 import pygame
@@ -10,12 +28,9 @@ import pgzrun
 from game import Game
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
-# 1. Mantemos a resolução lógica original de 1920x1080 para o Pygame Zero criar a base
 WIDTH = GAME_WIDTH
 HEIGHT = GAME_HEIGHT
-
-# Controla se a tela cheia já foi aplicada para não repetir o comando toda hora
-_fullscreen_setup_done = False
+FULLSCREEN = True
 
 
 class LogicalScreen:
@@ -30,35 +45,17 @@ logical_screen = LogicalScreen()
 
 
 def update(dt):
-    global _fullscreen_setup_done
-    
-    # 2. Quando o jogo começar, forçamos o Pygame Zero a mudar para Tela Cheia Escalada
-    if not _fullscreen_setup_done:
-        # pygame.SCALED garante que o Pygame cuide da proporção e do clique do mouse sozinho!
-        flags = pygame.FULLSCREEN | pygame.SCALED
-        screen.surface = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT), flags)
-        _fullscreen_setup_done = True
-
-    # Tecla de emergência: Fecha o jogo em tela cheia se apertar ESC
-    if keyboard.escape:
-        pygame.quit()
-        import sys
-        sys.exit()
-
     game.update(keyboard, dt)
 
 
 def draw():
-    # Desenha o seu jogo normalmente no canvas lógico
     game.draw(logical_screen)
-    
-    # O Pygame Zero joga o canvas para a tela do computador
-    screen.surface.blit(logical_screen.surface, (0, 0))
+    enlarged = pygame.transform.smoothscale(logical_screen.surface, (WIDTH, HEIGHT))
+    screen.surface.blit(enlarged, (0, 0))
 
 
 def on_mouse_down(pos, button):
     if button == mouse.LEFT:
-        # Graças ao pygame.SCALED, a variável 'pos' já vem corrigida no tamanho certo!
         game.request_mouse_attack()
 
 

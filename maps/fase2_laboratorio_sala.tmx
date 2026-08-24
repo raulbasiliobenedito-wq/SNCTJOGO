@@ -248,7 +248,7 @@
     <property name="destino" value="sair"/>
    </properties>
   </object>
-  <object id="3" type="especime" x="1408" y="544" width="288" height="32"/>
+  <object id="3" type="especime" x="1027" y="544" width="861" height="32"/>
   <object id="4" type="artefato" x="1792" y="510" width="28" height="34">
    <properties>
     <property name="nome" value="Amostra do Espécime 07"/>

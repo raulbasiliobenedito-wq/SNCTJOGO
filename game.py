@@ -6,9 +6,11 @@ import pygame
 
 from cutscene import IntroCutscene
 from dialogue import DialogueBox
+from hint import Hint
 from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
 from level import PHASES, Level
 from player import Player
+from projectile import Projectile
 from vfx import VFXManager
 from settings import (
     ASSET_DIR,
@@ -70,6 +72,14 @@ BOSS_DROP_TABLE = {
     "Specimen": "amostra_especime",
     "Dragon": "sangue_dragao",
 }
+# Nome de exibição de cada chefe, usado só pela barra de vida (ver
+# Game._draw_boss_health_bar) — mesmas 4 chaves de BOSS_DROP_TABLE.
+BOSS_NAMES = {
+    "SlimeKing": "Rei Slime",
+    "Librarian": "Bibliotecário",
+    "Specimen": "Espécime",
+    "Dragon": "Dragão",
+}
 # Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
 ENEMY_DROP_TABLE = {
     "Slime": ("gororoba", 0.40),
@@ -85,6 +95,48 @@ STANDARD_ATTACK_POWER = 1
 DASH_ATTACK_POWER = 2
 STANDARD_ATTACK_REACH = 22
 DASH_ATTACK_REACH = 36
+
+# Combo de 4 hits corpo a corpo (pedido do Raul, ver frames 8-11 de
+# player_sheet.png): cada ataque dentro da janela de COMBO_RESET_WINDOW
+# quadros depois do anterior avança o combo; parar de atacar por mais que
+# isso volta pro hit 1 (ver _update_attack). Maior que ATTACK_COOLDOWN de
+# propósito — se fosse igual, cliques no ritmo mais rápido permitido ainda
+# perderiam a janela por pouco.
+COMBO_HIT_COUNT = 4
+COMBO_RESET_WINDOW = 40
+COMBO_FINISHER_POWER = 2
+
+# Parry: acertar o ataque corpo a corpo [F] num hazard "aparável" de chefe
+# (ver <Boss>.parryable_hazards em enemy.py) destrói o hazard e devolve esse
+# dano nele mesmo — mais que o ataque padrão e mais que o de dash, prêmio
+# por acertar o timing curto em vez de só tocar a espada nele.
+PARRY_DAMAGE = 3
+# 1s de invencibilidade após um parry bem-sucedido (pedido do Raul): o
+# Bibliotecário solta várias lâminas em sequência (ver BLADE_FIRE_INTERVAL
+# em enemy.py) — sem isso, aparar uma ainda deixava a Lia tomar dano da
+# próxima poucos quadros depois. Reaproveita o mesmo self.invuln_timer que
+# já bloqueia hazard/contato normal (ver _check_hazards etc.), só que
+# escrito de fora do fluxo de dano de verdade.
+PARRY_INVULN_FRAMES = FPS
+# Hit-stop + screen shake no parry (linguagem de Cuphead/Hollow Knight,
+# pedido do Raul) — congela a simulação por alguns quadros e depois sacode
+# a câmera, decaindo até 0 (ver Game._update_shake/_shake_offset). A mesma
+# infra de shake fica pronta pra ser reaproveitada depois pela ideia
+# guardada do tremor ao acordar o chefe (ver IDEIAS_FUTURAS.md).
+PARRY_HITSTOP_FRAMES = 3
+PARRY_SHAKE_DURATION = 14
+PARRY_SHAKE_MAGNITUDE = 6
+
+# Ataque à distância: desbloqueado ao concluir a Fase 1 (ver
+# _advance_level_if_ready). Cooldown baixo de propósito (quase semi-
+# automático, não um "especial" raro) e alcance quase de tela inteira
+# (WIDTH=1600) — pensado pras lutas de chefe estilo Cuphead que vêm a
+# seguir (Fase 2 e Dragão): arena grande, chefe longe/no alto boa parte da
+# luta, Lia precisa sustentar fogo de qualquer ponto do cenário.
+RANGED_ATTACK_POWER = 1
+RANGED_ATTACK_COOLDOWN = 70
+RANGED_PROJECTILE_SPEED = 14.0
+RANGED_PROJECTILE_RANGE = 500
 
 CAMERA_X_FOCUS = 0.42
 CAMERA_X_SMOOTHING = 0.12
@@ -189,6 +241,16 @@ class Game:
         # DialogueBox acima pro texto e o quadro parado de Lia pro retrato,
         # ver cutscene.IntroCutscene. Só toca entre TITLE e PLAYING.
         self.intro = IntroCutscene(self.dialogue, self.player.frames[0])
+        # Dicas contextuais (vinheta + texto, ver hint.Hint) — pausam o jogo
+        # igual à DialogueBox, mas não são conversas com NPC, são avisos de
+        # mecânica (ex.: painel do elevador na Fase 1). hints_shown mora em
+        # load_level (reseta por fase, igual seen_dialogues).
+        self.hint = Hint()
+        # Ataque à distância (ver RANGED_* acima e _advance_level_if_ready):
+        # desbloqueia ao concluir a Fase 1 e, como inventário/escudo, atravessa
+        # trocas de fase normais — só reseta num Game() novo de verdade (não
+        # em load_level, que roda a cada avanço de fase).
+        self.ranged_unlocked = False
         self.lives = STARTING_LIVES
         # Inventário e escudo atravessam trocas de fase normais (Lia não
         # perde os itens ao avançar) — só zeram ao reiniciar o jogo do zero
@@ -238,9 +300,13 @@ class Game:
                 "fase2": ASSET_DIR / "vfx" / "vfx_university.png",
                 "lab": ASSET_DIR / "vfx" / "vfx_lab.png",
                 "library": ASSET_DIR / "vfx" / "vfx_library.png",
+                # parry_flash.png ainda não foi salvo pelo Raul nessa pasta —
+                # VFXManager ignora sozinho uma folha extra que não existe
+                # ainda (ver __init__/spawn em vfx.py), então isso não
+                # derruba o jogo enquanto o arquivo não chega.
+                "parry": ASSET_DIR / "vfx" / "parry_flash.png",
             },
         )
-        self.lava_lake_frames = self._load_lava_lake_frames()
         self.lab_background = self._load_scaled_background("backgrounds/lab_background.png")
         self.lab_background_mirror = pygame.transform.flip(self.lab_background, True, False)
         self.library_background = self._load_scaled_background("backgrounds/library_background.png")
@@ -500,21 +566,35 @@ class Game:
 
     def _load_specimen_sprites(self):
         """lab_specimen.png: quadro 56x48, grade 12x6 — repouso(8)/rastejo(8)
-        /ataque 1 jato(7)/ataque 2 investida(8)/dano(4)/morte(12)."""
+        /ataque 1 jato(7)/ataque 2 investida(8)/dano(4)/morte(12).
+
+        casulo_acido.png/esporo_e_poca.png (vfx/boss_attacks) são o ataque C
+        novo (Casulo Ácido, ver enemy.Specimen) — sprites únicos e estáticos
+        gerados por código (LEIA-ME_sprites_chapados.md), não spritesheets.
+        esporo_e_poca.png guarda os dois desenhos na mesma imagem (esporo em
+        x 4..19, poça em x 28..61); _sheet_crop separa cada um."""
         rows = self._load_grid_sheet(
             ASSET_DIR / "enemies" / "lab_specimen.png", 56, 48, [8, 8, 7, 8, 4, 12], scale=self.SPECIMEN_SCALE
         )
+        spore_and_puddle = self._load_image("vfx/boss_attacks/esporo_e_poca.png")
         return {
             "idle": rows[0], "walk": rows[1],
             "jet": rows[2], "lunge": rows[3],
             "hurt": rows[4], "dead": rows[5],
+            "cocoon": self._load_image("vfx/boss_attacks/casulo_acido.png"),
+            "spore": self._sheet_crop(spore_and_puddle, (4, 0, 15, 32)),
+            "puddle": self._sheet_crop(spore_and_puddle, (28, 0, 33, 32)),
         }
 
     def _load_librarian_sprites(self):
         """librarian_boss.png: quadro 64x64, grade 14x6 — repouso(8)/
         deslize(8)/ataque A silêncio(9)/ataque B errata(10)/dano(4)/
         morte(14). Os tomos do ataque B reaproveitam o ícone de livro da
-        pesquisa (self.book) — mesma silhueta, sem precisar de arte nova."""
+        pesquisa (self.book) — mesma silhueta, sem precisar de arte nova.
+
+        livro_escudo.png/lamina_de_pagina.png (vfx/boss_attacks) são o
+        ataque C novo (Escudo de Página, ver enemy.Librarian) — sprites
+        únicos e estáticos, mesmo padrão do meteoro/indicador do Dragão."""
         rows = self._load_grid_sheet(
             ASSET_DIR / "enemies" / "librarian_boss.png", 64, 64, [8, 8, 9, 10, 4, 14], scale=self.LIBRARIAN_SCALE
         )
@@ -523,6 +603,8 @@ class Game:
             "attack_a": rows[2], "attack_b": rows[3],
             "hurt": rows[4], "dead": rows[5],
             "tome": self.book,
+            "shield": self._load_image("vfx/boss_attacks/livro_escudo.png"),
+            "blade": self._load_image("vfx/boss_attacks/lamina_de_pagina.png"),
         }
 
     def _load_small_slime_sprites(self):
@@ -538,7 +620,12 @@ class Game:
     # é só o empurrão extra pedido no LEIA-ME pra eles lerem como os maiores
     # do jogo, o topo da hierarquia de tamanho.
     SLIME_KING_SCALE = 1.3
-    DRAGON_SCALE = 1.25
+    # Aumentado bastante (era 1.25) pra luta estilo Cuphead pedida pelo
+    # Raul — o Dragão precisa "ler" como o chefe mais imponente do jogo,
+    # dominando boa parte da tela. Ver Dragon.WIDTH/HEIGHT em enemy.py pro
+    # ajuste equivalente da hitbox (menor que o visual, mesmo padrão já
+    # usado nos outros inimigos).
+    DRAGON_SCALE = 2.4
 
     def _load_slime_king_sprites(self):
         """slime_king.png: quadro 64x64, grade 12x6 — repouso(8)/pulo(8)/
@@ -556,7 +643,16 @@ class Game:
         """dragon.png: quadro 112x96, grade 14x6 — repouso(8)/marcha(8)/
         ataque A sopro(10)/ataque B brasas(10)/dano(4)/morte(14). As pedras
         das Brasas usam dragon_rock.png (24x24, 8 quadros: queda/impacto/
-        explosão), desenhadas à parte pelo próprio Dragon.draw."""
+        explosão), desenhadas à parte pelo próprio Dragon.draw.
+
+        "meteor" e "danger_marker" são o ataque novo Meteoros em Mira (ver
+        enemy.Dragon._update_meteors/draw): sprites únicos e estáticos
+        (chapados, feitos por código determinístico — ver
+        LEIA-ME_sprites_chapados.md), não spritesheets animados como o
+        resto acima, por isso não passam por _load_grid_sheet. Ficam em
+        images/vfx/boss_attacks/ — pasta nova, precisa existir com os
+        arquivos meteoro.png e indicador_perigo.png copiados lá antes de
+        rodar, senão o load quebra."""
         rows = self._load_grid_sheet(
             ASSET_DIR / "enemies" / "dragon.png", 112, 96, [8, 8, 10, 10, 4, 14], scale=self.DRAGON_SCALE
         )
@@ -566,6 +662,8 @@ class Game:
             "attack_a": rows[2], "attack_b": rows[3],
             "hurt": rows[4], "dead": rows[5],
             "rock": rock_rows[0],
+            "meteor": self._load_image("vfx/boss_attacks/meteoro.png"),
+            "danger_marker": self._load_image("vfx/boss_attacks/indicador_perigo.png"),
         }
 
     # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
@@ -593,24 +691,6 @@ class Game:
             icons[key] = pygame.transform.scale(frame, (28, 28))
         return icons
 
-    # Tamanho de cada lago de lava esculpido pelo gerador de mapa (ver
-    # LAKE_WIDTH/LAKE_DEPTH em build_fase3_map_v6.py) — os 8 quadros de
-    # lava_lake.png (160x96 cada) são pré-ampliados pra esse tamanho uma
-    # única vez no load, em vez de re-escalar a cada quadro desenhado.
-    LAVA_LAKE_SIZE = (7 * 32, 6 * 32)
-    LAVA_LAKE_FPS = 10
-
-    def _load_lava_lake_frames(self):
-        sheet = self._load_image("lava_lake.png")
-        frame_width = 160
-        frame_height = sheet.get_height()
-        count = sheet.get_width() // frame_width
-        frames = [
-            self._sheet_crop(sheet, (i * frame_width, 0, frame_width, frame_height))
-            for i in range(count)
-        ]
-        return [pygame.transform.scale(frame, self.LAVA_LAKE_SIZE) for frame in frames]
-
     def load_level(self, index):
         """Inicia uma fase sem modificar a quantidade atual de vidas."""
         self.level = Level(index)
@@ -624,6 +704,7 @@ class Game:
         self._base_level = None
         self._base_state = None
         self.seen_dialogues = set()
+        self.hints_shown = set()
         self.lever_on = False
         self.sequence_solved = False
         self.microscope_assembled = False
@@ -678,12 +759,17 @@ class Game:
         self.attack_timer = 0
         self.attack_cooldown = 0
         self.attack_power = STANDARD_ATTACK_POWER
+        self.combo_count = 0
+        self.combo_timer = 0
         self.mouse_attack_requested = False
+        self.ranged_cooldown = 0
+        self.projectiles = []
 
     def _reset_input_state(self):
         self.interact_was_down = False
         self.attack_was_down = False
         self.dash_was_down = False
+        self.ranged_was_down = False
         self.dialogue_advance_was_down = False
         self._item_key_was_down = {}
 
@@ -692,7 +778,6 @@ class Game:
         self.dust_timer = 0
         self.was_swimming = False
         self.player_grounded = False
-        self.lava_lake_anim = 0
 
     # Quadros de invencibilidade após renascer: sem isso, se o checkpoint (ou
     # o próprio spawn) ficar perto de um espinho/inimigo, o toque volta a
@@ -700,8 +785,18 @@ class Game:
     # — parecendo "morte direta" mesmo cada toque só custando 1 vida.
     INVULN_FRAMES = 90
 
+    # Quadros dos 2 frames de morte (Player.DEATH_FRAMES, pedido do Raul)
+    # parada no lugar onde ela morreu, antes do reposicionamento de verdade
+    # (ver _finish_respawn) — metade do tempo em cada quadro.
+    DEATH_POSE_DURATION = 24
+
     def _reset_status_state(self):
         self.invuln_timer = 0
+        self.hitstop_timer = 0
+        self.shake_timer = 0
+        self.shake_duration = 0
+        self.shake_magnitude = 0
+        self.death_pose_timer = 0
 
     def respawn(self):
         # Carcaça de robô/Dark Crystal (ver ITEM_DEFS): 1 ponto de escudo
@@ -734,6 +829,21 @@ class Game:
             self.game_over_characters = 0
             return
 
+        # Reposicionar (exit_room/checkpoint) fica pra depois — ver
+        # _finish_respawn, chamado por _update_playing quando
+        # death_pose_timer chega a 0. Isso dá tempo dos 2 frames de morte
+        # (Player.DEATH_FRAMES) aparecerem parada no lugar onde ela morreu,
+        # em vez dela sumir/reaparecer instantaneamente.
+        self.death_pose_timer = self.DEATH_POSE_DURATION
+
+    def _apply_death_frame(self):
+        elapsed = self.DEATH_POSE_DURATION - self.death_pose_timer
+        index = 1 if elapsed >= self.DEATH_POSE_DURATION / 2 else 0
+        self.player.frame = self.player.DEATH_FRAMES[index]
+
+    def _finish_respawn(self):
+        """A parte de respawn() que reposiciona de verdade — adiada até o
+        fim da pose de morte (ver respawn/_apply_death_frame)."""
         if self._base_level is not None:
             # Machucar-se numa sala te tira dela: mais simples e mais
             # temático (Lia cambaleia de volta pro corredor) do que tentar
@@ -749,7 +859,7 @@ class Game:
         self.message_timer = 0
 
     def update(self, keyboard, dt=1 / FPS):
-        dialogue_advance_pressed, attack_pressed, dash_pressed = self._read_input(keyboard)
+        dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed = self._read_input(keyboard)
 
         if self.state == TITLE:
             self._update_title(keyboard)
@@ -759,15 +869,18 @@ class Game:
             self._update_end_state(keyboard)
         elif self.dialogue.active:
             self._update_dialogue(dialogue_advance_pressed)
+        elif self.hint.active:
+            self._update_hint(dialogue_advance_pressed)
         else:
             self._read_item_use(keyboard)
-            self._update_playing(keyboard, dash_pressed, attack_pressed, dt)
+            self._update_playing(keyboard, dash_pressed, attack_pressed, ranged_pressed, dt)
 
     def _read_input(self, keyboard):
         interaction_down = keyboard.e or keyboard.RETURN
         dialogue_advance_down = interaction_down or keyboard.space
         attack_down = keyboard.f
         dash_down = keyboard.q
+        ranged_down = keyboard.r
 
         self.interact_pressed = interaction_down and not self.interact_was_down
         self.interact_was_down = interaction_down
@@ -785,7 +898,10 @@ class Game:
 
         dash_pressed = dash_down and not self.dash_was_down
         self.dash_was_down = dash_down
-        return dialogue_advance_pressed, attack_pressed, dash_pressed
+
+        ranged_pressed = ranged_down and not self.ranged_was_down
+        self.ranged_was_down = ranged_down
+        return dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed
 
     def _read_item_use(self, keyboard):
         """Teclas 1/2/3 (ver ITEM_USE_KEYS) consomem um consumível do
@@ -865,12 +981,31 @@ class Game:
         else:
             self.dialogue.update()
 
-    def _update_playing(self, keyboard, dash_pressed, attack_pressed, dt):
+    def _update_playing(self, keyboard, dash_pressed, attack_pressed, ranged_pressed, dt):
+        self._update_shake()
+        if self.hitstop_timer > 0:
+            # Congela a simulação (pedido do Raul: hit-stop no parry, ver
+            # _check_parries) — o shake continua contando acima pra já estar
+            # decaindo quando a simulação voltar, em vez de só começar depois.
+            self.hitstop_timer -= 1
+            return
+        if self.death_pose_timer > 0:
+            # Congela do mesmo jeito que o hit-stop, mas pra mostrar os 2
+            # frames de morte (ver respawn/_apply_death_frame) parada onde
+            # ela caiu antes de reaparecer no checkpoint/porta.
+            self.death_pose_timer -= 1
+            self._apply_death_frame()
+            if self.death_pose_timer == 0:
+                self._finish_respawn()
+            return
         self.player.update_abilities()
         if dash_pressed and not self.player.swimming:
             self.player.start_dash()
         self.player.read_controls(keyboard)
         self._update_attack(attack_pressed)
+        self._update_ranged_attack(ranged_pressed)
+        self._maybe_wake_bosses()
+        self._face_bosses_at_player()
         self.level.update()
         if self.level.tiled_map:
             # Avança a animação dos tiles do Tiled (ex.: água da Fase 3) em ms.
@@ -879,24 +1014,187 @@ class Game:
         self.move_player()
         self._apply_boss_arena_clamp()
         self.player.animate()
+        self._apply_attack_frame()
         self._update_vfx()
         self._update_camera()
         self.message_timer = max(0, self.message_timer - 1)
         self.handle_interactions()
+        self._maybe_trigger_hints()
         self.check_events()
+
+    def _update_hint(self, dialogue_advance_pressed):
+        # A alavanca continua animando durante a dica, igual acontece durante
+        # um diálogo (ver _update_dialogue) — evita ela "congelar" no meio de
+        # um movimento se a dica disparar bem na hora de puxar a alavanca.
+        if self.level.is_underground:
+            self.level.update_lever_animations()
+        self.hint.update()
+        if dialogue_advance_pressed:
+            self.hint.close()
+
+    def _maybe_trigger_hints(self):
+        """Dicas contextuais de uma vez só por fase (hints_shown reseta em
+        load_level, igual seen_dialogues). Por enquanto só a do painel do
+        elevador na Fase 1: dispara ao pisar na plataforma que antecede o
+        primeiro elevador — ANTES da Lia sequer chegar na alavanca —
+        enquanto o painel ainda não foi ligado."""
+        if self.hint.active or self.dialogue.active:
+            return
+        if (
+            self.level.is_underground
+            and not self.lever_on
+            and "elevator_panel" not in self.hints_shown
+            and self._touching_elevator_approach()
+        ):
+            self.hints_shown.add("elevator_panel")
+            self.hint.show(
+                "Painel do Elevador",
+                (
+                    "Os botões lá em cima só funcionam com o painel ligado.",
+                    "Ative a alavanca do painel antes de subir pelo elevador.",
+                ),
+            )
+
+    # Raio (px, medido centro-a-centro) em que um chefe dormente acorda ao
+    # se aproximar a Lia (ver enemy.py: SlimeKing/Librarian/Specimen/Dragon
+    # nascem em DORMANT e só saem desse estado via wake_up()). Generoso o
+    # bastante pra acordar antes da Lia encostar nele, cedo o suficiente pra
+    # não ficar sendo golpeado "de graça" enquanto ainda dorme, mas sem
+    # acordar assim que a fase carrega — estilo Silksong, onde o chefe fica
+    # parado até o jogador chegar perto da arena.
+    BOSS_WAKE_RADIUS = 420
+
+    def _maybe_wake_bosses(self):
+        """Confere todo inimigo vivo da fase (não só os de boss_arenas —
+        Librarian/Specimen não têm arena gerada por código, só a sala fixa
+        do Tiled, então checar self.level.enemies direto cobre os 4 chefes
+        com o mesmo código). Uma vez acordado (wake_up), o chefe nunca volta
+        a dormir, mesmo que a Lia se afaste — combina com o resto do jogo,
+        onde nenhum chefe "reseta" sozinho."""
+        player_center = self.player.rect.center
+        for enemy in self.level.enemies:
+            wake_up = getattr(enemy, "wake_up", None)
+            if wake_up is None or enemy.state != getattr(enemy, "DORMANT", None):
+                continue
+            dx = enemy.rect.centerx - player_center[0]
+            dy = enemy.rect.centery - player_center[1]
+            if dx * dx + dy * dy <= self.BOSS_WAKE_RADIUS * self.BOSS_WAKE_RADIUS:
+                wake_up()
+
+    def _face_bosses_at_player(self):
+        """Chefes sempre virados pra Lia (pedido do Raul: eles às vezes
+        ficavam olhando pro lado errado e os ataques saíam desalinhados) —
+        cada classe decide sozinha quando é seguro virar (ver
+        enemy.<Boss>.face_player/FACING_STATES: nunca no meio da própria
+        patrulha nem de um ataque já em execução, só parado ou ainda na
+        antecipação — assim a direção já está certa bem antes do golpe
+        de verdade sair)."""
+        player_x = self.player.rect.centerx
+        for enemy in self.level.enemies:
+            face_player = getattr(enemy, "face_player", None)
+            if face_player:
+                face_player(player_x)
+
+    # Distância (px) antes do elevador em que o corredor de aproximação
+    # começa — folga generosa de propósito, pra não depender de acertar uma
+    # faixa estreita de pixels.
+    ELEVATOR_APPROACH_RANGE = 750
+
+    def _touching_elevator_approach(self):
+        """Corredor antes do PRIMEIRO elevador que a Lia encontra andando da
+        esquerda pra direita a partir do spawn. Conferindo fase1_escola.tmx:
+        elevador_superior nasce em x=1750 e elevador_principal em x=2670 —
+        ou seja, apesar do nome, é o "superior" (Level.upper_elevator, o que
+        leva lá em cima pros botões do painel) que vem PRIMEIRO no percurso,
+        não o "principal" (Level.elevator, que só aparece depois, e desce
+        pra um andar de baixo onde fica a alavanca do painel). A dica é
+        sobre os botões precisarem do painel ligado, então faz sentido
+        mesmo ser este: é o elevador que leva direto pra área dos botões.
+        Dispara em qualquer lugar dentro de ELEVATOR_APPROACH_RANGE px à
+        esquerda dele, sem exigir uma faixa vertical exata. Ancorado no x
+        (fixo; só a altura muda ao subir/descer, ver call_upper_elevator),
+        então funciona tanto no laboratório manual (fallback) quanto no
+        mapa do Tiled."""
+        elevator = self.level.upper_elevator
+        if not elevator:
+            return False
+        return elevator.rect.x - self.ELEVATOR_APPROACH_RANGE <= self.player.rect.centerx <= elevator.rect.x
 
     def _update_attack(self, attack_pressed):
         self.attack_cooldown = max(0, self.attack_cooldown - 1)
+        self.combo_timer = max(0, self.combo_timer - 1)
         if attack_pressed and self.attack_cooldown == 0:
             self.attack_timer = ATTACK_DURATION
             self.attack_cooldown = ATTACK_COOLDOWN
-            self.attack_power = (
-                DASH_ATTACK_POWER if self.player.dashing else STANDARD_ATTACK_POWER
-            )
+            # Combo (pedido do Raul): ainda dentro da janela do golpe
+            # anterior avança pro próximo hit (ciclando 1-4); passou da
+            # janela, volta pro 1 — ver COMBO_RESET_WINDOW.
+            if self.combo_timer > 0:
+                self.combo_count += 1
+                if self.combo_count > COMBO_HIT_COUNT:
+                    self.combo_count = 1
+            else:
+                self.combo_count = 1
+            self.combo_timer = COMBO_RESET_WINDOW
+            if self.player.dashing:
+                self.attack_power = DASH_ATTACK_POWER
+            elif self.combo_count == COMBO_HIT_COUNT:
+                self.attack_power = COMBO_FINISHER_POWER
+            else:
+                self.attack_power = STANDARD_ATTACK_POWER
         if self.attack_timer:
             self.attack_timer -= 1
             if self.attack_timer == 0:
                 self.attack_power = STANDARD_ATTACK_POWER
+
+    def _apply_attack_frame(self):
+        """Sobrepõe o frame calculado por Player.animate() enquanto o golpe
+        tá ativo — combo_count já reflete o hit certo desse swing (definido
+        em _update_attack, sempre antes disso rodar, ver _update_playing).
+        Fora daí Player.animate() decide sozinho (parado/andando/pulando)."""
+        if not self.attack_timer:
+            return
+        self.player.frame = self.player.ATTACK_FRAMES[self.combo_count - 1]
+
+    def _update_ranged_attack(self, ranged_pressed):
+        self.ranged_cooldown = max(0, self.ranged_cooldown - 1)
+        if not (ranged_pressed and self.ranged_unlocked and self.ranged_cooldown == 0):
+            return
+        self.ranged_cooldown = RANGED_ATTACK_COOLDOWN
+        direction = 1 if self.player.facing_right else -1
+        # Nasce um pouco à frente da hitbox, na altura do peito — assim o
+        # projétil não colide "dentro" da própria Lia no quadro em que nasce.
+        origin_x = self.player.rect.centerx + direction * (PLAYER_HITBOX_WIDTH // 2 + 8)
+        origin_y = self.player.rect.centery - 4
+        self.projectiles.append(
+            Projectile(
+                origin_x, origin_y, direction,
+                RANGED_PROJECTILE_SPEED, RANGED_ATTACK_POWER, RANGED_PROJECTILE_RANGE,
+            )
+        )
+
+    def _update_projectiles(self):
+        """Move cada projétil e confere colisão contra os mesmos inimigos que
+        check_enemies já usa pro ataque corpo a corpo (mesma interface
+        take_hit/alive, incluindo chefes) — um acerto consome o projétil."""
+        for projectile in self.projectiles:
+            if not projectile.alive:
+                continue
+            projectile.update()
+            if not projectile.alive:
+                continue
+            for enemy in self.level.enemies:
+                if not enemy.alive:
+                    continue
+                if not projectile.rect.colliderect(enemy.rect):
+                    continue
+                if enemy.take_hit(projectile.power):
+                    self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+                    if not enemy.alive:
+                        self._on_enemy_defeated(enemy)
+                projectile.alive = False
+                break
+        self.projectiles = [projectile for projectile in self.projectiles if projectile.alive]
 
     def _move_with_platform(self):
         if self.riding_platform:
@@ -926,6 +1224,23 @@ class Game:
         if max_x < min_x:
             max_x = min_x
         self.player.x = max(min_x, min(self.player.x, max_x))
+
+    def _update_shake(self):
+        self.shake_timer = max(0, self.shake_timer - 1)
+
+    def _trigger_shake(self, duration, magnitude):
+        """Genérico de propósito (não só do parry) — guarda a duração junto
+        pra _shake_offset saber a proporção certa de decaimento, já que
+        shake_timer sozinho não diz se começou em 14 quadros ou em 40."""
+        self.shake_timer = duration
+        self.shake_duration = duration
+        self.shake_magnitude = magnitude
+
+    def _shake_offset(self):
+        if self.shake_timer <= 0 or self.shake_duration <= 0:
+            return 0, 0
+        magnitude = self.shake_magnitude * (self.shake_timer / self.shake_duration)
+        return random.uniform(-magnitude, magnitude), random.uniform(-magnitude, magnitude)
 
     def _update_camera(self):
         arena_zone = self._active_boss_arena()
@@ -969,7 +1284,6 @@ class Game:
         ao entrar na água. O impacto (dano) é disparado nos próprios pontos
         onde o dano acontece — ver respawn() e check_enemies()."""
         self.vfx.update()
-        self.lava_lake_anim += 1
         player = self.player
 
         walking = (
@@ -1034,6 +1348,11 @@ class Game:
 
         landed = self._resolve_vertical_collisions(player, previous_y, previous_bottom)
         self.player_grounded = landed
+        # Espelha no próprio Player (pedido do Raul: pulo de 3 fases —
+        # subindo/no ar/caindo — ver Player.animate) porque animate() roda
+        # dentro da classe Player, sem acesso direto a self.player_grounded
+        # daqui.
+        player.grounded = landed
         if player.swimming:
             # Sem chão firme nem parede pra reaproveitar debaixo d'água.
             player.coyote_time = 0
@@ -1048,9 +1367,13 @@ class Game:
         return any(player.rect.colliderect(zone) for zone in self.level.water_zones)
 
     def _all_solid_rectangles(self):
+        # solids_near em vez de self.level.grounds/wall_blocks inteiros: numa
+        # fase grande (Fase 3, 315x100 tiles) essas listas passam de mil
+        # retângulos, e checar todos 2x por quadro (colisão horizontal e
+        # vertical) era o motivo real do lag reportado lá — ver
+        # Level.solids_near/_build_solid_chunks.
         return (
-            self.level.grounds
-            + self.level.wall_blocks
+            self.level.solids_near(self.player.rect)
             + [platform.rect for platform in self.level.platforms]
         )
 
@@ -1073,6 +1396,13 @@ class Game:
 
     def _stomp_enemy_if_possible(self, player, previous_bottom):
         for enemy in self.level.enemies:
+            # Chefes (BOSS_DROP_TABLE = SlimeKing/Librarian/Specimen/Dragon)
+            # ficam de fora do pulo-que-mata: pousar na cabeça deles não pode
+            # ser um jeito de matar em um golpe só uma luta pensada pra durar
+            # vários acertos — pisar neles agora não faz nada de especial,
+            # cai no contato normal (dano) tratado por check_enemies.
+            if type(enemy).__name__ in BOSS_DROP_TABLE:
+                continue
             if (
                 enemy.alive
                 and player.vy > 0
@@ -1168,10 +1498,12 @@ class Game:
             return
         if self._check_hazards(player):
             return
+        self._check_parries(player)
         if self._check_enemy_attack_hazards(player):
             return
 
         self.check_enemies()
+        self._update_projectiles()
         if self.state != PLAYING:
             return
         self._collect_drops(self.player)
@@ -1250,6 +1582,45 @@ class Game:
                     return True
         return False
 
+    def _check_parries(self, player):
+        """Parry (pedido do Raul): só hazards que "voam" — pedras/meteoros
+        do Dragão ainda caindo, tomos mergulhando e lâminas do Bibliotecário,
+        jato do Espécime (ver <Boss>.parryable_hazards em enemy.py) — nunca
+        ondas no chão nem investidas corpo a corpo, essas classes nem
+        definem o método, então getattr cai em None e passa reto. Sem botão
+        novo: é o mesmo attack_box do ataque corpo a corpo normal
+        (_attack_box), só que testado ANTES de _check_enemy_attack_hazards
+        pra um parry bem-sucedido não também respawnar a Lia no mesmo
+        quadro. Acerto certo: cancel() destrói o hazard específico e o dano
+        volta pro chefe que o lançou via take_hit — mesma interface que o
+        ataque à distância já usa pra furar melee_vulnerable."""
+        attack_box = self._attack_box()
+        if not attack_box:
+            return False
+        for enemy in self.level.enemies:
+            if not enemy.alive:
+                continue
+            get_pairs = getattr(enemy, "parryable_hazards", None)
+            if not get_pairs:
+                continue
+            for rect, cancel in get_pairs():
+                if not attack_box.colliderect(rect):
+                    continue
+                cancel()
+                self.vfx.spawn("parry_flash", rect.centerx, rect.centery)
+                # 1s de invencibilidade (pedido do Raul) pra sobreviver ao
+                # resto de um ataque com vários hits (ex.: as 5 lâminas do
+                # Bibliotecário) depois de aparar só o primeiro — max() pra
+                # nunca ENCURTAR um invuln maior já rolando (ex.: acabou de
+                # respawnar). Hit-stop + shake dão o "peso" do acerto.
+                self.invuln_timer = max(self.invuln_timer, PARRY_INVULN_FRAMES)
+                self.hitstop_timer = PARRY_HITSTOP_FRAMES
+                self._trigger_shake(PARRY_SHAKE_DURATION, PARRY_SHAKE_MAGNITUDE)
+                if enemy.take_hit(PARRY_DAMAGE) and not enemy.alive:
+                    self._on_enemy_defeated(enemy)
+                return True
+        return False
+
     def _check_checkpoints(self, player):
         for checkpoint in self.level.checkpoints:
             if player.rect.colliderect(checkpoint):
@@ -1306,15 +1677,34 @@ class Game:
         elif self.level.index == len(PHASES) - 1:
             self.state = COMPLETE
         else:
-            self.load_level(self.level.index + 1)
+            finished_index = self.level.index
+            self.load_level(finished_index + 1)
+            # load_level já sobrescreveu self.message com o subtítulo da fase
+            # nova (message_timer=0, ver load_level) — o aviso de desbloqueio
+            # entra DEPOIS de propósito, pra não ser apagado por ele.
+            if finished_index == 0 and not self.ranged_unlocked:
+                self.ranged_unlocked = True
+                self.message = "Novo poder: Ataque à Distância [R] desbloqueado!"
+                self.message_timer = 240
 
     def check_enemies(self):
-        """Verifica ataque, ataque reforçado durante dash e contato com slimes."""
+        """Verifica ataque, ataque reforçado durante dash e contato com slimes.
+        `melee_vulnerable` (Dragon/Librarian/Specimen em enemy.py — os
+        inimigos comuns e o Rei Slime não definem isso, então getattr cai em
+        True) deixa um chefe imune a corpo a corpo em certas fases (ex.:
+        voando, escudo levantado, dentro do casulo); nesses momentos,
+        acertar o corpo dele com a espada não causa dano — só o ataque à
+        distância funciona — mas ainda dói tocar nele."""
         attack_box = self._attack_box()
         for enemy in self.level.enemies:
             if not enemy.alive:
                 continue
-            if attack_box and attack_box.colliderect(enemy.rect):
+            melee_hit = (
+                attack_box
+                and attack_box.colliderect(enemy.rect)
+                and getattr(enemy, "melee_vulnerable", True)
+            )
+            if melee_hit:
                 if enemy.take_hit(self.attack_power):
                     self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
@@ -1469,6 +1859,13 @@ class Game:
         if self.state == INTRO:
             self.intro.draw(surface, draw_text)
             return
+        # Shake (ver _trigger_shake/_update_shake) só desloca o mundo — a
+        # câmera some pro valor de verdade logo antes do HUD, senão a barra
+        # de vida do chefe e o resto da interface também tremeriam junto,
+        # o que fica ilegível em vez de impactante.
+        shake_x, shake_y = self._shake_offset()
+        self.camera_x += shake_x
+        self.camera_y += shake_y
         self._draw_background(surface)
         self._draw_world(surface)
         self._draw_door_prompts(surface)
@@ -1477,9 +1874,13 @@ class Game:
         self.draw_dash_trail(surface)
         self.player.draw(surface, self.camera_x, self.camera_y)
         self.vfx.draw(surface, self.camera_x, self.camera_y)
-        self.draw_attack(surface)
+        for projectile in self.projectiles:
+            projectile.draw(surface, self.camera_x, self.camera_y)
+        self.camera_x -= shake_x
+        self.camera_y -= shake_y
         self._draw_interface(surface)
         self._draw_state_overlay(surface)
+        self.hint.draw(surface, draw_text)
 
     def _draw_background(self, surface):
         if self.level.room == "laboratorio":
@@ -1548,7 +1949,6 @@ class Game:
             self.scientist_sprites,
             NPC_SPRITE_ROWS,
         )
-        self._draw_lava_lakes(surface)
         self._draw_drops(surface)
 
     def _draw_drops(self, surface):
@@ -1571,17 +1971,6 @@ class Game:
             return self.artifact_library_image
         return self.artifact_image
 
-    def _draw_lava_lakes(self, surface):
-        lakes = getattr(self.level, "lava_lakes", None)
-        if not lakes or not self.lava_lake_frames:
-            return
-        frame_index = (self.lava_lake_anim * self.LAVA_LAKE_FPS // FPS) % len(self.lava_lake_frames)
-        frame = self.lava_lake_frames[frame_index]
-        for lake in lakes:
-            image = frame
-            if (lake.width, lake.height) != self.LAVA_LAKE_SIZE:
-                image = pygame.transform.scale(frame, (lake.width, lake.height))
-            surface.blit(image, (lake.x - self.camera_x, lake.y - self.camera_y))
 
     DOOR_PROMPT_RANGE = 60
 
@@ -1638,6 +2027,49 @@ class Game:
         )
         surface.blit(self.player_light, (light_x, light_y))
 
+    def _active_boss(self):
+        """Chefe em luta agora — vivo e já acordado (ver enemy.py DORMANT/
+        wake_up e Game._maybe_wake_bosses) — None enquanto ele ainda dorme,
+        depois que morre, ou se não há nenhum chefe na fase. Usado só pra
+        decidir se a barra de vida aparece."""
+        for enemy in self.level.enemies:
+            if type(enemy).__name__ not in BOSS_DROP_TABLE:
+                continue
+            if not enemy.alive:
+                continue
+            if enemy.state == getattr(enemy, "DORMANT", None):
+                continue
+            return enemy
+        return None
+
+    BOSS_HEALTH_BAR_WIDTH = 520
+    BOSS_HEALTH_BAR_HEIGHT = 20
+
+    def _draw_boss_health_bar(self, surface):
+        """Barra de vida no topo da tela (estilo Cuphead) enquanto um chefe
+        está acordado — some de novo assim que ele morre ou some da fase
+        (ver _active_boss). BOSS_NAMES só existe pro rótulo; a vida de
+        verdade continua vindo de boss.health/HEALTH, igual sempre foi.
+        y=80 fica abaixo da caixa de mensagem central (_draw_message, y
+        18-66) de propósito, pra não sobrepor se as duas aparecerem juntas
+        (ex.: mensagem de item pego durante a luta)."""
+        boss = self._active_boss()
+        if boss is None:
+            return
+        name = BOSS_NAMES.get(type(boss).__name__, "Chefe")
+        ratio = max(0, boss.health) / boss.HEALTH if boss.HEALTH else 0
+        width, height = self.BOSS_HEALTH_BAR_WIDTH, self.BOSS_HEALTH_BAR_HEIGHT
+        x = WIDTH // 2 - width // 2
+        y = 80
+        draw_text(surface, name, (WIDTH // 2, y), 17, "#ffd9d9", True)
+        bar = pygame.Rect(x, y + 16, width, height)
+        pygame.draw.rect(surface, (12, 8, 10), bar.inflate(6, 6), border_radius=8)
+        pygame.draw.rect(surface, (46, 16, 20), bar, border_radius=6)
+        pygame.draw.rect(
+            surface, (214, 58, 58), (bar.x, bar.y, int(bar.width * ratio), bar.height), border_radius=6
+        )
+        pygame.draw.rect(surface, (250, 214, 214), bar, 2, border_radius=6)
+
     def _draw_interface(self, surface):
         show_oxygen = bool(self.level.water_zones) and (
             self.player.swimming or self.player.oxygen < self.player.OXYGEN_MAX_FRAMES
@@ -1659,6 +2091,7 @@ class Game:
             oxygen_ratio,
             self.shield,
         )
+        self._draw_boss_health_bar(surface)
         draw_inventory(surface, self.inventory, self.item_icons, ITEM_ORDER)
         draw_ability_ui(
             surface,
@@ -1667,6 +2100,9 @@ class Game:
             self.attack_cooldown,
             ATTACK_COOLDOWN,
             not self.player.wall_jump_used,
+            self.ranged_unlocked,
+            self.ranged_cooldown,
+            RANGED_ATTACK_COOLDOWN,
         )
         self.dialogue.draw(surface, draw_text)
 
@@ -1741,23 +2177,6 @@ class Game:
             put("desk_row", origin_x + 80, 385 - self.camera_y * 0.48)
             put("bookshelf", origin_x + 500, 420 - self.camera_y * 0.48)
             put("plant", origin_x + 926, 392 - self.camera_y * 0.48)
-
-    def draw_attack(self, surface):
-        """Desenha o efeito visual temporário do ataque."""
-        if not self.attack_timer or self.state != PLAYING:
-            return
-        boosted = self.attack_power > STANDARD_ATTACK_POWER
-        center_x = self.player.x - self.camera_x + (52 if self.player.facing_right else -20)
-        center_y = self.player.y - self.camera_y + PLAYER_HEIGHT // 2
-        color = (255, 158, 74) if boosted else (255, 236, 137)
-        radius = 33 if boosted else 23
-        pygame.draw.circle(
-            surface,
-            color,
-            (int(center_x), int(center_y)),
-            radius,
-            4 if boosted else 3,
-        )
 
     def draw_dash_trail(self, surface):
         """Desenha o rastro que torna o dash legível."""

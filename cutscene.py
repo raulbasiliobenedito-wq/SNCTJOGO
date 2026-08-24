@@ -1,23 +1,39 @@
 """Cutscene inicial: Lia e a mãe no hospital, antes da Fase 1.
 
-Não depende de nenhuma arte nova — o quarto de hospital (gradiente, cama,
-monitor cardíaco animado) é desenhado por código, e as falas usam a mesma
-DialogueBox ornamentada já usada pelas cientistas-NPC (mesmo cartucho,
-mesma revelação gradual de texto, mesmo "[E/ENTER para continuar]"), pra
-manter o mesmo estilo visual do resto do jogo sem precisar de nenhum PNG
-novo. A sprite de Lia também é reaproveitada do sheet do jogador (Player.
-frames[0]), só ampliada.
+Usa uma ilustração única (images/cutscenes/hospital.png) como cenário —
+ela já traz cama, monitor e as duas personagens desenhadas, então o código
+só entra pra dar um pouco de vida em cima disso (o brilho coral pulsante)
+e pra tocar as falas na mesma DialogueBox ornamentada usada pelas
+cientistas-NPC (mesmo cartucho, mesma revelação gradual de texto, mesmo
+"[E/ENTER para continuar]").
+
+Se o arquivo da ilustração não existir ainda, cai num cenário simples
+desenhado por código (gradiente + formas), só pra não travar o jogo.
 """
 
 import math
 
 import pygame
 
-from settings import HEIGHT, WIDTH
+from settings import ASSET_DIR, HEIGHT, WIDTH
 
 
 def _lerp_color(start, end, t):
     return tuple(int(start[i] + (end[i] - start[i]) * t) for i in range(3))
+
+
+def _scale_cover(image, target_size):
+    """Redimensiona `image` pra cobrir target_size inteiro (sem distorcer,
+    cortando o excesso) — mesma lógica de `background-size: cover` do CSS.
+    Devolve a imagem escalada e o deslocamento (geralmente negativo) onde
+    ela deve ser desenhada pra ficar centralizada."""
+    target_w, target_h = target_size
+    src_w, src_h = image.get_size()
+    scale = max(target_w / src_w, target_h / src_h)
+    new_size = (round(src_w * scale), round(src_h * scale))
+    scaled = pygame.transform.smoothscale(image, new_size)
+    offset = ((target_w - new_size[0]) // 2, (target_h - new_size[1]) // 2)
+    return scaled, offset
 
 
 class IntroCutscene:
@@ -53,25 +69,40 @@ class IntroCutscene:
         ),
     )
 
-    BED_COLOR = (214, 224, 236)
-    BLANKET_COLOR = (110, 142, 158)
-    PILLOW_COLOR = (230, 236, 244)
-    MONITOR_BODY = (8, 14, 24)
-    MONITOR_FRAME = (54, 66, 86)
-    MONITOR_LINE = (110, 226, 196)
     CORAL_GLOW = (216, 134, 166)
+    # Posição do brilho, em fração (0..1) da ILUSTRAÇÃO original — perto do
+    # rosto/ombro de Lia, bem acima de onde a caixa de diálogo cobre a tela
+    # (ela começa em y=435 de 900, ver dialogue.py). Ajuste fino aqui se a
+    # posição não bater com a arte depois de ver rodando de verdade.
+    GLOW_ANCHOR = (0.70, 0.32)
+
+    BACKGROUND_PATH = ASSET_DIR / "cutscenes" / "hospital.png"
 
     def __init__(self, dialogue_box, lia_frame):
         # Reaproveita a MESMA DialogueBox usada pelos diálogos de NPC —
         # Game.update já dá prioridade ao estado INTRO antes de checar
         # dialogue.active, então não há conflito entre os dois usos.
         self.dialogue_box = dialogue_box
-        self.lia_frame = pygame.transform.scale(
-            lia_frame, (lia_frame.get_width() * 3, lia_frame.get_height() * 3)
-        )
         self.index = -1
         self.done = True
         self.timer = 0
+
+        self.background = None
+        self.background_offset = (0, 0)
+        self.glow_pos = (WIDTH * self.GLOW_ANCHOR[0], HEIGHT * self.GLOW_ANCHOR[1])
+        if self.BACKGROUND_PATH.exists():
+            raw = pygame.image.load(str(self.BACKGROUND_PATH)).convert_alpha()
+            self.background, self.background_offset = _scale_cover(raw, (WIDTH, HEIGHT))
+            self.glow_pos = (
+                self.background_offset[0] + self.background.get_width() * self.GLOW_ANCHOR[0],
+                self.background_offset[1] + self.background.get_height() * self.GLOW_ANCHOR[1],
+            )
+        else:
+            # Fallback só pra não travar o jogo caso a ilustração ainda não
+            # tenha sido colocada em images/cutscenes/hospital.png.
+            self.lia_frame = pygame.transform.scale(
+                lia_frame, (lia_frame.get_width() * 3, lia_frame.get_height() * 3)
+            )
 
     @property
     def active(self):
@@ -109,56 +140,15 @@ class IntroCutscene:
             self.dialogue_box.update()
 
     def draw(self, surface, text_fn):
-        self._draw_room(surface)
-        self._draw_monitor(surface)
-        self._draw_lia(surface)
+        if self.background is not None:
+            surface.blit(self.background, self.background_offset)
+        else:
+            self._draw_fallback_room(surface)
+            self._draw_lia(surface)
         if self.index == len(self.BEATS) - 1:
             self._draw_coral_glow(surface)
         self.dialogue_box.draw(surface, text_fn)
         text_fn(surface, "[ESC pula a introdução]", (WIDTH - 190, 30), 14, "#cbd6e6", True)
-
-    # A DialogueBox ocupa a metade DE BAIXO da tela inteira (HEIGHT_RATIO=
-    # 0.50 em dialogue.py, então ela começa em y=435 numa tela de 900px) —
-    # bem mais alto do que os ~140px que uma caixa de diálogo comum ocupa
-    # no resto do jogo. Por isso a cena (cama, monitor, Lia) inteira fica
-    # comprimida acima de y=~330: qualquer elemento novo aqui precisa
-    # continuar acima dessa linha pra não ficar atrás da caixa.
-    def _draw_room(self, surface):
-        top = (16, 24, 40)
-        bottom = (58, 70, 92)
-        band = 6
-        for y in range(0, HEIGHT, band):
-            t = y / HEIGHT
-            surface.fill(_lerp_color(top, bottom, t), (0, y, WIDTH, band))
-
-        bed_rect = pygame.Rect(230, 180, 560, 150)
-        pygame.draw.rect(surface, self.BED_COLOR, bed_rect, border_radius=26)
-        pillow_rect = pygame.Rect(258, 156, 150, 74)
-        pygame.draw.rect(surface, self.PILLOW_COLOR, pillow_rect, border_radius=28)
-        blanket_rect = pygame.Rect(230, 220, 560, 110)
-        pygame.draw.rect(surface, self.BLANKET_COLOR, blanket_rect, border_radius=22)
-
-    def _draw_monitor(self, surface):
-        stand = pygame.Rect(900, 180, 14, 150)
-        pygame.draw.rect(surface, (30, 36, 48), stand)
-        body = pygame.Rect(840, 40, 210, 140)
-        pygame.draw.rect(surface, self.MONITOR_BODY, body, border_radius=12)
-        pygame.draw.rect(surface, self.MONITOR_FRAME, body, 3, border_radius=12)
-
-        segment_count = 40
-        points = []
-        for i in range(segment_count):
-            x = body.x + 14 + i * ((body.width - 28) / (segment_count - 1))
-            phase = self.timer * 0.12 + i * 0.6
-            spike = -34 if i % 13 == 6 else 0
-            y = body.y + body.height / 2 + math.sin(phase) * 6 + spike
-            points.append((x, y))
-        pygame.draw.lines(surface, self.MONITOR_LINE, False, points, 2)
-
-    def _draw_lia(self, surface):
-        rect = self.lia_frame.get_rect()
-        rect.midbottom = (1060, 330)
-        surface.blit(self.lia_frame, rect)
 
     def _draw_coral_glow(self, surface):
         """Um brilho coral discreto que pulsa perto de Lia na última fala —
@@ -172,4 +162,26 @@ class IntroCutscene:
         center = (size // 2, size // 2)
         for r, alpha in ((radius * 3, 30), (radius * 2, 70), (radius, 160)):
             pygame.draw.circle(glow, (*self.CORAL_GLOW, alpha), center, r)
-        surface.blit(glow, (1060 - size // 2, 258 - size // 2))
+        x, y = self.glow_pos
+        surface.blit(glow, (x - size // 2, y - size // 2))
+
+    # --- Fallback (só usado se images/cutscenes/hospital.png não existir) ---
+
+    def _draw_fallback_room(self, surface):
+        top = (16, 24, 40)
+        bottom = (58, 70, 92)
+        band = 6
+        for y in range(0, HEIGHT, band):
+            t = y / HEIGHT
+            surface.fill(_lerp_color(top, bottom, t), (0, y, WIDTH, band))
+        bed_rect = pygame.Rect(230, 180, 560, 150)
+        pygame.draw.rect(surface, (214, 224, 236), bed_rect, border_radius=26)
+        pillow_rect = pygame.Rect(258, 156, 150, 74)
+        pygame.draw.rect(surface, (230, 236, 244), pillow_rect, border_radius=28)
+        blanket_rect = pygame.Rect(230, 220, 560, 110)
+        pygame.draw.rect(surface, (110, 142, 158), blanket_rect, border_radius=22)
+
+    def _draw_lia(self, surface):
+        rect = self.lia_frame.get_rect()
+        rect.midbottom = (1060, 330)
+        surface.blit(self.lia_frame, rect)

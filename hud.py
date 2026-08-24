@@ -2,18 +2,26 @@ from functools import lru_cache
 
 import pygame
 
-from settings import FONT_PATH, HEIGHT, WIDTH
+from settings import FONT_PATH, FONT_SCALE, HEIGHT, WIDTH
 
 
 ABILITY_PANEL_WIDTH = 232
-ABILITY_PANEL_HEIGHT = 142
+# +34 pra caber a linha do ataque à distância (ver draw_ability_ui) sem
+# espremer o pulo de parede — o painel cresce um pouco mesmo antes do
+# ataque desbloquear, já que a linha reserva espaço desde o início.
+ABILITY_PANEL_HEIGHT = 176
 ABILITY_PANEL_MARGIN = 20
 
 
 @lru_cache(maxsize=None)
 def get_font(size, bold):
-    """Carrega cada tamanho da fonte apenas uma vez."""
-    font = pygame.font.Font(str(FONT_PATH), size)
+    """Carrega cada tamanho da fonte apenas uma vez. `size` é sempre o
+    tamanho "lógico" pedido pelo código (ex.: 17 numa fala de diálogo) —
+    FONT_SCALE (settings.py) amplia isso na hora de carregar a fonte de
+    verdade. dialogue.py também passa por aqui pra medir quebra de linha
+    (ver DialogueBox), então HUD e diálogo sempre escalam juntos e em
+    sincronia — mudar só o FONT_SCALE redimensiona o jogo inteiro de uma vez."""
+    font = pygame.font.Font(str(FONT_PATH), round(size * FONT_SCALE))
     font.set_bold(bold)
     return font
 
@@ -115,8 +123,15 @@ def draw_ability_ui(
     attack_remaining,
     attack_total,
     wall_jump_ready,
+    ranged_unlocked,
+    ranged_remaining,
+    ranged_total,
 ):
-    """Desenha o painel de habilidades, com rótulos e barras de recarga."""
+    """Desenha o painel de habilidades, com rótulos e barras de recarga.
+    A linha de ataque à distância (ver game.RANGED_*) sempre reserva o
+    espaço, mesmo antes de desbloquear (Fase 1 completa) — assim ela não
+    "pula" pra dentro do painel de repente quando desbloqueia; só troca de
+    "BLOQUEADO" pra uma barra de recarga normal."""
     x = WIDTH - ABILITY_PANEL_WIDTH - ABILITY_PANEL_MARGIN
     y = 22
     pygame.draw.rect(
@@ -141,10 +156,18 @@ def draw_ability_ui(
         surface, x, "ATAQUE", "F", y + 66, attack_remaining, attack_total, (255, 186, 78)
     )
 
+    if ranged_unlocked:
+        _draw_cooldown_row(
+            surface, x, "DISTÂNCIA", "R", y + 98, ranged_remaining, ranged_total, (95, 201, 255)
+        )
+    else:
+        draw_text(surface, "[R] DISTÂNCIA", (x + 12, y + 102), 13, "#5a6472")
+        draw_text(surface, "BLOQUEADO", (x + ABILITY_PANEL_WIDTH - 82, y + 102), 11, "#5a6472")
+
     wall_color = "#9cf0ad" if wall_jump_ready else "#7e8a98"
     wall_state = "PRONTO" if wall_jump_ready else "USADO"
-    draw_text(surface, "PULO PAREDE", (x + 12, y + 102), 13, "#ffffff")
-    draw_text(surface, wall_state, (x + ABILITY_PANEL_WIDTH - 42, y + 108), 11, wall_color, True)
+    draw_text(surface, "PULO PAREDE", (x + 12, y + 134), 13, "#ffffff")
+    draw_text(surface, wall_state, (x + ABILITY_PANEL_WIDTH - 42, y + 140), 11, wall_color, True)
 
 
 def _draw_cooldown_row(surface, x, label, key, top, remaining, total, color):

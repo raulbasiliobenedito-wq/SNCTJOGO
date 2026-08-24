@@ -1,6 +1,7 @@
 import pygame
 
-from settings import ASSET_DIR, FONT_PATH, HEIGHT, WIDTH
+from hud import get_font
+from settings import ASSET_DIR, HEIGHT, WIDTH
 
 
 class DialogueBox:
@@ -46,12 +47,18 @@ class DialogueBox:
             (self.overlay_width, self.overlay_height),
         )
         self.text_max_width = self.overlay_width - self.HORIZONTAL_PADDING
-        self.text_measure_font = pygame.font.Font(str(FONT_PATH), self.TEXT_SIZE)
+        # Medir com hud.get_font (em vez de instanciar a fonte na mão) é
+        # essencial: é o mesmo helper que desconto o texto de verdade (via
+        # text_fn=draw_text), com o mesmo FONT_SCALE aplicado — se a medição
+        # usasse um tamanho "cru" desencontrado do que é desenhado, a quebra
+        # de linha calculada aqui não bateria com o texto realmente maior/
+        # menor renderizado depois, estourando a caixa.
+        self.text_measure_font = get_font(self.TEXT_SIZE, self.TEXT_SIZE >= 30)
         # Uma fonte de medição por preset de tamanho (ver _fit_text) — os
         # pontos de quebra de linha mudam com o tamanho da fonte, então cada
         # tentativa precisa medir com a fonte do tamanho que vai usar.
         self._measure_fonts = {
-            size: pygame.font.Font(str(FONT_PATH), size) for size, _ in self.SIZE_PRESETS
+            size: get_font(size, size >= 30) for size, _ in self.SIZE_PRESETS
         }
 
     @property

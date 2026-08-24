@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pygame
 
 
@@ -38,14 +40,25 @@ class VFXManager:
         "candle_flare": {"row": 2, "frames": 4, "fps": 12, "loop": False, "sheet": "library"},
         "ink_splash": {"row": 3, "frames": 5, "fps": 15, "loop": False, "sheet": "library"},
         "silence_wave": {"row": 4, "frames": 6, "fps": 15, "loop": False, "sheet": "library"},
+        # vfx/parry_flash.png (folha dedicada, 1 linha, 6 quadros) — flash do
+        # parry bem-sucedido (ver Game._check_parries). Só existe depois que
+        # o Raul salvar o arquivo; até lá __init__ pula essa entrada de
+        # propósito (ver comentário logo abaixo) e spawn("parry_flash", ...)
+        # vira um no-op silencioso, sem derrubar o jogo.
+        "parry_flash": {"row": 0, "frames": 6, "fps": 20, "loop": False, "sheet": "parry"},
     }
 
     def __init__(self, sheet_path, extra_sheets=None):
         """`extra_sheets` é um dict {nome: caminho} — cada DEF pode apontar
         pra um desses via a chave "sheet" (ver DEFS acima). `nome` "primary"
-        é reservado pra `sheet_path`."""
+        é reservado pra `sheet_path`. Uma folha extra que ainda não existe no
+        disco (ex.: parry_flash.png antes do Raul salvá-la) é simplesmente
+        ignorada em vez de derrubar o jogo — os DEFs que apontam pra ela só
+        ficam de fora de self.frames, e spawn() já sabe pular esses casos."""
         sheets = {"primary": pygame.image.load(sheet_path).convert_alpha()}
         for name, path in (extra_sheets or {}).items():
+            if not Path(path).exists():
+                continue
             sheets[name] = pygame.image.load(path).convert_alpha()
         self.frames = {}
         for name, info in self.DEFS.items():
@@ -63,7 +76,12 @@ class VFXManager:
 
     def spawn(self, kind, center_x, center_y):
         """Centraliza o efeito no ponto dado (ex.: pés do jogador, centro do
-        inimigo atingido)."""
+        inimigo atingido). Se a folha daquele efeito ainda não foi carregada
+        (ex.: parry_flash.png antes de existir no disco, ver __init__), não
+        faz nada — silencioso de propósito, pra um asset pendente nunca
+        travar a jogabilidade."""
+        if kind not in self.frames:
+            return
         self.active.append({"kind": kind, "x": center_x, "y": center_y, "elapsed": 0})
 
     def update(self):

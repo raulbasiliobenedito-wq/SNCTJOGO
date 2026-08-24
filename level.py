@@ -126,6 +126,17 @@ class Level:
         self.dynamic_platforms = []
         self.platforms = self._build_course()
         self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
+        # Índice espacial de chão/parede em chunks (mesma ideia de
+        # TiledMap._build_chunks, usada lá pro desenho) — Game.move_player
+        # chamava _resolve_horizontal/vertical_collisions contra
+        # self.grounds + self.wall_blocks INTEIROS a cada quadro. Numa sala
+        # pequena isso é irrelevante, mas na Fase 3 (315x100 tiles, um túnel
+        # comprido) esses tiles de colisão passam de mil, e checar todos 2x
+        # por quadro (horizontal e vertical) é o motivo real do lag/
+        # travamento reportado lá — ver Level.solids_near, chamado por
+        # Game._all_solid_rectangles no lugar da lista completa.
+        self._ground_chunks = self._build_solid_chunks(self.grounds)
+        self._wall_chunks = self._build_solid_chunks(self.wall_blocks)
         # Espinhos (morte instantânea ao toque) e zonas de água (o jogador
         # nada livremente dentro delas — ver Game.move_player). Ambos vêm de
         # objetos tipados na camada "Entidades" do Tiled, sem precisar de
@@ -139,8 +150,11 @@ class Level:
         # de fase (ver Game._advance_level_if_ready, que só olha research).
         self.doors = self._make_doors()
         self.artifacts = self._make_artifacts()
-        # Lagos de lava usam a arte pronta (lava_lake.png) desenhada por cima
-        # do buraco esculpido no chão — ver Game._draw_lava_lakes.
+        # Objeto "lago_lava" (Entidades): só a área de perigo (ver
+        # Game._check_hazards, que respawna a Lia no contato) — sem desenho
+        # nenhum vinculado a ele. O visual da lava é 100% as tiles pintadas
+        # no Tiled (Fundo/Perigos/Decoração), igual a água: mover/redimensionar
+        # este objeto muda só a jogabilidade, nunca o que aparece na tela.
         self.lava_lakes = self._make_lava_lakes()
         self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
         self.surface_return = self.DEFAULT_SURFACE_RETURN
@@ -765,7 +779,11 @@ class Level:
     # atravessá-la, então o Rei Slime vira porta obrigatória sem precisar
     # editar o TMX. Largura múltipla de 32 (Platform.TILE_SIZE) pra desenhar
     # limpo, mesma altura das plataformas vizinhas nesse trecho do mapa.
-    SLIME_KING_ARENA_WIDTH = 800
+    # Arena maior (pedido do Raul: "no estilo dos bosses de silksong" — ver
+    # enemy.py DORMANT/wake_up e Game._maybe_wake_bosses), quase o dobro do
+    # que era (800) — dá espaço de verdade pra Lia manter distância do Rei
+    # Slime e usar o ataque à distância, em vez de já nascer colada nele.
+    SLIME_KING_ARENA_WIDTH = 1400
     SLIME_KING_ARENA_TOP = 520
     SLIME_KING_ARENA_MARGIN = 300
 
@@ -776,7 +794,15 @@ class Level:
     # x alinhado a um tile (múltiplo de 32) — precisa bater com uma chave de
     # self.column_tops, que só guarda o topo real de cada COLUNA de tile.
     DRAGON_ARENA_LEFT = 8576
-    DRAGON_ARENA_WIDTH = 350
+    # O Raul removeu a escada que existia logo depois do Dragão no .tmx e
+    # deixou o chão reto até perto do fim do mapa (que também cresceu 15
+    # tiles, 300->315, ver <map width=...>) — a fileira de colisão que
+    # começa em DRAGON_ARENA_LEFT (tile "10"/"130"/"137"...) agora continua
+    # reta por dezenas de tiles através do novo piso "119", sem mais o
+    # degrau que limitava a largura antiga (350) — deixei uma margem de
+    # segurança generosa antes do fim real do chão, já que não dá pra rodar
+    # o jogo aqui pra conferir o último pixel exato.
+    DRAGON_ARENA_WIDTH = 1200
 
     def _make_boss_arenas(self):
         arenas = []
@@ -857,6 +883,45 @@ class Level:
         # caso, funde os tiles de chão contíguos sob o slime numa área de
         # patrulha.
         return best or self._ground_zone_at(item)
+
+    # Tamanho do chunk em tiles pro índice espacial de colisão (ver
+    # __init__/_build_solid_chunks/solids_near) — mesmo valor de
+    # TiledMap.CHUNK_TILES, sem precisar ser idêntico, só um bom equilíbrio
+    # entre "poucos chunks pra olhar" e "poucos tiles sobrando por chunk".
+    SOLID_CHUNK_TILES = 8
+
+    def _chunk_size(self):
+        tile_size = self.tiled_map.tile_width if self.tiled_map else 32
+        return self.SOLID_CHUNK_TILES * tile_size
+
+    def _build_solid_chunks(self, rects):
+        """Agrupa retângulos sólidos (chão/parede) por chunk, indexados pelo
+        canto superior esquerdo — mesma ideia de TiledMap._build_chunks."""
+        chunk_size = self._chunk_size()
+        chunks = {}
+        for rect in rects:
+            key = (rect.left // chunk_size, rect.top // chunk_size)
+            chunks.setdefault(key, []).append(rect)
+        return chunks
+
+    def solids_near(self, rect, margin=128):
+        """Só os retângulos de chão/parede dos chunks que cruzam `rect`
+        (expandido por `margin`, folga pra cobrir o quanto a Lia se move num
+        quadro) — evita percorrer TODO chão/parede do mapa a cada quadro de
+        física (ver comentário em __init__ sobre o lag da Fase 3)."""
+        chunk_size = self._chunk_size()
+        expanded = rect.inflate(margin * 2, margin * 2)
+        first_col = expanded.left // chunk_size
+        last_col = expanded.right // chunk_size
+        first_row = expanded.top // chunk_size
+        last_row = expanded.bottom // chunk_size
+        result = []
+        for row in range(first_row, last_row + 1):
+            for col in range(first_col, last_col + 1):
+                key = (col, row)
+                result.extend(self._ground_chunks.get(key, ()))
+                result.extend(self._wall_chunks.get(key, ()))
+        return result
 
     def _build_column_tops(self):
         """Pra cada coluna (agrupando por rect.left), guarda só o tile sólido

@@ -249,7 +249,7 @@
     <property name="destino" value="sair"/>
    </properties>
   </object>
-  <object id="3" type="bibliotecario" x="1600" y="544" width="320" height="32"/>
+  <object id="3" type="bibliotecario" x="800" y="544" width="1216" height="32"/>
   <object id="4" type="artefato" x="1984" y="510" width="28" height="34">
    <properties>
     <property name="nome" value="Página Arrancada"/>
