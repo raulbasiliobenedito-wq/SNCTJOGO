@@ -1,18 +1,25 @@
 """Ponto de entrada do Pygame Zero.
 
-Execute com pgzrun main.py. A janela abre em tela cheia (FULLSCREEN=True)
-na resolução lógica do próprio jogo (GAME_WIDTH x GAME_HEIGHT, ver
-settings.py) — o Windows/driver de vídeo escala isso pra caber na tela de
-verdade sozinho, sem o jogo precisar descobrir a resolução do monitor.
+Execute com pgzrun main.py. A janela abre em tela cheia, na resolução
+lógica do próprio jogo (GAME_WIDTH x GAME_HEIGHT, ver settings.py) — o
+Windows/driver de vídeo escala isso pra caber na tela de verdade sozinho,
+sem o jogo precisar descobrir a resolução do monitor.
 
-IMPORTANTE: a janela é criada UMA VEZ SÓ, pelo próprio Pygame Zero, a
-partir de WIDTH/HEIGHT/FULLSCREEN definidos aqui embaixo (é assim que o
-pgzero sabe pra abrir direto em tela cheia). Chamar pygame.display.set_mode
-de novo depois, na mão (como uma versão anterior deste arquivo fazia
-dentro de update(), tentando recriar a janela em SCALED todo quadro) é o
-que causava o "pygame.error: failed to create renderer" — a maioria dos
-drivers de vídeo não gosta de recriar a janela/renderer depois que ela já
-existe, ainda mais toda vez que o loop passa por ali.
+IMPORTANTE sobre como a tela cheia é ligada: o pgzero (o pacote em si) NÃO
+tem suporte de verdade a um `FULLSCREEN = True` no módulo — é um pedido de
+feature aberto no repositório deles desde 2022, nunca implementado (só
+WIDTH/HEIGHT/TITLE são lidos de fato). Um `FULLSCREEN = True` aqui não
+fazia nada; a janela sempre abria no modo normal.
+
+O jeito que funciona de verdade: deixar o pgzero criar a janela do jeito
+dele (como sempre fez) e, UMA ÚNICA VEZ, no primeiro quadro, trocar pra
+tela cheia chamando pygame.display.set_mode(..., pygame.FULLSCREEN) de
+novo e atualizando screen.surface na mão (ver _apply_fullscreen). Fazer
+isso TODO quadro (uma versão antiga deste arquivo fazia isso dentro de
+update(), tentando recriar a janela em SCALED a cada quadro) é o que
+causava "pygame.error: failed to create renderer" — a maioria dos drivers
+de vídeo não gosta de recriar a janela/renderer repetidamente. Uma vez só,
+no primeiro quadro, não tem esse problema.
 
 WIDTH/HEIGHT usam a resolução lógica do jogo (não a do monitor): tentar
 detectar a resolução real via pygame.display.Info() antes do Pygame Zero
@@ -30,7 +37,6 @@ from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 WIDTH = GAME_WIDTH
 HEIGHT = GAME_HEIGHT
-FULLSCREEN = True
 
 
 class LogicalScreen:
@@ -43,8 +49,23 @@ class LogicalScreen:
 game = Game()
 logical_screen = LogicalScreen()
 
+# Ver docstring do arquivo — troca pra tela cheia uma única vez, no
+# primeiro quadro (não no import, porque o `screen` que o pgzero injeta só
+# existe depois que pgzrun.go() começa a rodar o laço).
+_fullscreen_applied = False
+
+
+def _apply_fullscreen():
+    global _fullscreen_applied
+    if _fullscreen_applied:
+        return
+    _fullscreen_applied = True
+    screen.surface = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+    pygame.display.set_caption(TITLE)
+
 
 def update(dt):
+    _apply_fullscreen()
     game.update(keyboard, dt)
 
 

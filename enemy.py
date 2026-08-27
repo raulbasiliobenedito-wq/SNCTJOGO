@@ -7,12 +7,21 @@ import pygame
 class Slime:
     """Inimigo que patrulha somente a plataforma onde nasceu."""
 
-    WIDTH = 52
-    HEIGHT = 34
-    # Pequeno ajuste pra cima: o tileset novo tem uma leve textura/borda no
-    # topo do tile de rocha que fazia os inimigos parecerem com os pés
-    # afundados na pedra quando alinhados exatamente na linha do chão.
-    GROUND_LIFT = 3
+    WIDTH = 40
+    HEIGHT = 22
+    # Pedido do Raul (Fase 1: slime afundando no chão da escola): o quadro
+    # desenhado (_load_enemy_sheet recorta e AMPLIA cada frame pra 64x32,
+    # sempre preenchendo a altura toda, mesmo já cortando a moldura
+    # transparente via get_bounding_rect) é bem mais alto que a hitbox
+    # (32px vs HEIGHT=22px) — draw() ancora o desenho em
+    # "self.y + 2 - GROUND_LIFT", então com GROUND_LIFT=3 a base do
+    # desenho ficava 9px ABAIXO da base de verdade da hitbox (34-3=31 de
+    # desenho contra 22 da hitbox). No tileset antigo (rocha) isso não
+    # aparecia porque a própria borda/textura do topo do tile escondia a
+    # sobra; no chão liso da escola nova ficou visível. GROUND_LIFT=9
+    # deixa só ~3px de sobreposição (efeito "pé apoiado", igual à
+    # calibragem original), em vez de 9.
+    GROUND_LIFT = 9
     HEALTH = 2
     SPEED = 1.15
     PLATFORM_MARGIN = 8

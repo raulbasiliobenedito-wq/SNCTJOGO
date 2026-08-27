@@ -20,9 +20,6 @@ class Player:
     DASH_SPEED = 14.0
     DASH_DURATION = 10
     DASH_COOLDOWN = 90
-    WALL_SLIDE_SPEED = 3.2
-    WALL_JUMP_SPEED = -14.0
-    WALL_JUMP_PUSH = 9.0
 
     # --- Mecânica de natação (água da Fase 3) ---
     SWIM_SPEED = 2.6
@@ -119,13 +116,6 @@ class Player:
         self.coyote_time = self.jump_buffer = 0
         self.dash_timer = self.dash_cooldown = 0
         self.dash_direction = 1
-        self.wall_side = 0
-        self.wall_jump_used = False
-        # Tolerância (em quadros) após soltar o encosto na parede em que o
-        # wall jump ainda conta — evita que soltar a direção pra preparar o
-        # pulo derrube o "grude" um quadro antes do pulo registrar.
-        self.wall_coyote_time = 0
-        self.last_wall_side = 0
         # Natação: Game.move_player() atualiza `swimming` a cada quadro
         # (colisão com Level.water_zones); `up_held` reflete a tecla de
         # subir sendo segurada (não é um pulso único como o jump_buffer).
@@ -217,18 +207,6 @@ class Player:
             return False
         if self.coyote_time:
             self.vy, self.coyote_time, self.jump_buffer = JUMP_SPEED, 0, 0
-            return True
-        if self.wall_coyote_time and not self.wall_jump_used:
-            # Um salto por parede antes de tocar o chão novamente. Usa
-            # last_wall_side (persiste durante a tolerância) em vez de
-            # wall_side (que já pode ter voltado a 0 nesse quadro).
-            self.vy = self.WALL_JUMP_SPEED
-            self.vx = -self.last_wall_side * self.WALL_JUMP_PUSH
-            self.facing_right = self.vx > 0
-            self.wall_jump_used = True
-            self.jump_buffer = 0
-            self.wall_coyote_time = 0
-            self.cancel_dash()
             return True
         return False
 

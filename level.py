@@ -125,18 +125,16 @@ class Level:
         self.column_tops = self._build_column_tops()
         self.dynamic_platforms = []
         self.platforms = self._build_course()
-        self.wall_blocks = self._build_wall_jump_walls() if self.is_underground else []
-        # Índice espacial de chão/parede em chunks (mesma ideia de
+        # Índice espacial de chão em chunks (mesma ideia de
         # TiledMap._build_chunks, usada lá pro desenho) — Game.move_player
         # chamava _resolve_horizontal/vertical_collisions contra
-        # self.grounds + self.wall_blocks INTEIROS a cada quadro. Numa sala
-        # pequena isso é irrelevante, mas na Fase 3 (315x100 tiles, um túnel
-        # comprido) esses tiles de colisão passam de mil, e checar todos 2x
-        # por quadro (horizontal e vertical) é o motivo real do lag/
+        # self.grounds INTEIRO a cada quadro. Numa sala pequena isso é
+        # irrelevante, mas na Fase 3 (315x100 tiles, um túnel comprido)
+        # esses tiles de colisão passam de mil, e checar todos 2x por
+        # quadro (horizontal e vertical) é o motivo real do lag/
         # travamento reportado lá — ver Level.solids_near, chamado por
         # Game._all_solid_rectangles no lugar da lista completa.
         self._ground_chunks = self._build_solid_chunks(self.grounds)
-        self._wall_chunks = self._build_solid_chunks(self.wall_blocks)
         # Espinhos (morte instantânea ao toque) e zonas de água (o jogador
         # nada livremente dentro delas — ver Game.move_player). Ambos vêm de
         # objetos tipados na camada "Entidades" do Tiled, sem precisar de
@@ -325,9 +323,18 @@ class Level:
 
     def _build_course(self):
         if self.index == 0:
-            tiled_platforms = self._build_tiled_object_platforms() if self.tiled_map else []
-            if tiled_platforms:
-                return tiled_platforms
+            # Antes caía pro percurso antigo gerado por código
+            # (_build_school_course) sempre que o grupo "Plataformas" do
+            # Tiled estivesse vazio — fazia sentido enquanto ESSE grupo era
+            # o chão inteiro da Fase 1. Agora que ela tem chão de verdade
+            # pintado na camada Colisão (igual Fases 2/3), esvaziar
+            # "Plataformas" de propósito (pedido do Raul, ao apagar os
+            # objetos antigos que sobraram da versão pré-reforma) é
+            # esperado — mesmo padrão do índice 1 logo abaixo: com
+            # tiled_map, usa só os objetos de verdade (mesmo que vazio),
+            # nunca o percurso antigo.
+            if self.tiled_map:
+                return self._build_tiled_object_platforms()
             return self._build_school_course()
         if self.index == 1:
             if self.tiled_map:
@@ -443,21 +450,6 @@ class Level:
         ]
         return [Platform(x, y, width, index % 3) for index, (x, y, width) in enumerate(layout)]
 
-    def _build_wall_jump_walls(self):
-        if self.tiled_map:
-            walls = [
-                self._rect_from_object(item)
-                for item in self.tiled_map.objects("Paredes", "Wall Jump")
-                if item["width"] > 0 and item["height"] > 0
-            ]
-            if walls:
-                return walls
-        return [
-            pygame.Rect(wall_x, wall_y, 32, 32)
-            for wall_x, wall_top in ((5540, 450), (6740, 420))
-            for wall_y in range(wall_top, 650, 32)
-        ]
-
     def _build_underground_lab(self):
         if self.tiled_map:
             self._build_tiled_underground_lab()
@@ -541,17 +533,70 @@ class Level:
             for index, (x, y, width) in enumerate(layout)
         )
 
-    def _configure_elevator_levers(self):
-        self.top_lever = self._lever_above(self.elevator)
-        self.bottom_lever = None
-        self.upper_bottom_lever = self._lever_above(self.upper_elevator)
-        self.upper_top_lever = None
+    # Distância horizontal da alavanca até a borda do poço do elevador —
+    # fica encostada no "andar" (chão fixo), nunca em cima da própria
+    # plataforma do elevador.
+    LEVER_SHAFT_MARGIN = 20
 
-    @staticmethod
-    def _lever_above(platform):
+    def _configure_elevator_levers(self):
+        """Pedido do Raul: antes só existia UMA alavanca por elevador, e
+        ela andava junto com a plataforma (self.top_lever.midbottom =
+        elevator.rect.top, ver _update_elevator_lever_positions, que não
+        existe mais) — se o elevador ficasse parado longe da Lia, a
+        alavanca ficava fora de alcance junto com ele, e a única saída
+        era cair no void pra respawnar no checkpoint. Agora são 4
+        alavancas FIXAS (uma por andar de cada elevador — 2 andares x 2
+        elevadores), presas ao poço, nunca à plataforma: sempre dá pra
+        chamar o elevador de qualquer um dos dois lados. top_lever/
+        bottom_lever ficam nos dois andares do elevador principal;
+        upper_top_lever/upper_bottom_lever, nos do elevador superior.
+        Todo o resto (timers, animação de 5s, o prompt [E]) já era
+        genérico por nome de alavanca — só faltava estas 4 existirem de
+        verdade.
+
+        Posição: se o Tiled tiver um objeto tipo "alavanca" com as
+        propriedades elevador=principal/superior e posicao=topo/base
+        (mesmo esquema de "botao"+ordem), usa a posição exata desse
+        objeto — controle total pro Raul, igual ao Rei Slime. Sem
+        objeto, cai no cálculo automático (_fixed_lever), encostado na
+        borda do poço, pra nunca deixar o laboratório sem alavanca
+        enquanto o mapa ainda tá sendo desenhado."""
+        self.top_lever = self._lever_rect(self.elevator, self.elevator_top, "principal", "topo")
+        self.bottom_lever = self._lever_rect(self.elevator, self.elevator_bottom, "principal", "base")
+        self.upper_top_lever = self._lever_rect(
+            self.upper_elevator, self.upper_elevator_top, "superior", "topo"
+        )
+        self.upper_bottom_lever = self._lever_rect(
+            self.upper_elevator, self.upper_elevator_bottom, "superior", "base"
+        )
+
+    def _lever_rect(self, elevator, stop_y, elevador_name, posicao_name):
+        item = self._find_lever_object(elevador_name, posicao_name) if self.tiled_map else None
+        if item:
+            return self._rect_from_object(item)
+        return self._fixed_lever(elevator, stop_y)
+
+    def _find_lever_object(self, elevador_name, posicao_name):
+        for item in self.tiled_map.entities("alavanca"):
+            properties = item["properties"]
+            elevador = str(properties.get("elevador", "")).casefold()
+            posicao = str(properties.get("posicao", "")).casefold()
+            if elevador == elevador_name and posicao == posicao_name:
+                return item
+        return None
+
+    @classmethod
+    def _fixed_lever(cls, elevator, stop_y):
+        """Fallback usado quando não existe objeto "alavanca" correspondente
+        no Tiled (ver _lever_rect): alavanca encostada na borda do poço, na
+        altura de um dos andares que o elevador atende. `elevator.x`/
+        `.width` não mudam (só `.y`, ver Platform._move_elevator), então dá
+        pra usar `elevator.rect.right` com segurança mesmo com o elevador
+        se movendo — só a altura (`stop_y`, o `top`/`bottom` configurado no
+        Tiled ou no fallback) muda de uma alavanca pra outra."""
         return pygame.Rect(
-            platform.rect.centerx - 17,
-            platform.rect.top - 52,
+            elevator.rect.right + cls.LEVER_SHAFT_MARGIN,
+            stop_y - 52,
             34,
             52,
         )
@@ -774,17 +819,9 @@ class Level:
             enemies.append(Librarian(_StaticZone(self._rect_from_object(item))))
         return enemies
 
-    # Plataforma nova, criada em código logo depois da última do percurso da
-    # Fase 1 (ver _make_boss_arenas) — a única forma de seguir em frente é
-    # atravessá-la, então o Rei Slime vira porta obrigatória sem precisar
-    # editar o TMX. Largura múltipla de 32 (Platform.TILE_SIZE) pra desenhar
-    # limpo, mesma altura das plataformas vizinhas nesse trecho do mapa.
-    # Arena maior (pedido do Raul: "no estilo dos bosses de silksong" — ver
-    # enemy.py DORMANT/wake_up e Game._maybe_wake_bosses), quase o dobro do
-    # que era (800) — dá espaço de verdade pra Lia manter distância do Rei
-    # Slime e usar o ataque à distância, em vez de já nascer colada nele.
-    SLIME_KING_ARENA_WIDTH = 1400
-    SLIME_KING_ARENA_TOP = 520
+    # Margem de segurança somada a world_width além da borda direita da
+    # arena do Rei Slime (ver _make_boss_arenas), pra câmera nunca bater no
+    # fim do mundo colada na arena.
     SLIME_KING_ARENA_MARGIN = 300
 
     # A arena do Dragão, ao contrário, reaproveita um trecho de chão já
@@ -806,14 +843,29 @@ class Level:
 
     def _make_boss_arenas(self):
         arenas = []
+        # Pedido do Raul: o Rei Slime nascia sempre em código, colado no
+        # fim do percurso gerado — quebrou quando "Plataformas" esvaziou
+        # (self.platforms virou [], então a arena nascia em x=0, logo no
+        # início da fase). Agora é objeto tipo "rei_slime" na camada
+        # Entidades, igual a bibliotecario/especime: o retângulo do
+        # objeto vira a área de patrulha dele (_StaticZone só empresta um
+        # .rect pra reaproveitar Slime/SlimeKing sem precisar de uma
+        # Platform de verdade, ver classe acima). Posição 100% livre no
+        # Tiled — só precisa ter chão de verdade (Colisão) pintado por
+        # baixo, mesma dependência que a arena do Dragão já tem hoje.
         if self.index == 0 and not self.room and self.tiled_map:
-            platform = self._add_slime_king_platform()
-            boss = SlimeKing(platform)
-            self.enemies.append(boss)
-            zone = pygame.Rect(
-                platform.rect.left - 60, 0, platform.rect.width + 120, self.world_height,
-            )
-            arenas.append({"zone": zone, "enemy": boss})
+            item = self.tiled_map.entity("rei_slime")
+            if item:
+                zone_rect = self._rect_from_object(item)
+                boss = SlimeKing(_StaticZone(zone_rect))
+                self.enemies.append(boss)
+                zone = pygame.Rect(
+                    zone_rect.left - 60, 0, zone_rect.width + 120, self.world_height,
+                )
+                arenas.append({"zone": zone, "enemy": boss})
+                self.world_width = max(
+                    self.world_width, zone_rect.right + self.SLIME_KING_ARENA_MARGIN
+                )
         if self.index == 2 and not self.room and self.tiled_map:
             floor = self.column_tops.get(self.DRAGON_ARENA_LEFT)
             if floor is not None:
@@ -823,17 +875,6 @@ class Level:
                 zone = pygame.Rect(span.left - 60, 0, span.width + 120, self.world_height)
                 arenas.append({"zone": zone, "enemy": boss})
         return arenas
-
-    def _add_slime_king_platform(self):
-        """Estende o mundo da Fase 1 (só a colisão — o fundo já é desenhado
-        proceduralmente por sala, ver Game.draw_school_background, então não
-        depende de tile nenhum do Tiled além daqui pra frente) com uma
-        plataforma nova bem no fim do percurso existente."""
-        last_edge = max((p.rect.right for p in self.platforms), default=0)
-        platform = Platform(last_edge, self.SLIME_KING_ARENA_TOP, self.SLIME_KING_ARENA_WIDTH, 0)
-        self.platforms.append(platform)
-        self.world_width = max(self.world_width, platform.rect.right + self.SLIME_KING_ARENA_MARGIN)
-        return platform
 
     NPC_WIDTH = 48
     NPC_HEIGHT = 48
@@ -920,7 +961,6 @@ class Level:
             for col in range(first_col, last_col + 1):
                 key = (col, row)
                 result.extend(self._ground_chunks.get(key, ()))
-                result.extend(self._wall_chunks.get(key, ()))
         return result
 
     def _build_column_tops(self):
@@ -985,7 +1025,6 @@ class Level:
             self.update_lever_animations()
             self._move_elevator(self.elevator, self.elevator_target)
             self._move_elevator(self.upper_elevator, self.upper_elevator_target)
-            self._update_elevator_lever_positions()
 
     # Zona (largura) em que os filhotes da Cisão se espalham ao redor do
     # ponto onde nasceram — não a arena inteira, só um pedaço em volta do
@@ -1034,13 +1073,6 @@ class Level:
             setattr(self, target_name, return_target)
         return timer
 
-    def _update_elevator_lever_positions(self):
-        self.top_lever.midbottom = (self.elevator.rect.centerx, self.elevator.rect.top)
-        self.upper_bottom_lever.midbottom = (
-            self.upper_elevator.rect.centerx,
-            self.upper_elevator.rect.top,
-        )
-
     def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
              microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
@@ -1062,7 +1094,6 @@ class Level:
             school_sprites,
             university_tiles,
         )
-        self._draw_school_walls(surface, camera_x, camera_y, school_sprites)
         self._draw_university_platform_props(
             surface,
             camera_x,
@@ -1171,16 +1202,6 @@ class Level:
             and not self._draw_automatic_school_platforms()
         )
 
-    def _draw_school_walls(self, surface, camera_x, camera_y, school_sprites):
-        if self.index == 0 and self._draw_automatic_school_platforms():
-            for wall in self.wall_blocks:
-                for x in range(wall.left, wall.right, 32):
-                    for y in range(wall.top, wall.bottom, 32):
-                        surface.blit(
-                            school_sprites["brick_tile"],
-                            (x - camera_x, y - camera_y),
-                        )
-
     def _draw_university_platform_props(self, surface, camera_x, camera_y, university_props):
         if self.index == 1 and self.university_decor and university_props:
             for world_x, top_y, prop_name in self.university_decor["on_platform"]:
@@ -1256,17 +1277,24 @@ class Level:
 
     def _draw_lab(self, surface, camera_x, camera_y, lever_on, sequence_progress,
                   sequence_solved, microscope_collected, microscope_assembled, puzzle_sprites, text_fn):
-        top_image = self.lever_image("top", puzzle_sprites)
-        panel_image = self.lever_image("panel", puzzle_sprites)
-        upper_bottom_image = self.lever_image("upper_bottom", puzzle_sprites)
-        # Centraliza cada sprite maior e mantém sua base na posição original.
-        for image, lever in ((top_image, self.top_lever), (panel_image, self.panel_lever),
-                             (upper_bottom_image, self.upper_bottom_lever)):
+        # 5 alavancas ao todo: uma em cada andar dos 2 elevadores (top/
+        # bottom/upper_top/upper_bottom, ver _configure_elevator_levers)
+        # mais a do painel — mesmo desenho pra todas, só muda o rótulo.
+        levers = (
+            ("top", self.top_lever, "ELEVADOR [E]"),
+            ("bottom", self.bottom_lever, "ELEVADOR [E]"),
+            ("upper_top", self.upper_top_lever, "ELEVADOR [E]"),
+            ("upper_bottom", self.upper_bottom_lever, "ELEVADOR [E]"),
+            ("panel", self.panel_lever, "PAINEL [E]"),
+        )
+        for name, lever, label in levers:
+            image = self.lever_image(name, puzzle_sprites)
+            # Centraliza o sprite (maior que o rect da alavanca) e mantém
+            # sua base na posição original.
             surface.blit(image, (lever.centerx - image.get_width() // 2 - camera_x,
                                  lever.bottom - image.get_height() - camera_y))
-        text_fn(surface, "ELEVADOR [E]", (self.top_lever.x-42-camera_x, self.top_lever.y-24-camera_y), 14, "#f4e4a5")
-        text_fn(surface, "PAINEL [E]", (self.panel_lever.x-30-camera_x, self.panel_lever.y-24-camera_y), 14, "#f4e4a5")
-        text_fn(surface, "ELEVADOR [E]", (self.upper_bottom_lever.x-42-camera_x, self.upper_bottom_lever.y-24-camera_y), 14, "#f4e4a5")
+            label_offset_x = -30 if name == "panel" else -42
+            text_fn(surface, label, (lever.x + label_offset_x - camera_x, lever.y - 24 - camera_y), 14, "#f4e4a5")
 
         for index, button in enumerate(self.buttons):
             surface.blit(puzzle_sprites["buttons"][index], (button.x-camera_x, button.y-camera_y))

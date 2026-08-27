@@ -50,6 +50,15 @@ class TiledMap:
         self.tilesets = self._load_tilesets(root)
         self.tiles = []
         self.animated_tiles = []
+        # Camada "Frente" (pedido do Raul, Fase 1): fica separada de
+        # self.tiles/animated_tiles de propósito — draw() normal nunca
+        # encosta nela; só draw_foreground() (chamado por Game.draw DEPOIS
+        # de desenhar a Lia) percorre essas duas listas. É assim que dá pra
+        # ter cenário passando na FRENTE dela sem duplicar nenhuma lógica
+        # de tile/animação — mesmo _read_tile_layer, só escolhendo a lista
+        # certa (ver _is_foreground_layer).
+        self.foreground_tiles = []
+        self.foreground_animated_tiles = []
         self.tile_collisions = []
         self.object_groups = {}
         self.elapsed_ms = 0.0
@@ -61,6 +70,8 @@ class TiledMap:
         # quadro de milhares de tiles pra só uma centena.
         self._tile_chunks = self._build_chunks(self.tiles)
         self._animated_chunks = self._build_chunks(self.animated_tiles)
+        self._foreground_tile_chunks = self._build_chunks(self.foreground_tiles)
+        self._foreground_animated_chunks = self._build_chunks(self.foreground_animated_tiles)
         # Imagem atual de cada animação (uma por par tileset+local_id, não
         # uma por instância de tile) — recalculada uma vez em update(), não a
         # cada tile animado desenhado. Populada já aqui pra existir mesmo se
@@ -191,6 +202,11 @@ class TiledMap:
         layer_x = int(layer.get("x", 0))
         layer_y = int(layer.get("y", 0))
         creates_collision = self._is_collision_layer(layer)
+        # Camada "Frente" (ver comentário em __init__): tiles dela vão pras
+        # listas foreground_*, desenhadas à parte por draw_foreground().
+        is_foreground = self._is_foreground_layer(layer)
+        tiles = self.foreground_tiles if is_foreground else self.tiles
+        animated_tiles = self.foreground_animated_tiles if is_foreground else self.animated_tiles
         for index, raw_gid in enumerate(values):
             gid = raw_gid & FLIPPED_GID_MASK
             if not gid:
@@ -207,9 +223,9 @@ class TiledMap:
             if tileset is None:
                 continue
             if local_id in tileset["animations"]:
-                self.animated_tiles.append((x, y, tileset, local_id))
+                animated_tiles.append((x, y, tileset, local_id))
             else:
-                self.tiles.append((x, y, self._tile_image(tileset, local_id)))
+                tiles.append((x, y, self._tile_image(tileset, local_id)))
 
     def _is_collision_layer(self, layer):
         """Reconhece a propriedade colisao=true ou nomes convencionais."""
@@ -218,6 +234,17 @@ class TiledMap:
         if str(value).casefold() in ("1", "true", "sim", "yes"):
             return True
         return _normalise(layer.get("name", "")) in ("colisao", "collision")
+
+    def _is_foreground_layer(self, layer):
+        """Reconhece a propriedade frente=true ou o nome "Frente" (pedido
+        do Raul: uma camada que desenha por cima da Lia, ver
+        Game._draw_world_foreground em game.py — chamado depois de
+        player.draw())."""
+        properties = self._properties(layer)
+        value = properties.get("frente", properties.get("foreground", "false"))
+        if str(value).casefold() in ("1", "true", "sim", "yes"):
+            return True
+        return _normalise(layer.get("name", "")) in ("frente", "foreground")
 
     @classmethod
     def _tile_values(cls, layer):
@@ -321,9 +348,23 @@ class TiledMap:
         return entities[0] if entities else None
 
     def draw(self, surface, camera_x, camera_y):
-        """Desenha só os tiles dos chunks que cruzam a área visível — em vez
-        de checar tile por tile do mapa inteiro a cada quadro (ver
-        _build_chunks), só os chunks perto da câmera são percorridos."""
+        """Desenha os tiles normais (tudo que NÃO é a camada "Frente" — ver
+        draw_foreground) só dos chunks que cruzam a área visível, em vez de
+        checar tile por tile do mapa inteiro a cada quadro (ver
+        _build_chunks)."""
+        self._draw_chunks(surface, camera_x, camera_y, self._tile_chunks, self._animated_chunks)
+
+    def draw_foreground(self, surface, camera_x, camera_y):
+        """Só a camada "Frente" (pedido do Raul, Fase 1) — Game.draw chama
+        isso DEPOIS de desenhar a Lia, pra ela ficar atrás desse cenário
+        (ex.: uma bancada/moldura de porta em primeiro plano). Mesmo
+        recorte por chunks do draw() normal, só que na lista separada
+        (ver __init__/_read_tile_layer)."""
+        self._draw_chunks(
+            surface, camera_x, camera_y, self._foreground_tile_chunks, self._foreground_animated_chunks
+        )
+
+    def _draw_chunks(self, surface, camera_x, camera_y, tile_chunks, animated_chunks):
         right = camera_x + surface.get_width()
         bottom = camera_y + surface.get_height()
 
@@ -346,10 +387,10 @@ class TiledMap:
         for chunk_row in range(first_row, last_row + 1):
             for chunk_col in range(first_col, last_col + 1):
                 key = (chunk_col, chunk_row)
-                for x, y, image in self._tile_chunks.get(key, ()):
+                for x, y, image in tile_chunks.get(key, ()):
                     if visible(x, y):
                         surface.blit(image, (x - camera_x, y - camera_y))
-                for x, y, tileset, local_id in self._animated_chunks.get(key, ()):
+                for x, y, tileset, local_id in animated_chunks.get(key, ()):
                     if visible(x, y):
                         image = self._current_frames[(id(tileset), local_id)]
                         surface.blit(image, (x - camera_x, y - camera_y))

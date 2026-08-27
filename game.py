@@ -14,6 +14,7 @@ from projectile import Projectile
 from vfx import VFXManager
 from settings import (
     ASSET_DIR,
+    CAMERA_ZOOM,
     FPS,
     HEIGHT,
     MOTIVATION,
@@ -95,6 +96,17 @@ STANDARD_ATTACK_POWER = 1
 DASH_ATTACK_POWER = 2
 STANDARD_ATTACK_REACH = 22
 DASH_ATTACK_REACH = 36
+
+# Dano que a Lia sofre por contato (pedido do Raul, deixar o jogo mais
+# frenético): mob comum tira só meio coração, chefe tira 1 coração
+# inteiro — ver take_damage/_lose_life, que agora trabalham com
+# self.lives fracionário. BOSS_DROP_TABLE (abaixo) já é o jeito que o
+# resto do código distingue chefe de mob comum, reaproveitado aqui em vez
+# de criar outra lista. Hazards ambientais (espinho/lava) e afogamento
+# também usam MOB_CONTACT_DAMAGE — não são "chefe", então caem no mesmo
+# balde dos mobs comuns.
+MOB_CONTACT_DAMAGE = 0.5
+BOSS_CONTACT_DAMAGE = 1
 
 # Combo de 4 hits corpo a corpo (pedido do Raul, ver frames 8-11 de
 # player_sheet.png): cada ataque dentro da janela de COMBO_RESET_WINDOW
@@ -262,6 +274,9 @@ class Game:
         self.pending_drops = []
         self.camera_x = 0
         self.camera_y = 0
+        # Surface intermediária pro zoom da câmera (ver _blit_zoomed_world) —
+        # criada só uma vez (não a cada quadro) e reaproveitada.
+        self._world_surface = None
         self.game_over_fade = 0
         self.game_over_characters = 0
         self._reset_combat_state()
@@ -343,9 +358,12 @@ class Game:
     # Fator de velocidade do fundo da caverna em relação à câmera: <1.0 faz o
     # fundo se mover mais devagar que o primeiro plano (efeito parallax).
     CAVE_BACKGROUND_PARALLAX = 0.35
+    # Mesma ideia pro fundo da escola (céu/montanhas ao longe, visto pelas
+    # janelas dos corredores) — anda bem mais devagar que a câmera.
+    SCHOOL_BACKGROUND_PARALLAX = 0.3
 
     def _load_backgrounds(self):
-        school_background = self._load_image("backgrounds/background_school.png", alpha=False)
+        school_background = self._load_scaled_background("backgrounds/background_school.png")
         university_background = self._load_scaled_background("backgrounds/university_background.png")
         cave_background = self._load_scaled_background("backgrounds/cave_background_v2.png")
         self.backgrounds = [school_background, university_background, cave_background]
@@ -798,20 +816,28 @@ class Game:
         self.shake_magnitude = 0
         self.death_pose_timer = 0
 
-    def respawn(self):
-        # Carcaça de robô/Dark Crystal (ver ITEM_DEFS): 1 ponto de escudo
-        # absorve o PRÓXIMO dano por completo, sem tirar vida nem reiniciar
-        # a posição — vale pra qualquer fonte (espinho, chefe, queda, afogar).
+    def _lose_life(self, amount=1):
+        """Núcleo comum de qualquer perda de vida (pedido do Raul: dano de
+        contato deixou de reposicionar — ver take_damage/respawn abaixo).
+        `amount` é em corações (1 = coração inteiro, 0.5 = meio coração —
+        ver MOB_CONTACT_DAMAGE/BOSS_CONTACT_DAMAGE) — self.lives virou
+        fracionário por causa disso, e o HUD (hud.draw_hud/_draw_hearts)
+        já sabe desenhar meio coração. Escudo absorve primeiro (Carcaça de
+        robô/Dark Crystal, ver ITEM_DEFS — vale pra qualquer fonte e
+        qualquer tamanho de dano: espinho, chefe, queda, afogar). Devolve
+        True só quando vida foi perdida DE VERDADE (não absorvida pelo
+        escudo e ainda sobrou vida) — quem chamou decide o que fazer
+        depois disso (respawn reposiciona, take_damage não)."""
         if self.shield > 0:
             self.shield -= 1
             self.invuln_timer = self.INVULN_FRAMES
             self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
             self.message = "O escudo absorveu o dano!"
             self.message_timer = 90
-            return
-        # Na universidade, o "toque que mata" costuma ser vidro quebrado ou
-        # a poça química — o estilhaço de vidro combina melhor com o tema do
-        # que o impacto genérico usado nas outras fases.
+            return False
+        # Na universidade, o "toque que machuca" costuma ser vidro quebrado
+        # ou a poça química — o estilhaço de vidro combina melhor com o
+        # tema do que o impacto genérico usado nas outras fases.
         if self.level.room == "laboratorio":
             vfx_kind = "acid_burn"
         elif self.level.room == "biblioteca":
@@ -821,20 +847,38 @@ class Game:
         else:
             vfx_kind = "impact"
         self.vfx.spawn(vfx_kind, self.player.rect.centerx, self.player.rect.centery)
-        self.lives -= 1
+        # max(0, ...) em vez de só subtrair: sem isso um chefe (1 coração
+        # inteiro) batendo com meio coração sobrando deixaria self.lives
+        # negativo, o que o HUD não sabe desenhar.
+        self.lives = max(0, self.lives - amount)
         self.invuln_timer = self.INVULN_FRAMES
         if self.lives <= 0:
             self.state = GAME_OVER
             self.game_over_fade = 0
             self.game_over_characters = 0
-            return
+            return False
+        return True
 
-        # Reposicionar (exit_room/checkpoint) fica pra depois — ver
-        # _finish_respawn, chamado por _update_playing quando
-        # death_pose_timer chega a 0. Isso dá tempo dos 2 frames de morte
-        # (Player.DEATH_FRAMES) aparecerem parada no lugar onde ela morreu,
-        # em vez dela sumir/reaparecer instantaneamente.
-        self.death_pose_timer = self.DEATH_POSE_DURATION
+    def take_damage(self, amount=1):
+        """Dano de contato (inimigo, espinho, lava, ataque à distância de
+        chefe, afogamento) — pedido do Raul: NÃO reposiciona mais a Lia,
+        só tira `amount` corações e dá 1s de invencibilidade
+        (INVULN_FRAMES). Ela continua exatamente onde apanhou. Só cair no
+        vazio ainda reposiciona de verdade — ver respawn()."""
+        self._lose_life(amount)
+
+    def respawn(self):
+        """Reservado pra quando a Lia cai no vazio (ver check_events, a
+        única chamada que sobrou) — continua reposicionando de verdade:
+        perde 1 coração inteiro, congela na pose de morte, e só depois
+        volta pro checkpoint/saída de sala (ver _finish_respawn)."""
+        if self._lose_life():
+            # Reposicionar (exit_room/checkpoint) fica pra depois — ver
+            # _finish_respawn, chamado por _update_playing quando
+            # death_pose_timer chega a 0. Isso dá tempo dos 2 frames de
+            # morte (Player.DEATH_FRAMES) aparecerem parada no lugar onde
+            # ela morreu, em vez dela sumir/reaparecer instantaneamente.
+            self.death_pose_timer = self.DEATH_POSE_DURATION
 
     def _apply_death_frame(self):
         elapsed = self.DEATH_POSE_DURATION - self.death_pose_timer
@@ -1307,17 +1351,10 @@ class Game:
         """Registra o clique; o ataque será iniciado no próximo update."""
         self.mouse_attack_requested = True
 
-    # Quadros de tolerância após soltar o encosto na parede em que o wall
-    # jump ainda é aceito (mesma ideia do coyote_time do chão). Sem isso, o
-    # jogador solta a direção pra preparar o pulo, o encosto conta como
-    # perdido no mesmo quadro e o wall jump falha de forma inconsistente.
-    WALL_COYOTE_FRAMES = 8
-
     def move_player(self):
         """Resolve colisões horizontais, verticais e o pulo sobre inimigos."""
         player = self.player
         solids = self._all_solid_rectangles()
-        player.wall_side = 0
         player.swimming = self._player_in_water(player)
         if player.swimming:
             player.cancel_dash()
@@ -1326,18 +1363,10 @@ class Game:
         player.x += player.vx
         self._resolve_horizontal_collisions(player, solids, previous_x)
 
-        if player.wall_side and not player.swimming:
-            player.last_wall_side = player.wall_side
-            player.wall_coyote_time = self.WALL_COYOTE_FRAMES
-        else:
-            player.wall_coyote_time = max(0, player.wall_coyote_time - 1)
-
         if player.swimming:
             player.apply_swim_gravity()
         else:
             player.apply_gravity()
-            if player.wall_side and player.vy > player.WALL_SLIDE_SPEED:
-                player.vy = player.WALL_SLIDE_SPEED
 
         previous_y = player.y
         previous_bottom = previous_y + PLAYER_HEIGHT
@@ -1354,20 +1383,17 @@ class Game:
         # daqui.
         player.grounded = landed
         if player.swimming:
-            # Sem chão firme nem parede pra reaproveitar debaixo d'água.
+            # Sem chão firme pra reaproveitar debaixo d'água.
             player.coyote_time = 0
-            player.wall_jump_used = True
         else:
             player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
-            if landed:
-                player.wall_jump_used = False
         player.try_jump()
 
     def _player_in_water(self, player):
         return any(player.rect.colliderect(zone) for zone in self.level.water_zones)
 
     def _all_solid_rectangles(self):
-        # solids_near em vez de self.level.grounds/wall_blocks inteiros: numa
+        # solids_near em vez de self.level.grounds inteiro: numa
         # fase grande (Fase 3, 315x100 tiles) essas listas passam de mil
         # retângulos, e checar todos 2x por quadro (colisão horizontal e
         # vertical) era o motivo real do lag reportado lá — ver
@@ -1379,19 +1405,33 @@ class Game:
 
     @staticmethod
     def _resolve_horizontal_collisions(player, solids, previous_x):
+        """Pedido do Raul (melhorar colisões — às vezes dava pra entrar
+        dentro de bloco): o teste antigo exigia `previous_right <=
+        solid.left` (zero de tolerância) pra empurrar a Lia de volta pra
+        fora. Isso só funciona se o quadro anterior tiver a hitbox
+        COMPLETAMENTE fora do bloco — em qualquer situação que já comece
+        um pouco embromada pra dentro (dash a 14px/quadro, ou o empurrão
+        extra de uma plataforma móvel somado ao próprio vx no mesmo
+        quadro, ver Game._move_with_platform, que roda ANTES daqui e já
+        desloca previous_x), o teste falhava silenciosamente e ela ficava
+        atravessando o bloco quadro após quadro sem nunca ser reposicionada.
+        Comparar contra a borda OPOSTA do bloco (`solid.right`/`solid.left`)
+        em vez da borda de entrada resolve isso: só deixa de empurrar pra
+        fora quando ela já tiver saído por completo do outro lado (um
+        "atravessou de ponta a ponta num quadro só" de verdade, que exigiria
+        mais de ~32px de deslocamento horizontal num único quadro — bem
+        acima de qualquer velocidade que a Lia atinge hoje)."""
         for solid in solids:
             if not player.rect.colliderect(solid):
                 continue
 
             previous_right = previous_x + PLAYER_HITBOX_OFFSET_X + PLAYER_HITBOX_WIDTH
             previous_left = previous_x + PLAYER_HITBOX_OFFSET_X
-            if player.vx > 0 and previous_right <= solid.left:
+            if player.vx > 0 and previous_right <= solid.right:
                 player.x = solid.left - PLAYER_HITBOX_WIDTH - PLAYER_HITBOX_OFFSET_X
-                player.wall_side = 1
                 player.cancel_dash()
-            elif player.vx < 0 and previous_left >= solid.right:
+            elif player.vx < 0 and previous_left >= solid.left:
                 player.x = solid.right - PLAYER_HITBOX_OFFSET_X
-                player.wall_side = -1
                 player.cancel_dash()
 
     def _stomp_enemy_if_possible(self, player, previous_bottom):
@@ -1459,19 +1499,43 @@ class Game:
         self.pending_drops = remaining
 
     def _resolve_vertical_collisions(self, player, previous_y, previous_bottom):
+        """Mesma correção de _resolve_horizontal_collisions (pedido do
+        Raul — atravessar plataforma às vezes): a tolerância antiga de
+        "+10"/"-10" era um número mágico fixo, sem relação com a espessura
+        de verdade da plataforma/bloco — uma plataforma móvel fina ou uma
+        queda rápida o bastante podia passar direto sem os 10px darem
+        conta. Comparar contra a borda OPOSTA do sólido (`solid.bottom`/
+        `solid.top`, igual ao equivalente horizontal) usa a espessura real
+        dele como tolerância em vez de um valor fixo — só deixa de
+        resolver quando ela já tiver atravessado o bloco INTEIRO num
+        quadro só.
+
+        Pedido do Raul (Fase 1 lagando muito depois de pintar chão de
+        verdade): esta função ainda montava ground_solids a partir de
+        self.level.grounds INTEIRO — TODO tile sólido do mapa, sem
+        nenhum filtro — e testava colisão contra a lista toda a cada
+        quadro. Isso passou despercebido no ajuste de lag da Fase 3
+        porque na época só o lado horizontal (_all_solid_rectangles,
+        chamado por move_player) tinha sido trocado pra usar
+        Level.solids_near (chunks perto da Lia); o vertical continuou
+        com a lista cheia, só que ninguém tinha chão pintado o
+        suficiente pra sentir o custo — a Fase 1 só expôs o bug de
+        verdade quando ganhou terreno real na camada Colisão. Mesmo
+        remédio aqui: solids_near em vez da lista inteira."""
         landed = False
         self.riding_platform = None
         platform_solids = [
             (platform.rect, platform) for platform in self.level.platforms
         ]
-        ground_solids = [(ground, None) for ground in self.level.grounds]
-        wall_solids = [(wall, None) for wall in self.level.wall_blocks]
+        ground_solids = [
+            (ground, None) for ground in self.level.solids_near(player.rect)
+        ]
 
-        for solid, moving_platform in platform_solids + ground_solids + wall_solids:
+        for solid, moving_platform in platform_solids + ground_solids:
             if (
                 player.rect.colliderect(solid)
                 and player.vy >= 0
-                and previous_bottom <= solid.top + 10
+                and previous_bottom <= solid.bottom
             ):
                 player.y = solid.top - PLAYER_HEIGHT
                 player.vy = 0
@@ -1481,7 +1545,7 @@ class Game:
             elif (
                 player.rect.colliderect(solid)
                 and player.vy < 0
-                and previous_y >= solid.bottom - 10
+                and previous_y >= solid.top
             ):
                 player.y = solid.bottom
                 player.vy = 0
@@ -1544,22 +1608,34 @@ class Game:
         if breathing:
             player.oxygen = min(player.OXYGEN_MAX_FRAMES, player.oxygen + player.OXYGEN_REFILL_PER_FRAME)
             return False
+        # Sem esse guard, ela tomaria dano TODO quadro parada embaixo
+        # d'água sem ar (não reposiciona mais pra fora da água — ver
+        # take_damage) — o mesmo guard que _check_hazards/
+        # _check_enemy_attack_hazards já usavam, só que esse aqui não
+        # existia porque antes respawn() sempre tirava ela dali na hora.
+        if self.invuln_timer > 0:
+            return False
         player.oxygen = max(0, player.oxygen - player.OXYGEN_DRAIN_PER_FRAME)
         if player.oxygen <= 0:
-            self.respawn()
+            # Afogar não é "chefe" nem "mob" — cai no mesmo balde dos
+            # hazards ambientais (MOB_CONTACT_DAMAGE), não no dano cheio de
+            # chefe.
+            self.take_damage(MOB_CONTACT_DAMAGE)
             return True
         return False
 
     def _check_hazards(self, player):
         if self.invuln_timer > 0:
             return False
+        # Espinho/lava são hazard ambiental, não "chefe" — mesmo dano de
+        # mob comum (ver MOB_CONTACT_DAMAGE).
         for hazard in self.level.hazards:
             if player.rect.colliderect(hazard):
-                self.respawn()
+                self.take_damage(MOB_CONTACT_DAMAGE)
                 return True
         for lake in self.level.lava_lakes:
             if player.rect.colliderect(lake):
-                self.respawn()
+                self.take_damage(MOB_CONTACT_DAMAGE)
                 return True
         return False
 
@@ -1578,7 +1654,10 @@ class Game:
                 continue
             for hazard in get_hazards():
                 if player.rect.colliderect(hazard):
-                    self.respawn()
+                    # active_hazards só existe nos chefes (jato do Espécime,
+                    # onda do Rei Slime, tomos/lâminas do Bibliotecário) —
+                    # sempre dano de chefe, não precisa checar BOSS_DROP_TABLE.
+                    self.take_damage(BOSS_CONTACT_DAMAGE)
                     return True
         return False
 
@@ -1710,7 +1789,8 @@ class Game:
                     if not enemy.alive:
                         self._on_enemy_defeated(enemy)
             elif self.invuln_timer <= 0 and self.player.rect.colliderect(enemy.rect):
-                self.respawn()
+                is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
+                self.take_damage(BOSS_CONTACT_DAMAGE if is_boss else MOB_CONTACT_DAMAGE)
                 return
 
     def _attack_box(self):
@@ -1854,11 +1934,21 @@ class Game:
             )
 
     def draw(self, screen):
-        surface = screen.surface
-        surface.fill((6, 14, 29))
+        real_surface = screen.surface
+        real_surface.fill((6, 14, 29))
         if self.state == INTRO:
-            self.intro.draw(surface, draw_text)
+            self.intro.draw(real_surface, draw_text)
             return
+        # Mundo inteiro continua desenhado do jeito de sempre, só que numa
+        # surface separada do mesmo tamanho (WIDTH x HEIGHT) em vez de ir
+        # direto pra tela — _blit_zoomed_world recorta uma janela menor
+        # centrada na Lia e amplia pro tamanho da tela (ver CAMERA_ZOOM em
+        # settings.py). Isso dá o efeito de zoom sem precisar mexer em
+        # nenhuma conta de câmera/parallax/HUD já existente.
+        if self._world_surface is None:
+            self._world_surface = pygame.Surface((WIDTH, HEIGHT)).convert()
+        surface = self._world_surface
+        surface.fill((6, 14, 29))
         # Shake (ver _trigger_shake/_update_shake) só desloca o mundo — a
         # câmera some pro valor de verdade logo antes do HUD, senão a barra
         # de vida do chefe e o resto da interface também tremeriam junto,
@@ -1873,14 +1963,39 @@ class Game:
         self._draw_player_light(surface)
         self.draw_dash_trail(surface)
         self.player.draw(surface, self.camera_x, self.camera_y)
+        self._draw_world_foreground(surface)
         self.vfx.draw(surface, self.camera_x, self.camera_y)
         for projectile in self.projectiles:
             projectile.draw(surface, self.camera_x, self.camera_y)
         self.camera_x -= shake_x
         self.camera_y -= shake_y
-        self._draw_interface(surface)
-        self._draw_state_overlay(surface)
-        self.hint.draw(surface, draw_text)
+        self._blit_zoomed_world(real_surface, surface)
+        self._draw_interface(real_surface)
+        self._draw_state_overlay(real_surface)
+        self.hint.draw(real_surface, draw_text)
+
+    def _blit_zoomed_world(self, real_surface, world_surface):
+        """Recorta uma janela CAMERA_ZOOM vezes menor que a tela, centrada
+        na Lia, e amplia de volta pro tamanho cheio — o mesmo truque de
+        "recorta e amplia" que usamos pro tamanho do sprite dela, só que
+        aplicado no frame inteiro. Roda uma vez por quadro (pygame.transform
+        .scale é C puro, não pesa)."""
+        if CAMERA_ZOOM == 1:
+            real_surface.blit(world_surface, (0, 0))
+            return
+        crop_width = max(1, round(WIDTH / CAMERA_ZOOM))
+        crop_height = max(1, round(HEIGHT / CAMERA_ZOOM))
+        player_screen_x = self.player.rect.centerx - self.camera_x
+        player_screen_y = self.player.rect.centery - self.camera_y
+        crop_x = round(player_screen_x - crop_width / 2)
+        crop_y = round(player_screen_y - crop_height / 2)
+        crop_x = max(0, min(crop_x, WIDTH - crop_width))
+        crop_y = max(0, min(crop_y, HEIGHT - crop_height))
+        cropped = world_surface.subsurface(
+            pygame.Rect(crop_x, crop_y, crop_width, crop_height)
+        )
+        scaled = pygame.transform.scale(cropped, (WIDTH, HEIGHT))
+        real_surface.blit(scaled, (0, 0))
 
     def _draw_background(self, surface):
         if self.level.room == "laboratorio":
@@ -1888,7 +2003,9 @@ class Game:
         elif self.level.room == "biblioteca":
             self._draw_repeating_background(surface, self.library_background)
         elif self.level.index == 0:
-            self.draw_school_background(surface)
+            self._draw_repeating_background(
+                surface, self.backgrounds[0], parallax=self.SCHOOL_BACKGROUND_PARALLAX
+            )
         elif self.level.index == 1:
             self.draw_university_background(surface)
         elif self.level.index == 2:
@@ -1949,6 +2066,17 @@ class Game:
             self.scientist_sprites,
             NPC_SPRITE_ROWS,
         )
+
+    def _draw_world_foreground(self, surface):
+        """Camada "Frente" do Tiled (pedido do Raul, Fase 1 — ver
+        TiledMap.draw_foreground/_is_foreground_layer): chamado DEPOIS de
+        self.player.draw() em draw(), então esse cenário fica na frente da
+        Lia. Sem isso, ela ficaria sempre por cima de qualquer tile,
+        mesmo os pensados como primeiro plano. Guard de tiled_map porque
+        fases sem mapa do Tiled (percurso gerado por código) não têm essa
+        camada."""
+        if self.level.tiled_map:
+            self.level.tiled_map.draw_foreground(surface, self.camera_x, self.camera_y)
         self._draw_drops(surface)
 
     def _draw_drops(self, surface):
@@ -2099,7 +2227,6 @@ class Game:
             self.player.DASH_COOLDOWN,
             self.attack_cooldown,
             ATTACK_COOLDOWN,
-            not self.player.wall_jump_used,
             self.ranged_unlocked,
             self.ranged_cooldown,
             RANGED_ATTACK_COOLDOWN,
@@ -2130,53 +2257,6 @@ class Game:
             surface.blit(image, (x, 0))
             x += image_width
             tile_number += 1
-
-    def draw_school_background(self, surface):
-        """Desenha salas e corredores com os recortes do sprite sheet da escola."""
-        surface.fill((28, 42, 61))
-        pygame.draw.rect(surface, (42, 63, 84), (0, 140, WIDTH, HEIGHT - 140))
-        self._draw_school_tile_bands(surface)
-        self._draw_school_rooms(surface)
-
-    def _draw_school_tile_bands(self, surface):
-        sprites = self.school_sprites
-        tile_start = -int(self.camera_x * 0.16) % 32 - 32
-        for x in range(tile_start, WIDTH + 32, 32):
-            surface.blit(sprites["brick_tile"], (x, int(142 - self.camera_y * 0.15)))
-            surface.blit(sprites["cream_tile"], (x, int(594 - self.camera_y * 0.42)))
-
-    def _draw_school_rooms(self, surface):
-        room_width = 1120
-        first_room = int(self.camera_x // room_width) - 1
-        last_room = int((self.camera_x + WIDTH) // room_width) + 1
-        for room in range(first_room, last_room + 1):
-            self._draw_school_room(surface, room, room * room_width - self.camera_x)
-
-    def _draw_school_room(self, surface, room, origin_x):
-        sprites = self.school_sprites
-
-        def put(name, x, y):
-            surface.blit(sprites[name], (int(x), int(y)))
-
-        put("chalkboard", origin_x + 68, 190 - self.camera_y * 0.30)
-        put("whiteboard", origin_x + 304, 190 - self.camera_y * 0.30)
-        put("clock", origin_x + 548, 78 - self.camera_y * 0.16)
-        put("bulletin", origin_x + 676, 190 - self.camera_y * 0.30)
-        put("exit", origin_x + 898, 216 - self.camera_y * 0.30)
-
-        room_variant = room % 3
-        if room_variant == 0:
-            put("bookshelf", origin_x + 60, 420 - self.camera_y * 0.48)
-            put("plant", origin_x + 640, 393 - self.camera_y * 0.48)
-            put("desk_row", origin_x + 755, 392 - self.camera_y * 0.48)
-        elif room_variant == 1:
-            put("door", origin_x + 94, 388 - self.camera_y * 0.48)
-            put("locker", origin_x + 335, 375 - self.camera_y * 0.48)
-            put("lab_table", origin_x + 620, 420 - self.camera_y * 0.48)
-        else:
-            put("desk_row", origin_x + 80, 385 - self.camera_y * 0.48)
-            put("bookshelf", origin_x + 500, 420 - self.camera_y * 0.48)
-            put("plant", origin_x + 926, 392 - self.camera_y * 0.48)
 
     def draw_dash_trail(self, surface):
         """Desenha o rastro que torna o dash legível."""

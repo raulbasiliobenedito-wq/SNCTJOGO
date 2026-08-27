@@ -27,6 +27,14 @@ PLAYER_HEIGHT = 48
 PLAYER_HITBOX_OFFSET_X = 4
 PLAYER_HITBOX_WIDTH = 24
 
+# Zoom da câmera (pedido do Raul, dica do professor: tava difícil de ver).
+# O mundo continua desenhado normalmente em WIDTH x HEIGHT — só recortamos
+# uma janela CAMERA_ZOOM vezes menor centrada na Lia e ampliamos de volta
+# pro tamanho da tela (ver Game._blit_zoomed_world em game.py), então isso
+# NÃO muda a resolução final nem exige tocar em nenhuma lógica de câmera/
+# mundo/HUD existente. 1.5 = tudo aparece 50% maior. Usar 1.0 desliga o zoom.
+CAMERA_ZOOM = 1
+
 ROOT_DIR = Path(__file__).resolve().parent
 ASSET_DIR = ROOT_DIR / "images"
 FONT_PATH = ROOT_DIR / "fonts" / "minha_fonte.ttf"

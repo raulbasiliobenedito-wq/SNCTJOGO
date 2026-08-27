@@ -6,10 +6,9 @@ from settings import FONT_PATH, FONT_SCALE, HEIGHT, WIDTH
 
 
 ABILITY_PANEL_WIDTH = 232
-# +34 pra caber a linha do ataque à distância (ver draw_ability_ui) sem
-# espremer o pulo de parede — o painel cresce um pouco mesmo antes do
-# ataque desbloquear, já que a linha reserva espaço desde o início.
-ABILITY_PANEL_HEIGHT = 176
+# Cabe título + as 3 linhas (dash/ataque/distância), cada uma reservando
+# espaço mesmo antes de desbloquear — ver draw_ability_ui.
+ABILITY_PANEL_HEIGHT = 140
 ABILITY_PANEL_MARGIN = 20
 
 
@@ -49,10 +48,12 @@ def draw_hud(
 ):
     """Desenha informações persistentes da fase e a mensagem temporária."""
     draw_text(surface, level_name, (24, 20), 27)
-    hearts = "♥ " * lives
-    draw_text(surface, "Vidas: " + hearts, (24, 55), 25, "#ff6379")
+    label = "Vidas: "
+    draw_text(surface, label, (24, 55), 25, "#ff6379")
+    label_width = get_font(25, True).size(label)[0]
+    hearts_end_x = _draw_hearts(surface, 24 + label_width, 55, lives)
     if shield:
-        shield_x = 24 + get_font(25, True).size("Vidas: " + hearts)[0] + 14
+        shield_x = hearts_end_x + 14
         draw_text(surface, "◆ " * shield, (shield_x, 55), 25, "#7cd6ff")
     draw_text(surface, f"Pesquisa: {found}/{total}", (24, 88), 22, "#ffe47a")
 
@@ -63,6 +64,39 @@ def draw_hud(
         _draw_oxygen_bar(surface, oxygen_ratio)
     if message_timer:
         _draw_message(surface, message)
+
+
+def _draw_hearts(surface, x, y, lives, size=25, color="#ff6379"):
+    """Desenha os coraçõezinhos de vida um por um, em vez de uma string só
+    repetida (como era antes) — precisa disso pra poder pintar o ÚLTIMO
+    coração só pela metade quando sobra meia vida (dano de mob comum =
+    meio coração, ver game.MOB_CONTACT_DAMAGE/take_damage, self.lives
+    agora é fracionário). Não depende de nenhum glifo especial de "meio
+    coração" existir na fonte customizada (`minha_fonte.ttf`, que pode nem
+    ter um) — desenha o coração cheio esmaecido por baixo e só a METADE
+    ESQUERDA de um coração na cor de verdade por cima, cortando a imagem
+    já renderizada em vez de confiar em outro caractere. Devolve o x logo
+    depois do último coração, pra quem chamou emendar o resto do HUD
+    (escudo) sem precisar recalcular a largura sozinho."""
+    font = get_font(size, True)
+    full_glyph = font.render("♥", True, pygame.Color(color))
+    dim_glyph = font.render("♥", True, pygame.Color("#5c2733"))
+    glyph_width, glyph_height = full_glyph.get_size()
+    gap = get_font(size, True).size(" ")[0]
+
+    whole_hearts = int(lives)
+    has_half = lives - whole_hearts >= 0.5
+
+    cursor_x = x
+    for _ in range(whole_hearts):
+        surface.blit(full_glyph, (cursor_x, y))
+        cursor_x += glyph_width + gap
+    if has_half:
+        surface.blit(dim_glyph, (cursor_x, y))
+        left_half = full_glyph.subsurface(pygame.Rect(0, 0, glyph_width // 2, glyph_height))
+        surface.blit(left_half, (cursor_x, y))
+        cursor_x += glyph_width + gap
+    return cursor_x
 
 
 ITEM_KEY_LABELS = {"gororoba": "1", "carcaca_robo": "2", "dark_crystal": "3"}
@@ -122,7 +156,6 @@ def draw_ability_ui(
     dash_total,
     attack_remaining,
     attack_total,
-    wall_jump_ready,
     ranged_unlocked,
     ranged_remaining,
     ranged_total,
@@ -163,11 +196,6 @@ def draw_ability_ui(
     else:
         draw_text(surface, "[R] DISTÂNCIA", (x + 12, y + 102), 13, "#5a6472")
         draw_text(surface, "BLOQUEADO", (x + ABILITY_PANEL_WIDTH - 82, y + 102), 11, "#5a6472")
-
-    wall_color = "#9cf0ad" if wall_jump_ready else "#7e8a98"
-    wall_state = "PRONTO" if wall_jump_ready else "USADO"
-    draw_text(surface, "PULO PAREDE", (x + 12, y + 134), 13, "#ffffff")
-    draw_text(surface, wall_state, (x + ABILITY_PANEL_WIDTH - 42, y + 140), 11, wall_color, True)
 
 
 def _draw_cooldown_row(surface, x, label, key, top, remaining, total, color):
