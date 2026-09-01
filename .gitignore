@@ -16,3 +16,8 @@ build/
 # Arquivos de sistema/editor comuns.
 .DS_Store
 Thumbs.db
+
+# Preferência de volume salva pelo menu de Configurações (ver audio.py) —
+# é local de cada instalação, gerado sozinho na primeira vez que alguém
+# mexe num slider, não precisa ir pro repositório.
+audio_settings.json

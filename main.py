@@ -32,7 +32,11 @@ tela cheia) — trocar pra um modo exclusivo de tela cheia numa resolução
 import pygame
 import pgzrun
 
-from game import Game
+# TITLE_STATE/SETTINGS_STATE (não "TITLE" puro, que já é o título da janela
+# vindo de settings.py logo abaixo) — usados em on_mouse_down/_move/_up pra
+# saber se o clique deve ir pro menu (game.handle_menu_*) ou pro ataque
+# (game.request_mouse_attack), ver docstring de cada handler.
+from game import Game, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 WIDTH = GAME_WIDTH
@@ -84,13 +88,36 @@ def update(dt):
 
 def draw():
     game.draw(logical_screen)
-    enlarged = pygame.transform.smoothscale(logical_screen.surface, (WIDTH, HEIGHT))
-    screen.surface.blit(enlarged, (0, 0))
+    # logical_screen já nasce em (WIDTH, HEIGHT) — ver GAME_WIDTH/GAME_HEIGHT
+    # acima, os dois vêm de settings.WIDTH/HEIGHT, então nunca são
+    # diferentes aqui. Redimensionar com smoothscale (o filtro mais caro
+    # do pygame) pro MESMO tamanho, todo quadro, era puro desperdício de
+    # CPU sem efeito visual nenhum — provável causa principal do lag
+    # reportado. main_web.py já pulava isso (same_size); só faltava aqui.
+    if (WIDTH, HEIGHT) == (GAME_WIDTH, GAME_HEIGHT):
+        screen.surface.blit(logical_screen.surface, (0, 0))
+    else:
+        enlarged = pygame.transform.smoothscale(logical_screen.surface, (WIDTH, HEIGHT))
+        screen.surface.blit(enlarged, (0, 0))
 
 
 def on_mouse_down(pos, button):
-    if button == mouse.LEFT:
+    if button != mouse.LEFT:
+        return
+    if game.state in (TITLE_STATE, SETTINGS_STATE):
+        game.handle_menu_click(pos)
+    else:
         game.request_mouse_attack()
+
+
+def on_mouse_up(pos, button):
+    if button == mouse.LEFT:
+        game.handle_menu_release()
+
+
+def on_mouse_move(pos, rel):
+    if game.state == SETTINGS_STATE:
+        game.handle_menu_drag(pos)
 
 
 def on_key_down(key):

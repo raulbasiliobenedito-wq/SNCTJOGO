@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="77">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="78">
  <properties>
   <property name="plataformas_automaticas" value="true"/>
  </properties>
  <tileset firstgid="1" source="escola_tileset_64x64.tsx"/>
  <tileset firstgid="121" source="fase3_pesquisa.tsx"/>
+ <tileset firstgid="281" source="aderecos_vila.tsx"/>
+ <tileset firstgid="293" source="chao_vila.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt2MFKLDEQheF+BX0WUReiS90qzr728/57e6AHZByxk1TlVOL/QcEVJJWu1Fl4lwUAAAAAAAAAAAAAAAAAAABAhIP6AgAAJPIp6nvc6vvPAPI77qys7tQXABzUZm9vfrNn+Ul9AaTQe2dr8vPbvWqy59W7p9PfGY9r3ax1u/279bz7tR4czsJ1vfZKtcetOa69t/d50TL93/nzWi9//I7iXaPeorVHr+9Qzk313qPsUA8e36aefcQbePXq8S3q+anfPfsu9aCeV8bZe/Xr9U3KGarfPPsu9aKeV7bZq7+h5puUc1TPJ/Mu9aSeF9W+T8odVs9HOfdM1POi2vdJucPq+dR8g/cM9vSKPks9b6p9nxQ9I/v3ur/nDGp6eH2fet5U+Ztdo+jZ2l9xZkkfLz3eRr2jVN27XVL0VBvtzpFvo95RyidTip7IQ72H3n3UmSPHyGi091dnjhwD7dSZmyXHZBlK6szNkmOUsa3gQ525DDn2mIPK+1ofwv6l7KLgQ505VY5r53HtdzN7XetNfYnlZ37PBR/qzGXLsYot8+237Sj4UGeODI+x4xZU8KHO3X/MsRVW6TmevaMLPryyo87vKDk2ihwH8cpLRAZnyvCJUeQ4UERevM6bIb9nRpFjDM8ocozhGUWOMTyjyDGGZwXledaesxVnAQAAzOILl0Lejw==
+   eJzt1DFOw0AQBVBzBLgF0CKgQFBCC4J+e+7f40hBgiATO97NeJz3pC+lyXoy65+uAwAAAAAAAAAAAAAAgPW5OhsO0N6c/v3X3wx9vokegJM0pTdjunRo/2rOEOkhegBO0twe/+xR6+8spcvvfe77nPe52H7eNWXGzXm3fe4GzoJ9avVoKWnlo8Iua3ns8zRzlhb5rPcTmSi6d5m6PHdfc85sOZce5xd991l63HKu6H3pcX7Rd7/0Hh9jruh96XF+0Xe/5B4fa67ofelxftF3r8fx+9Lj/KLv/pR6PPSeR+9Lj3O7XMDdL7nHm/ey9Xte+xl6DL8d2rHriv8lwHx6DAAAAEAGZRug6177vEUPMUHZCbDfc5+X6CG6v/39DqxJ6db3fpcRgbUoA1mS0iiQVZmYqefUfHbrQEZF9Jj0iugx6RXRY9IrosekV0SPSa+IHpNemZCaZ405O+IsAIC1+ALcT5Jw
   </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
@@ -20,23 +22,23 @@
    <property name="colisao" type="bool" value="true"/>
   </properties>
   <data encoding="base64" compression="zlib">
-   eJzt181uozAUBtC85sym7Kfvvx5VUzQIBcfXP9hxz5HuoikB27kfhscDAACgrV+ZBYx3lc/PzJJlGC83r7IM82qR48/bRw0cRfMpxzCfmkzKMQAAAKztd6KA/mrytx/7J1HyDP+k9rtIPTtvSf6O+X1Fnomq6elW1+shtd9F6ji+VA5T38nNb875ZuGdoI0W6/jq+S7V06XjTf2vdU9Es3N1jpq9dP+79Noz7c3H3+aqR0aM5c5qPf7ad6vSPaJkLqXzr123O/vqfN2WfX1nnlM9nHOvj5wvko+V9v3zWp7l7p0lGT5eI3c9W6x5zTlG5biXnvteJKuRHOeO9a59cLTIM9r53n11Xy2V208t+63kt1wtx7vW69oiv7U5fhe1z+XR7EXXu8SdOf4SvTev1kO7FvNqnd+fkuMeazTa3TmOnnPGNWuhdl498vtTcrwiOR6jdl69MizH70mOx2g5r54Zbj1W+pDjMVadF2PIMby/2XMMvCbH8P7keH4f3wVX5HhuX/ndvguuyPGc9j14e8gxr8nxHD5OtT3kl7Wde36md8dnY8up7UnBqq56PpXlVxkq+U4kj9GClaRycrR/VpqtXnmMFqxou6jc40YV8N9W+J1nFT2+5NoAAAAAAAAAAMB9/gIBZjlW
+   eJzt241KwzAUhuHuYqZMUUEvaL3/q3CFhoWQJifpye/eBw6i2CZm51s6uy0LAAAAAOi5Xpbl61Hfkfp51Pul9WwBbJl9c+ojsdzjyTZQ1y0jt7H6JMdAVeQYGB85BsZHjgEAAAAAwBHffXXujQP1+DIozZ85NoQ8A09He560fFm6BvIVyp8kvynnA2zSXtfqJ3e8kn16Uzi3Pb9QhkPHpOY3dL5enLkmwZPGOl4T79ueeZzMfCXvn9bqCY0cb8ycSh8TO1/rnNg951Pzvr70szaapbn+oTyYTEjGS83wmSzXHMumleOelM5z6PosxpdjyfWetF9T5lKC1vNUSh5Ca5ObK3f/jK1/7DlHOlZu386Y402JfU/j+t83L+ljEMt6DzTWPSd7f/sa/O5fzfe13h959J7MGK29mRzHaeTXOJPjEWx/39n/nWplT7OkOc51dm+eqYdsWvuC9j73Cjku8XmB1iXJsYaUMUuM3xuNHJdYm1fIcevMjZxjdy2lZuohGzlugxzrrqXUTD1k03p9rL0+5HjM6j3HsyLHbdB76NFMGQNeFTkGAKCO+14AxrTld90LwFjMHrwu5BgYxd2pdSG/mJvb8z29dvTNTVKrp4BZHfV8KMuxDOUck5LH1AJmEsqJzfwsN1ul8phawIzWg5L+XqsC8LRmHuOr1N/PGRsAAAAAAAAAAAAAAABAPf/PbcqK
   </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt27ENwCAMBEAWYIjsQJkyGSH7rxKQKOhIAYHiTvrClotfwCEAAAAAAAAAAAAAAMC+0uoCQFfMOZr5yrnrvjh/bwTjxf4JAAAAAHz2rC4AAAAAAAAAAAAAAAAAwHR+yQAAAAAAAAAAAAAAYKwXji8B7A==
+   eJzt1rEJgEAMBVAdwAUEEZ3B0lJHcP9VPPFK4RDEiLwHv0hI8ctUFQAAAAAAAAAAAAAAfNcUXQAoalKGlLY+5yVlzfvDHNIKntWUTwCAm/o6ugEAALyju/h9t5Qx7/3GAAAAAAAAAAAAAAAAAP+0RRcAAAAAAAAAAAAAAICf2QFW5AKI
   </data>
  </layer>
  <layer id="10" name="Frente" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt1zEKwCAMQFGv2jrZrfdf6iJIoEOHoIX34I9ChhCwFAAAAAAAAAAAAAAAAMh39M6punYc+CzucMxOA3837ln2GwAA9vT23wUAAAAAAAAAAAAAAAAAIE/r3aFr6UQAAAAAAAAAAAAAALCvB+egC8g=
+   eJzt1zEKhDAQBVBzji218la7Vtp5/0ZBBFlkFyWaEd6Dz6QJTPMJqSoAAAAAAAAAAAAAAAC43nvOZ5Ou7DpwSJ2W+dqZ67lJ9+8FkNP6Rl99BwCAmPb+vAA5tOl3gHj+9VafIbazHdZniCNHj3UaytJjeD49BgAAAAAAAADgTv2c8StD0Y0AAAAAAAAAAAAAACCuCWsyF7g=
   </data>
  </layer>
  <objectgroup id="1" name="Plataformas"/>
  <objectgroup id="2" name="Paredes"/>
  <objectgroup id="3" name="Rota Retorno">
-  <object id="36" type="plataforma" x="5120" y="799.833" width="128.5" height="32"/>
+  <object id="36" type="plataforma" x="5120.67" y="833.166" width="128.5" height="32"/>
   <object id="37" type="plataforma" x="4958.5" y="703.5" width="130" height="32"/>
   <object id="39" type="plataforma" x="4767" y="608.5" width="160" height="32"/>
  </objectgroup>
@@ -72,7 +74,7 @@
   <object id="49" type="slime" x="711.333" y="474.833" width="52" height="34"/>
   <object id="50" type="slime" x="4314" y="351" width="52" height="34"/>
   <object id="51" type="slime" x="6278.5" y="509" width="52" height="34"/>
-  <object id="53" type="elevador_principal" x="2708.67" y="654" width="160" height="32">
+  <object id="53" type="elevador_principal" x="2721.67" y="1088" width="160" height="32">
    <properties>
     <property name="bottom" value="1090"/>
     <property name="estilo" value="2"/>
@@ -148,12 +150,6 @@
   <object id="74" type="alavanca" x="2002.96" y="106.386" width="24.7273" height="21.7273">
    <properties>
     <property name="elevador" value="superior"/>
-    <property name="posicao" value="topo"/>
-   </properties>
-  </object>
-  <object id="75" type="alavanca" x="2613.14" y="617.636" width="25.2273" height="22.7273">
-   <properties>
-    <property name="elevador" value="principal"/>
     <property name="posicao" value="topo"/>
    </properties>
   </object>

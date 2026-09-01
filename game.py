@@ -27,6 +27,7 @@ from settings import (
 
 
 TITLE = "title"
+SETTINGS = "settings"
 INTRO = "intro"
 PLAYING = "playing"
 GAME_OVER = "game_over"
@@ -332,6 +333,14 @@ class Game:
         self._world_surface = None
         self.game_over_fade = 0
         self.game_over_characters = 0
+        # Menu de título/Configurações (ver handle_menu_click/_drag/
+        # _release, _title_buttons, _settings_widgets): qual slider está
+        # sendo arrastado agora (None = nenhum) e pra onde "Voltar" no
+        # menu de Configurações deve retornar — sempre TITLE por enquanto
+        # (não existe menu de pausa ainda; se um dia existir, é só apontar
+        # isso pra PLAYING antes de abrir Configurações a partir dele).
+        self._dragging_slider = None
+        self._settings_return_state = TITLE
         self._reset_combat_state()
         self._reset_input_state()
         self.load_level(0)
@@ -895,6 +904,10 @@ class Game:
         self.dash_was_down = False
         self.ranged_was_down = False
         self.dialogue_advance_was_down = False
+        # Debounce do ESC no menu de Configurações (ver _update_settings) —
+        # mesma ideia dos *_was_down acima, só que pra uma tecla que não
+        # passa por _read_input.
+        self._escape_was_down = False
         self._item_key_was_down = {}
 
     def _reset_vfx_state(self):
@@ -1017,6 +1030,8 @@ class Game:
 
         if self.state == TITLE:
             self._update_title(keyboard)
+        elif self.state == SETTINGS:
+            self._update_settings(keyboard)
         elif self.state == INTRO:
             self._update_intro(keyboard, dialogue_advance_pressed)
         elif self.state in (GAME_OVER, COMPLETE):
@@ -1094,11 +1109,124 @@ class Game:
         self.vfx.spawn("dust", self.player.rect.centerx, self.player.rect.centery)
 
     def _update_title(self, keyboard):
+        # Atalho de teclado (histórico, de antes do menu com botões
+        # existir) continua funcionando junto com clicar em "JOGAR" — ver
+        # handle_menu_click.
         if keyboard.space or keyboard.RETURN:
+            self._start_game()
+
+    def _start_game(self):
+        audio.play_sfx("select_sound")
+        self.lives = STARTING_LIVES
+        self.state = INTRO
+        self.intro.start()
+
+    def _update_settings(self, keyboard):
+        # Interação é toda por mouse (ver handle_menu_click/_drag/
+        # _release) — ESC aqui é só um atalho extra pra voltar sem
+        # precisar acertar o botão "Voltar" na tela.
+        if getattr(keyboard, "escape", False) and not self._escape_was_down:
             audio.play_sfx("select_sound")
-            self.lives = STARTING_LIVES
-            self.state = INTRO
-            self.intro.start()
+            self.state = self._settings_return_state
+        self._escape_was_down = getattr(keyboard, "escape", False)
+
+    def _title_buttons(self):
+        """Retângulos dos botões do menu de título, em coordenadas de
+        tela (mesmo espaço de WIDTH x HEIGHT usado por draw_text/pygame —
+        ver Game.draw/_blit_zoomed_world: a janela real abre exatamente
+        nesse tamanho, então a posição do mouse do Pygame Zero já chega
+        nessas mesmas coordenadas, sem precisar converter nada)."""
+        button_width, button_height = 360, 74
+        center_x = WIDTH // 2
+        return {
+            "play": pygame.Rect(0, 0, button_width, button_height).move(
+                center_x - button_width // 2, HEIGHT // 2 - 10
+            ),
+            "settings": pygame.Rect(0, 0, button_width, button_height).move(
+                center_x - button_width // 2, HEIGHT // 2 + 84
+            ),
+        }
+
+    SETTINGS_BAR_WIDTH = 480
+    SETTINGS_BAR_HEIGHT = 16
+    # Área clicável de cada slider é mais alta que a barra visual (ver
+    # _draw_slider em vez desse comentário se quiser conferir o desenho)
+    # só pra facilitar acertar com o mouse sem precisar caprichar no pixel.
+    SETTINGS_BAR_HIT_HEIGHT = 44
+
+    def _settings_widgets(self):
+        center_x = WIDTH // 2
+        bar_x = center_x - self.SETTINGS_BAR_WIDTH // 2
+        return {
+            "music_bar": pygame.Rect(
+                bar_x,
+                HEIGHT // 2 - 60 - self.SETTINGS_BAR_HIT_HEIGHT // 2,
+                self.SETTINGS_BAR_WIDTH,
+                self.SETTINGS_BAR_HIT_HEIGHT,
+            ),
+            "sfx_bar": pygame.Rect(
+                bar_x,
+                HEIGHT // 2 + 40 - self.SETTINGS_BAR_HIT_HEIGHT // 2,
+                self.SETTINGS_BAR_WIDTH,
+                self.SETTINGS_BAR_HIT_HEIGHT,
+            ),
+            "back": pygame.Rect(0, 0, 260, 64).move(
+                center_x - 130, HEIGHT // 2 + 150
+            ),
+        }
+
+    @staticmethod
+    def _slider_ratio_at(bar_rect, x):
+        if bar_rect.width <= 0:
+            return 0.0
+        return min(1.0, max(0.0, (x - bar_rect.x) / bar_rect.width))
+
+    def handle_menu_click(self, pos):
+        """Chamado por main.py (on_mouse_down) só quando self.state é
+        TITLE ou SETTINGS — cliques durante o jogo em si continuam indo
+        pro ataque (ver request_mouse_attack), não passam por aqui."""
+        if self.state == TITLE:
+            buttons = self._title_buttons()
+            if buttons["play"].collidepoint(pos):
+                self._start_game()
+            elif buttons["settings"].collidepoint(pos):
+                audio.play_sfx("select_sound")
+                self._settings_return_state = TITLE
+                self.state = SETTINGS
+        elif self.state == SETTINGS:
+            widgets = self._settings_widgets()
+            if widgets["back"].collidepoint(pos):
+                audio.play_sfx("select_sound")
+                self.state = self._settings_return_state
+            elif widgets["music_bar"].collidepoint(pos):
+                self._dragging_slider = "music"
+                audio.set_music_volume(self._slider_ratio_at(widgets["music_bar"], pos[0]))
+            elif widgets["sfx_bar"].collidepoint(pos):
+                self._dragging_slider = "sfx"
+                audio.set_sfx_volume(self._slider_ratio_at(widgets["sfx_bar"], pos[0]))
+                audio.play_sfx("select_sound")
+
+    def handle_menu_drag(self, pos):
+        """Chamado por main.py (on_mouse_move) todo quadro em que o mouse
+        se move — só faz algo se um slider está sendo arrastado (ver
+        handle_menu_click/_release)."""
+        if self._dragging_slider is None:
+            return
+        widgets = self._settings_widgets()
+        bar = widgets["music_bar" if self._dragging_slider == "music" else "sfx_bar"]
+        ratio = self._slider_ratio_at(bar, pos[0])
+        if self._dragging_slider == "music":
+            audio.set_music_volume(ratio)
+        else:
+            audio.set_sfx_volume(ratio)
+
+    def handle_menu_release(self):
+        """Chamado por main.py (on_mouse_up) — grava em disco só ao
+        soltar o slider (ver audio.save_settings), não a cada pixel
+        arrastado."""
+        if self._dragging_slider is not None:
+            self._dragging_slider = None
+            audio.save_settings()
 
     def _update_intro(self, keyboard, dialogue_advance_pressed):
         """A mãe de Lia no hospital (ver cutscene.IntroCutscene) — ESC pula
@@ -2386,7 +2514,11 @@ class Game:
             return "derrota_music"
         if self.state == COMPLETE:
             return "vitoria_music"
-        if self.state == TITLE:
+        if self.state in (TITLE, SETTINGS):
+            # Configurações só é alcançável a partir do título por
+            # enquanto (ver _settings_return_state) — mesma trilha dos
+            # dois, senão a música trocaria pra da Fase 1 ao só abrir o
+            # menu de volume.
             return "menu_music"
         if self.state == INTRO:
             return "intro_music"
@@ -2466,7 +2598,9 @@ class Game:
 
     def _draw_state_overlay(self, surface):
         if self.state == TITLE:
-            self.overlay(surface, "Echoes of Life", "Pressione ESPAÇO para começar")
+            self._draw_title_menu(surface)
+        elif self.state == SETTINGS:
+            self._draw_settings_menu(surface)
         elif self.state == GAME_OVER:
             self.draw_game_over_overlay(surface)
         elif self.state == COMPLETE:
@@ -2476,6 +2610,81 @@ class Game:
                 "Lia corre pra contar tudo pra mãe: a pesquisa vai continuar,\n"
                 "e agora ela sabe que não está sozinha nisso.\nPressione R para jogar novamente",
             )
+
+    # Paleta compartilhada dos botões/sliders do menu (mesmo estilo dos
+    # painéis do HUD em hud.py — retângulo escuro arredondado + borda
+    # azul clara) — BUTTON_HOVER_* fica um pouco mais claro, pra dar
+    # feedback de "isso é clicável" sem precisar de nenhuma imagem nova.
+    BUTTON_FILL = (12, 25, 43)
+    BUTTON_FILL_HOVER = (22, 42, 68)
+    BUTTON_BORDER = (101, 184, 228)
+    BUTTON_BORDER_HOVER = (150, 216, 255)
+
+    def _dim_background(self, surface, alpha=210):
+        """Camada escura translúcida por cima do mundo (que continua
+        sendo desenhado atrás — ver draw()), usada por todo overlay de
+        estado (título, configurações, game over, vitória)."""
+        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        layer.fill((5, 12, 28, alpha))
+        surface.blit(layer, (0, 0))
+
+    def _draw_menu_button(self, surface, rect, label, sublabel=None):
+        """Um botão clicável do menu — hover checado direto por
+        pygame.mouse.get_pos() (disponível sempre via `import pygame`,
+        sem depender de nenhum evento/global do Pygame Zero) porque é só
+        pra pintar o botão mais claro embaixo do cursor; o clique de
+        verdade continua vindo de handle_menu_click (main.py/
+        on_mouse_down), não daqui."""
+        hovered = rect.collidepoint(pygame.mouse.get_pos())
+        fill = self.BUTTON_FILL_HOVER if hovered else self.BUTTON_FILL
+        border = self.BUTTON_BORDER_HOVER if hovered else self.BUTTON_BORDER
+        pygame.draw.rect(surface, fill, rect, border_radius=14)
+        pygame.draw.rect(surface, border, rect, 3, border_radius=14)
+        label_y = rect.centery - (10 if sublabel else 0)
+        draw_text(surface, label, (rect.centerx, label_y), 26, "#ffe477", True)
+        if sublabel:
+            draw_text(surface, sublabel, (rect.centerx, rect.centery + 18), 14, "#9fb4c9", True)
+
+    def _draw_slider(self, surface, bar_rect, ratio, label):
+        """Barra + alça arrastável de um volume (0.0-1.0). `bar_rect` é a
+        área CLICÁVEL (mais alta que a barra visual, ver
+        SETTINGS_BAR_HIT_HEIGHT/_settings_widgets) — a barra desenhada de
+        verdade fica centralizada dentro dela, mais fina."""
+        draw_text(
+            surface,
+            f"{label} — {round(ratio * 100)}%",
+            (bar_rect.centerx, bar_rect.top - 22),
+            20,
+            "white",
+            True,
+        )
+        track = pygame.Rect(
+            bar_rect.x,
+            bar_rect.centery - self.SETTINGS_BAR_HEIGHT // 2,
+            bar_rect.width,
+            self.SETTINGS_BAR_HEIGHT,
+        )
+        pygame.draw.rect(surface, (30, 45, 66), track, border_radius=8)
+        filled = pygame.Rect(track.x, track.y, round(track.width * ratio), track.height)
+        pygame.draw.rect(surface, (95, 201, 255), filled, border_radius=8)
+        handle_x = track.x + round(track.width * ratio)
+        pygame.draw.circle(surface, "white", (handle_x, track.centery), 14)
+        pygame.draw.circle(surface, (95, 201, 255), (handle_x, track.centery), 14, 3)
+
+    def _draw_title_menu(self, surface):
+        self._dim_background(surface)
+        draw_text(surface, "Echoes of Life", (WIDTH // 2, HEIGHT // 2 - 140), 54, "#ffe477", True)
+        buttons = self._title_buttons()
+        self._draw_menu_button(surface, buttons["play"], "JOGAR", "ou pressione ESPAÇO")
+        self._draw_menu_button(surface, buttons["settings"], "CONFIGURAÇÕES")
+
+    def _draw_settings_menu(self, surface):
+        self._dim_background(surface)
+        draw_text(surface, "Configurações", (WIDTH // 2, HEIGHT // 2 - 160), 44, "#ffe477", True)
+        widgets = self._settings_widgets()
+        self._draw_slider(surface, widgets["music_bar"], audio.music_volume, "Volume da Música")
+        self._draw_slider(surface, widgets["sfx_bar"], audio.sfx_volume, "Volume dos Efeitos")
+        self._draw_menu_button(surface, widgets["back"], "VOLTAR")
 
     def draw_university_background(self, surface):
         """Repete o pátio alternando cópias normais e espelhadas."""
@@ -2508,9 +2717,7 @@ class Game:
             surface.blit(layer, (int(x), int(center_y - 4)))
 
     def overlay(self, surface, title, body, alpha=210):
-        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        layer.fill((5, 12, 28, alpha))
-        surface.blit(layer, (0, 0))
+        self._dim_background(surface, alpha)
         draw_text(surface, title, (WIDTH // 2, HEIGHT // 2 - 65), 42, "#ffe477", True)
         for line_number, line in enumerate(body.split("\n")):
             draw_text(
@@ -2525,9 +2732,7 @@ class Game:
     def draw_game_over_overlay(self, surface):
         """Desenha o fade escuro e os textos revelados em sequência."""
         alpha = int(210 * self.game_over_fade / 60)
-        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        layer.fill((5, 12, 28, alpha))
-        surface.blit(layer, (0, 0))
+        self._dim_background(surface, alpha)
 
         title = "Você consegue, Lia!"
         message = MOTIVATION
