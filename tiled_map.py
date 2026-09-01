@@ -152,6 +152,13 @@ class TiledMap:
             "tile_width": int(tileset_root.get("tilewidth", self.tile_width)),
             "tile_height": int(tileset_root.get("tileheight", self.tile_height)),
             "animations": self._load_animations(tileset_root),
+            # "escala" (propriedade opcional do tileset no Tiled): amplia o
+            # recorte de cada tile desse tileset na hora de desenhar, sem
+            # mexer no tamanho real da arte nem no grid do mapa — usado pra
+            # deixar as casas da vila maiores (ver casas_vila.tsx). Ancorado
+            # embaixo/centralizado em _read_tile_layer, então a casa cresce
+            # "pra cima" mantendo a base encostada no chão.
+            "scale": float(self._properties(tileset_root).get("escala", 1)),
         }
         # Pré-recorta o quadro de cada passo de animação uma única vez aqui
         # (em vez de fatiar a mesma imagem de novo a cada instância de tile
@@ -222,10 +229,24 @@ class TiledMap:
             tileset, local_id = self._tileset_for_gid(gid)
             if tileset is None:
                 continue
+            # Alinhamento igual ao do próprio Tiled: quando a arte do tile é
+            # maior que o grid do mapa (ex.: casas_vila, 128x128 num grid de
+            # 32x32), o Tiled ancora a imagem embaixo-à-esquerda da célula
+            # onde ela foi colocada — a imagem "cresce" pra cima a partir da
+            # base, nunca pra baixo. Nosso render tinha ancorado no canto
+            # superior esquerdo (crescendo pra baixo), por isso uma casa
+            # colocada rente ao chão no editor aparecia afundada no jogo: a
+            # diferença de altura (tile_height*scale - tile_height do mapa)
+            # inteira ficava abaixo da célula clicada. x fica igual ao do
+            # Tiled também (alinhado à esquerda, sem centralizar).
+            scale = tileset.get("scale", 1)
+            rendered_height = tileset["tile_height"] * scale
+            draw_x = x
+            draw_y = y + self.tile_height - rendered_height
             if local_id in tileset["animations"]:
-                animated_tiles.append((x, y, tileset, local_id))
+                animated_tiles.append((draw_x, draw_y, tileset, local_id))
             else:
-                tiles.append((x, y, self._tile_image(tileset, local_id)))
+                tiles.append((draw_x, draw_y, self._tile_image(tileset, local_id)))
 
     def _is_collision_layer(self, layer):
         """Reconhece a propriedade colisao=true ou nomes convencionais."""
@@ -323,7 +344,17 @@ class TiledMap:
             tileset["tile_width"],
             tileset["tile_height"],
         )
-        return tileset["image"].subsurface(source)
+        image = tileset["image"].subsurface(source)
+        scale = tileset.get("scale", 1)
+        if scale != 1:
+            # subsurface() não pode ser redimensionada in-place (ela
+            # compartilha pixels com o atlas todo) — transform.scale() cria
+            # uma cópia nova já do tamanho ampliado.
+            image = pygame.transform.scale(
+                image,
+                (round(tileset["tile_width"] * scale), round(tileset["tile_height"] * scale)),
+            )
+        return image
 
     def _image_for_gid(self, gid):
         tileset, local_id = self._tileset_for_gid(gid)

@@ -612,7 +612,6 @@ class Librarian:
     HEALTH = 12
     SPEED = 1.1
     PLATFORM_MARGIN = 6
-    RESPAWN_TIME = 20 * 60
     HURT_DURATION = 20
     DEATH_FRAME_TIME = 6
     DEATH_FRAMES = 14
@@ -751,7 +750,9 @@ class Librarian:
         if self.state == self.DYING:
             self._update_death()
         elif self.state == self.DEAD:
-            self._update_respawn()
+            # Pedido do Raul: chefe morto fica morto pra sempre, sem
+            # respawn (ver docstring de _update_death) — nenhuma ação aqui.
+            pass
         elif self.state == self.HURT:
             self._update_hurt()
         elif self.state == self.DORMANT:
@@ -1018,6 +1019,9 @@ class Librarian:
         self.death_frame = 0
 
     def _update_death(self):
+        """Pedido do Raul: chefe derrotado fica morto pra sempre — sem
+        RESPAWN_TIME/_update_respawn (removidos), DEAD é estado terminal,
+        ver update() acima."""
         self.state_timer -= 1
         self.death_frame = min(
             self.DEATH_FRAMES - 1,
@@ -1025,18 +1029,6 @@ class Librarian:
         )
         if self.state_timer <= 0:
             self.state = self.DEAD
-            self.state_timer = self.RESPAWN_TIME
-
-    def _update_respawn(self):
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.health = self.HEALTH
-            self.state = self.WALK
-            self.death_frame = 0
-            self.x = self.platform.rect.centerx - self.WIDTH // 2
-            self.y = self.platform.rect.top - self.HEIGHT
-            self.tomes = []
-            self.blades = []
 
     def _sprite_key(self):
         if self.state == self.DYING:
@@ -1148,7 +1140,6 @@ class Specimen:
     HEALTH = 12
     SPEED = 1.0
     PLATFORM_MARGIN = 6
-    RESPAWN_TIME = 20 * 60
     HURT_DURATION = 18
     DEATH_FRAME_TIME = 6
     DEATH_FRAMES = 12
@@ -1275,7 +1266,9 @@ class Specimen:
         if self.state == self.DYING:
             self._update_death()
         elif self.state == self.DEAD:
-            self._update_respawn()
+            # Pedido do Raul: chefe morto fica morto pra sempre, sem
+            # respawn (ver docstring de _update_death) — nenhuma ação aqui.
+            pass
         elif self.state == self.HURT:
             self._update_hurt()
         elif self.state == self.DORMANT:
@@ -1504,6 +1497,9 @@ class Specimen:
         self.death_frame = 0
 
     def _update_death(self):
+        """Pedido do Raul: chefe derrotado fica morto pra sempre — sem
+        RESPAWN_TIME/_update_respawn (removidos), DEAD é estado terminal,
+        ver update() acima."""
         self.state_timer -= 1
         self.death_frame = min(
             self.DEATH_FRAMES - 1,
@@ -1511,17 +1507,6 @@ class Specimen:
         )
         if self.state_timer <= 0:
             self.state = self.DEAD
-            self.state_timer = self.RESPAWN_TIME
-
-    def _update_respawn(self):
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.health = self.HEALTH
-            self.state = self.WALK
-            self.death_frame = 0
-            self.x = self.platform.rect.centerx - self.WIDTH // 2
-            self.y = self.platform.rect.top - self.HEIGHT
-            self.spores = []
 
     def _sprite_key(self):
         if self.state == self.DYING:
@@ -1966,7 +1951,6 @@ class SlimeKing:
     HEALTH = 12
     SPEED = 0.85
     PLATFORM_MARGIN = 10
-    RESPAWN_TIME = 20 * 60
     HURT_DURATION = 20
     DEATH_FRAME_TIME = 6
     DEATH_FRAMES = 12
@@ -2080,7 +2064,9 @@ class SlimeKing:
         if self.state == self.DYING:
             self._update_death()
         elif self.state == self.DEAD:
-            self._update_respawn()
+            # Pedido do Raul: chefe morto fica morto pra sempre, sem
+            # respawn (ver docstring de _update_death) — nenhuma ação aqui.
+            pass
         elif self.state == self.HURT:
             self._update_hurt()
         elif self.state == self.DORMANT:
@@ -2233,6 +2219,9 @@ class SlimeKing:
         self.death_frame = 0
 
     def _update_death(self):
+        """Pedido do Raul: chefe derrotado fica morto pra sempre — sem
+        RESPAWN_TIME/_update_respawn (removidos), DEAD é estado terminal,
+        ver update() acima."""
         self.state_timer -= 1
         self.death_frame = min(
             self.DEATH_FRAMES - 1,
@@ -2240,16 +2229,6 @@ class SlimeKing:
         )
         if self.state_timer <= 0:
             self.state = self.DEAD
-            self.state_timer = self.RESPAWN_TIME
-
-    def _update_respawn(self):
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.health = self.HEALTH
-            self.state = self.WALK
-            self.death_frame = 0
-            self.x = self.platform.rect.centerx - self.WIDTH // 2
-            self.y = self.platform.rect.top - self.HEIGHT
 
     def _sprite_key(self):
         if self.state == self.DYING:
@@ -2326,89 +2305,125 @@ class Dragon:
     própria montada em código perto do fim da caverna (ver
     Level._make_boss_arena / Game._active_boss_arena).
 
-    Redesenhado maior e mais duro (pedido do Raul: luta estilo Cuphead —
-    chefe enorme, jogador atacando de longe). Três ataques telegrafados
-    agora:
-    - SOPRO: o peito acende em degraus, depois um jato rasteiro varre o
-      chão à frente — resposta certa: pular por cima.
-    - BRASAS: as asas abrem, ele voa e solta pedras incandescentes em x
-      aleatório; elas CONTINUAM caindo depois dele pousar — resposta
-      certa: andar/reposicionar (pular te deixa mais tempo embaixo delas).
-    - VOO DA FÚRIA (novo): voo bem mais longo que o de Brasas — ele MARCA
-      o chão (indicador_perigo.png) antes de cada meteoro (meteoro.png)
-      cair exatamente ali, um de cada vez. Ver melee_vulnerable: durante
-      os dois voos (Brasas e Voo da Fúria) ele fica fora de alcance de
-      corpo a corpo de propósito — só o ataque à distância (Game.
-      _update_projectiles, sem essa checagem) continua causando dano."""
+    Refeito do zero (pedido do Raul, com a folha de sprite nova dele,
+    9 quadros de 324x265 desenhados à mão — ver game._load_dragon_sprites):
+    luta estilo Cuphead de verdade agora. Ele fica PARADO no mesmo lugar o
+    tempo todo (nunca mais anda — sem WALK/_patrol) e é PERMANENTEMENTE
+    imune a corpo a corpo (ver melee_vulnerable: sempre False, não muda
+    mais por estado) — só o ataque à distância da Lia (Game.
+    _update_projectiles, que nunca olha essa propriedade) causa dano nele;
+    tocar nele continua doendo na Lia normalmente (Game.check_enemies,
+    ramo de contato). Também ficou BEM maior (ver DRAGON_SCALE em
+    game.py) pra "ler" como o chefe final do jogo.
 
-    # Hitbox bem maior que antes (era 78x70) — o visual (ver DRAGON_SCALE
-    # em game.py, 2.4) fica ainda maior que isso, mesmo padrão "sprite
-    # maior que a hitbox" já usado nos outros inimigos.
-    WIDTH = 150
-    HEIGHT = 132
-    GROUND_LIFT = 14
+    Dois ataques telegrafados, direto da folha nova:
+    - SOPRO (quadros 2-3 da folha, "já desenhei" — jato de fogo na Lia):
+      mesma mecânica de sempre, jato rasteiro à frente — resposta certa:
+      pular por cima ou manter distância.
+    - TERREMOTO (quadros 4-6 voando + 7-9 batendo no chão): ele voa (fica
+      no ar, parado no eixo X mesmo assim) e desce batendo — o impacto
+      sacode a câmera por uns 5 segundos (ver Game._check_boss_shake_
+      events/consume_shake_event) enquanto MUITOS pedaços da caverna vão
+      caindo aos poucos ao longo desse tremor todo (reaproveita o sistema
+      de pedras da antiga Brasas — ver _update_rocks, roda todo quadro,
+      independente do estado; pedido do Raul: "o ataque brasas com
+      pedras fará parte do terremoto também"). O antigo Voo da Fúria
+      (meteoros mirados no chão) saiu de cena — virou este ataque único
+      aqui.
+
+    Sem quadros próprios de dano/morte na folha nova (só idle, sopro e
+    voo/terremoto) — HURT reaproveita o quadro parado (o hit já é sentido
+    pela barra de vida + boss_hit_sound) e DYING esmaece esse mesmo quadro
+    até sumir (ver draw/_current_frame)."""
+
+    # Hitbox BEM maior que antes (era 150x132) — pedido explícito do Raul:
+    # "ele será BEM maior do que o atual já é... enorme". O visual (ver
+    # DRAGON_SCALE em game.py) fica ainda maior que isso, mesmo padrão
+    # "sprite maior que a hitbox" já usado no resto do jogo.
+    WIDTH = 360
+    HEIGHT = 300
+    # Pedido do Raul (2026-08-27): "um pouco afundado no chão" com 32 —
+    # reduzido bastante (positivo = sprite desce, negativo = sprite sobe;
+    # ver Slime.GROUND_LIFT acima pra mesma conta). Ainda é chute (não dá
+    # pra calibrar o pixel exato sem rodar o jogo) — se continuar afundado
+    # ou passar a flutuar, é só me avisar que ajusto de novo.
+    GROUND_LIFT = -8
     HEALTH = 16
-    SPEED = 0.8
-    PLATFORM_MARGIN = 20
-    RESPAWN_TIME = 20 * 60
     HURT_DURATION = 20
     DEATH_FRAME_TIME = 6
     DEATH_FRAMES = 14
-    IDLE_DURATION = 60
 
     # Ventre em brasa (LEIA-ME: "a luz da fase 3 vem de baixo, o ventre é a
-    # área clara") — pinta o jato e as pedras com o mesmo acento alaranjado.
+    # área clara") — pinta o jato e os pedaços de pedra com o mesmo acento
+    # alaranjado.
     HAZARD_COLOR = (235, 140, 70, 140)
 
     ATTACK_COOLDOWN_MIN = 190
     ATTACK_COOLDOWN_MAX = 260
-    ATTACK_PATTERN = ("A", "B", "C", "A", "B", "C")
+    # Só 2 ataques agora (Sopro/Terremoto) — alterna entre os dois.
+    ATTACK_PATTERN = ("A", "B")
 
-    # attack_a.png (Sopro, 10 quadros): Q1-4 carrega[0-3] 9fps, Q5-8
-    # sopro[4-7] 16fps (jato ativo), Q9-10 recupera[8,9] ~12fps.
+    # Sopro (quadros 2-3 da folha nova): sem quadros próprios de
+    # antecipação/recuperação — TELEGRAPH e RECOVER seguram o quadro 2
+    # (boca carregando/fechando), BREATH mostra o quadro 3 (jato ativo).
     SOPRO_TELEGRAPH_DURATION = 28
     SOPRO_BREATH_DURATION = 16
     SOPRO_RECOVER_DURATION = 10
-    SOPRO_RANGE = 300
-    SOPRO_HEIGHT = 26
+    SOPRO_RANGE = 360
+    SOPRO_HEIGHT = 30
+    # Fração aproximada de onde fica a boca dentro do quadro cru (a cabeça
+    # sempre nasce do lado ESQUERDO da arte, ver correção de flip em draw)
+    # — chute de olho na arte, não dá pra medir o pixel exato sem rodar o
+    # jogo. X medido a partir da borda de trás (rabo); Y do topo do quadro.
+    # Usado só pro VISUAL do jato/faísca (ver _mouth_position/
+    # _draw_sopro_fire) — o retângulo que realmente causa dano continua
+    # _sopro_breath_rect, sem mudar (baseado na hitbox, não na arte).
+    SOPRO_MOUTH_X_FRACTION = 0.14
+    SOPRO_MOUTH_Y_FRACTION = 0.38
 
-    # attack_b.png (Brasas, 10 quadros): Q1-3 antecipação[0-2] 9fps, Q4-7
-    # voo[3-6] 10fps (solta pedras), Q8 pouso[7] 14fps, Q9-10 assenta[8,9]
-    # 12fps.
-    BRASAS_TELEGRAPH_DURATION = 21
-    BRASAS_FLIGHT_DURATION = 24
-    BRASAS_LANDING_DURATION = 4
-    BRASAS_RECOVER_DURATION = 10
-    BRASAS_ROCK_INTERVAL = 8
-    BRASAS_ROCK_COUNT = 3
+    # Terremoto (quadros 4-6 voando + 7-9 batendo): TELEGRAPH segura o
+    # quadro parado (idle) antes de decolar, FLY alterna os 3 quadros de
+    # voo em loop, SLAM segura os quadros de impacto (anima rápido os 3 e
+    # trava no último — ver _frame_index) durante TODO o tremor de ~5s
+    # (pedido do Raul), soltando um pedaço novo da caverna a cada
+    # TERREMOTO_ROCK_INTERVAL quadros até bater TERREMOTO_ROCK_TOTAL —
+    # "MUITOS meteoros" caindo ao longo do tremor, não uma leva só de
+    # início. RECOVER volta pro quadro parado até assentar de vez.
+    TERREMOTO_TELEGRAPH_DURATION = 24
+    TERREMOTO_FLY_DURATION = 70
+    # 300 quadros = ~5s a 60fps (ver EARTHQUAKE_SHAKE_DURATION em game.py,
+    # mesma duração pra tremor de câmera e chuva de pedras terminarem
+    # juntos).
+    TERREMOTO_SLAM_DURATION = 300
+    # Só os 3 quadros de impacto animam rápido (ver _frame_index) — o
+    # resto dos 300 quadros do SLAM segura no último quadro (poeira
+    # assentada) enquanto os pedaços continuam caindo.
+    TERREMOTO_SLAM_FRAME_DURATION = 24
+    TERREMOTO_RECOVER_DURATION = 14
+    TERREMOTO_ROCK_INTERVAL = 16
+    TERREMOTO_ROCK_TOTAL = 18
+    # Margem lateral pra sortear onde cada pedaço nasce (mesma ideia do
+    # antigo PLATFORM_MARGIN, mas não precisa mais de patrulha nenhuma).
+    ROCK_SPAWN_MARGIN = 20
 
+    # Sistema de queda reaproveitado tal e qual da antiga Brasas (dragon_
+    # rock.png, 8 quadros: queda/impacto/explosão) — só a origem (um
+    # pedaço novo a cada TERREMOTO_ROCK_INTERVAL quadros ao longo de todo
+    # o tremor, não uma leva só no instante do impacto) mudou, ver
+    # _update_terremoto_slam/_spawn_terremoto_rock/_update_rocks.
+    # ROCK_SIZE agora bate com o sprite visual de verdade (24 * Game.
+    # ROCK_SPRITE_SCALE=2.2 = 52.8, arredondado pro mesmo 53 que
+    # pygame.transform.scale gera lá — ver _load_grid_sheet) — pedido do
+    # Raul: "aumente a hitbox dos meteoros para ficarem iguais ao tamanho
+    # deles". Se o Raul mudar ROCK_SPRITE_SCALE de novo, este número
+    # precisa acompanhar pra continuar batendo.
     ROCK_FALL_SPEED = 4.2
     ROCK_START_HEIGHT = 260
     ROCK_IMPACT_DURATION = 4
     ROCK_EXPLOSION_DURATION = 46
-    ROCK_SIZE = 24
-
-    # Voo da Fúria (ataque "C", novo): reaproveita o sprite/animação do
-    # attack_b (voo) — só a arte do CHÃO é nova (marca + meteoro), não
-    # precisa de quadros próprios do corpo do Dragão. Voo bem mais longo
-    # que o de Brasas (150 vs 24 quadros) e meteoros um de cada vez, com
-    # aviso — dá tempo de reagir, mas o voo prolongado é o que força o
-    # jogador a ficar no ataque à distância por mais tempo seguido.
-    VOO_FURIA_TELEGRAPH_DURATION = 26
-    VOO_FURIA_FLIGHT_DURATION = 150
-    VOO_FURIA_LANDING_DURATION = 4
-    VOO_FURIA_RECOVER_DURATION = 12
-    METEOR_MARK_INTERVAL = 45
-    METEOR_MARK_COUNT = 4
-    METEOR_TELEGRAPH_DURATION = 40
-    METEOR_FALL_SPEED = 7.5
-    METEOR_START_HEIGHT = 340
-    METEOR_IMPACT_DURATION = 5
-    METEOR_EXPLOSION_DURATION = 30
-    METEOR_SIZE = 32
+    ROCK_SIZE = 53
 
     IDLE = "idle"
-    WALK = "walk"
     HURT = "hurt"
     DYING = "dying"
     DEAD = "dead"
@@ -2418,56 +2433,57 @@ class Dragon:
     SOPRO_TELEGRAPH = "sopro_telegraph"
     SOPRO_BREATH = "sopro_breath"
     SOPRO_RECOVER = "sopro_recover"
-    BRASAS_TELEGRAPH = "brasas_telegraph"
-    BRASAS_FLIGHT = "brasas_flight"
-    BRASAS_LANDING = "brasas_landing"
-    BRASAS_RECOVER = "brasas_recover"
-    VOO_FURIA_TELEGRAPH = "voo_furia_telegraph"
-    VOO_FURIA = "voo_furia"
-    VOO_FURIA_LANDING = "voo_furia_landing"
-    VOO_FURIA_RECOVER = "voo_furia_recover"
+    TERREMOTO_TELEGRAPH = "terremoto_telegraph"
+    TERREMOTO_FLY = "terremoto_fly"
+    TERREMOTO_SLAM = "terremoto_slam"
+    TERREMOTO_RECOVER = "terremoto_recover"
     ATTACK_STATES = (
         SOPRO_TELEGRAPH, SOPRO_BREATH, SOPRO_RECOVER,
-        BRASAS_TELEGRAPH, BRASAS_FLIGHT, BRASAS_LANDING, BRASAS_RECOVER,
-        VOO_FURIA_TELEGRAPH, VOO_FURIA, VOO_FURIA_LANDING, VOO_FURIA_RECOVER,
+        TERREMOTO_TELEGRAPH, TERREMOTO_FLY, TERREMOTO_SLAM, TERREMOTO_RECOVER,
     )
-    ACTIVE_STATES = (IDLE, WALK, HURT, DORMANT) + ATTACK_STATES
-    # Fora de alcance de corpo a corpo durante os voos (ver docstring da
-    # classe) — Game.check_enemies confere isso antes de aplicar dano de
-    # espada; o ataque à distância (Game._update_projectiles) nunca olha
-    # pra essa propriedade, então continua funcionando sempre.
-    MELEE_IMMUNE_STATES = (
-        BRASAS_FLIGHT, BRASAS_LANDING,
-        VOO_FURIA_TELEGRAPH, VOO_FURIA, VOO_FURIA_LANDING,
-    )
+    # IDLE aqui já é o "parado esperando o próximo ataque" — não existe
+    # mais WALK (ele nunca anda, ver docstring da classe).
+    ACTIVE_STATES = (IDLE, HURT, DORMANT) + ATTACK_STATES
     # Ver SlimeKing.FACING_STATES — mesma regra: só vira pra Lia parado ou
-    # ainda na antecipação, nunca no meio de WALK/ataque em execução.
-    FACING_STATES = (IDLE, DORMANT, SOPRO_TELEGRAPH, BRASAS_TELEGRAPH, VOO_FURIA_TELEGRAPH)
+    # ainda na antecipação, nunca no meio de um ataque em execução.
+    FACING_STATES = (IDLE, DORMANT, SOPRO_TELEGRAPH, TERREMOTO_TELEGRAPH)
 
     def __init__(self, platform):
         self.platform = platform
-        self.x = platform.rect.centerx - self.WIDTH // 2
+        # Posição fixa pra sempre (ver docstring: ele nunca mais se move em
+        # X) — nasce encostado na extremidade DIREITA do retângulo do Tiled
+        # (pedido do Raul), não centralizado (ver Level._make_boss_arenas,
+        # ramo Fase 3).
+        self.x = platform.rect.right - self.WIDTH
         self.y = platform.rect.top - self.HEIGHT
         self.direction = 1
-        self.speed = self.SPEED
         self.health = self.HEALTH
         self.state = self.DORMANT
         self.state_timer = 0
-        self.death_frame = 0
         self.animation = 0
         self.attack_cooldown = self._next_attack_delay()
         self.attack_index = 0
-        self.rocks_spawned = 0
-        self.meteors_marked = 0
-        # Pedras/meteoros já soltos: atualizados todo quadro independente
-        # do estado (ver _update_rocks/_update_meteors), pra continuarem
-        # caindo/queimando depois dele já ter pousado e voltado a patrulhar.
+        # Pedaços de pedra já soltos: atualizados todo quadro independente
+        # do estado (ver _update_rocks), pra continuarem caindo/queimando
+        # mesmo depois dele já ter voltado a esperar o próximo ataque.
         self.rocks = []
-        self.meteors = []
+        # Quantos pedaços já nasceram no tremor do Terremoto em andamento
+        # (ver _update_terremoto_slam) — reseta a cada novo Terremoto em
+        # _start_terremoto_slam.
+        self.terremoto_rocks_spawned = 0
+        # Vira True por 1 quadro no instante do impacto do Terremoto (ver
+        # _start_terremoto_slam) — Game._check_boss_shake_events consome
+        # isso pra disparar o shake de tela + earthquake_dragon_sound.
+        self._shake_pending = False
 
     @property
     def melee_vulnerable(self):
-        return self.state not in self.MELEE_IMMUNE_STATES
+        """Pedido do Raul: luta estilo Cuphead — corpo a corpo NUNCA causa
+        dano nele (permanente, não depende mais do estado). Só o ataque à
+        distância funciona (Game._update_projectiles não olha essa
+        propriedade); tocar nele continua doendo na Lia normalmente (ramo
+        de contato de Game.check_enemies, sem relação com isso)."""
+        return False
 
     def face_player(self, player_x):
         if self.state not in self.FACING_STATES:
@@ -2489,11 +2505,12 @@ class Dragon:
     def update(self):
         self.animation += 1
         self._update_rocks()
-        self._update_meteors()
         if self.state == self.DYING:
             self._update_death()
         elif self.state == self.DEAD:
-            self._update_respawn()
+            # Pedido do Raul: chefe morto fica morto pra sempre, sem
+            # respawn (ver docstring de _update_death) — nenhuma ação aqui.
+            pass
         elif self.state == self.HURT:
             self._update_hurt()
         elif self.state == self.DORMANT:
@@ -2506,24 +2523,14 @@ class Dragon:
             self._update_phase(self.SOPRO_RECOVER, self.SOPRO_RECOVER_DURATION)
         elif self.state == self.SOPRO_RECOVER:
             self._update_attack_recover()
-        elif self.state == self.BRASAS_TELEGRAPH:
-            self._start_brasas_flight()
-        elif self.state == self.BRASAS_FLIGHT:
-            self._update_brasas_flight()
-        elif self.state == self.BRASAS_LANDING:
-            self._update_phase(self.BRASAS_RECOVER, self.BRASAS_RECOVER_DURATION)
-        elif self.state == self.BRASAS_RECOVER:
+        elif self.state == self.TERREMOTO_TELEGRAPH:
+            self._start_terremoto_fly()
+        elif self.state == self.TERREMOTO_FLY:
+            self._update_terremoto_fly()
+        elif self.state == self.TERREMOTO_SLAM:
+            self._update_terremoto_slam()
+        elif self.state == self.TERREMOTO_RECOVER:
             self._update_attack_recover()
-        elif self.state == self.VOO_FURIA_TELEGRAPH:
-            self._start_voo_furia()
-        elif self.state == self.VOO_FURIA:
-            self._update_voo_furia()
-        elif self.state == self.VOO_FURIA_LANDING:
-            self._update_phase(self.VOO_FURIA_RECOVER, self.VOO_FURIA_RECOVER_DURATION)
-        elif self.state == self.VOO_FURIA_RECOVER:
-            self._update_attack_recover()
-        else:
-            self._patrol()
 
     def _update_phase(self, next_state, next_duration):
         self.y = self.platform.rect.top - self.HEIGHT
@@ -2533,34 +2540,20 @@ class Dragon:
             self.state_timer = next_duration
 
     def _update_idle(self):
+        """Parado esperando o próximo ataque — não existe mais transição
+        pra WALK (ver docstring da classe: ele nunca anda), então IDLE
+        dura até attack_cooldown zerar."""
         self.y = self.platform.rect.top - self.HEIGHT
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.state = self.WALK
+        self.attack_cooldown -= 1
+        if self.attack_cooldown <= 0:
+            self._start_attack()
 
     def _update_dormant(self):
         self.y = self.platform.rect.top - self.HEIGHT
 
     def wake_up(self):
         if self.state == self.DORMANT:
-            self.state = self.WALK
-
-    def _patrol(self):
-        left = self.platform.rect.left + self.PLATFORM_MARGIN
-        right = self.platform.rect.right - self.WIDTH - self.PLATFORM_MARGIN
-        if left >= right:
-            self.x = left
-        else:
-            self.x += self.speed * self.direction
-            if self.x <= left or self.x >= right:
-                self.x = max(left, min(self.x, right))
-                self.direction *= -1
-                self.state = self.IDLE
-                self.state_timer = self.IDLE_DURATION
-        self.y = self.platform.rect.top - self.HEIGHT
-        self.attack_cooldown -= 1
-        if self.attack_cooldown <= 0:
-            self._start_attack()
+            self.state = self.IDLE
 
     def _start_attack(self):
         kind = self.ATTACK_PATTERN[self.attack_index % len(self.ATTACK_PATTERN)]
@@ -2568,43 +2561,61 @@ class Dragon:
         if kind == "A":
             self.state = self.SOPRO_TELEGRAPH
             self.state_timer = self.SOPRO_TELEGRAPH_DURATION
-        elif kind == "B":
-            self.state = self.BRASAS_TELEGRAPH
-            self.state_timer = self.BRASAS_TELEGRAPH_DURATION
         else:
-            self.state = self.VOO_FURIA_TELEGRAPH
-            self.state_timer = self.VOO_FURIA_TELEGRAPH_DURATION
+            self.state = self.TERREMOTO_TELEGRAPH
+            self.state_timer = self.TERREMOTO_TELEGRAPH_DURATION
 
     def _update_attack_recover(self):
         self.y = self.platform.rect.top - self.HEIGHT
         self.state_timer -= 1
         if self.state_timer <= 0:
-            self.state = self.WALK
+            self.state = self.IDLE
             self.attack_cooldown = self._next_attack_delay()
 
-    def _start_brasas_flight(self):
+    def _start_terremoto_fly(self):
         self.y = self.platform.rect.top - self.HEIGHT
         self.state_timer -= 1
         if self.state_timer <= 0:
-            self.state = self.BRASAS_FLIGHT
-            self.state_timer = self.BRASAS_FLIGHT_DURATION
-            self.rocks_spawned = 0
+            self.state = self.TERREMOTO_FLY
+            self.state_timer = self.TERREMOTO_FLY_DURATION
 
-    def _update_brasas_flight(self):
+    def _update_terremoto_fly(self):
         self.y = self.platform.rect.top - self.HEIGHT
         self.state_timer -= 1
-        elapsed = self.BRASAS_FLIGHT_DURATION - self.state_timer
-        expected = min(self.BRASAS_ROCK_COUNT, 1 + elapsed // self.BRASAS_ROCK_INTERVAL)
-        while self.rocks_spawned < expected:
-            self._spawn_rock()
-            self.rocks_spawned += 1
         if self.state_timer <= 0:
-            self.state = self.BRASAS_LANDING
-            self.state_timer = self.BRASAS_LANDING_DURATION
+            self._start_terremoto_slam()
 
-    def _spawn_rock(self):
-        left = self.platform.rect.left + self.PLATFORM_MARGIN
-        right = self.platform.rect.right - self.PLATFORM_MARGIN
+    def _start_terremoto_slam(self):
+        """Bate no chão: dispara o tremor de tela de ~5s (ver
+        consume_shake_event, lido por Game._check_boss_shake_events, que
+        também toca earthquake_dragon_sound) e zera a contagem de pedaços
+        — eles nascem aos poucos em _update_terremoto_slam, não todos de
+        uma vez (pedido do Raul: "que caia MUITOS meteoros" ao longo do
+        tremor, não uma leva só no instante do tranco)."""
+        self.state = self.TERREMOTO_SLAM
+        self.state_timer = self.TERREMOTO_SLAM_DURATION
+        self.terremoto_rocks_spawned = 0
+        self._shake_pending = True
+
+    def _update_terremoto_slam(self):
+        self.y = self.platform.rect.top - self.HEIGHT
+        self.state_timer -= 1
+        elapsed = self.TERREMOTO_SLAM_DURATION - self.state_timer
+        expected = min(self.TERREMOTO_ROCK_TOTAL, 1 + elapsed // self.TERREMOTO_ROCK_INTERVAL)
+        while self.terremoto_rocks_spawned < expected:
+            self._spawn_terremoto_rock()
+            self.terremoto_rocks_spawned += 1
+        if self.state_timer <= 0:
+            self.state = self.TERREMOTO_RECOVER
+            self.state_timer = self.TERREMOTO_RECOVER_DURATION
+
+    def _spawn_terremoto_rock(self):
+        """Um pedaço da caverna por vez (reaproveita o sistema de queda da
+        antiga Brasas — ver _update_rocks, roda todo quadro, independente
+        do estado, então os pedaços continuam caindo/explodindo mesmo
+        depois do tremor já ter passado)."""
+        left = self.platform.rect.left + self.ROCK_SPAWN_MARGIN
+        right = self.platform.rect.right - self.ROCK_SPAWN_MARGIN
         x = random.uniform(left, right) if right > left else self.rect.centerx
         self.rocks.append({
             "x": x,
@@ -2612,6 +2623,16 @@ class Dragon:
             "phase": "falling",
             "timer": 0,
         })
+
+    def consume_shake_event(self):
+        """Lido uma vez só por Game._check_boss_shake_events — True no
+        primeiro quadro depois de um impacto do Terremoto, daí volta a
+        False sozinho (evita disparar o shake de novo todo quadro
+        seguinte enquanto ele ainda está no estado SLAM)."""
+        if self._shake_pending:
+            self._shake_pending = False
+            return True
+        return False
 
     def _update_rocks(self):
         floor_y = self.platform.rect.top
@@ -2635,71 +2656,6 @@ class Dragon:
             remaining.append(rock)
         self.rocks = remaining
 
-    def _start_voo_furia(self):
-        self.y = self.platform.rect.top - self.HEIGHT
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.state = self.VOO_FURIA
-            self.state_timer = self.VOO_FURIA_FLIGHT_DURATION
-            self.meteors_marked = 0
-
-    def _update_voo_furia(self):
-        self.y = self.platform.rect.top - self.HEIGHT
-        self.state_timer -= 1
-        elapsed = self.VOO_FURIA_FLIGHT_DURATION - self.state_timer
-        expected = min(self.METEOR_MARK_COUNT, 1 + elapsed // self.METEOR_MARK_INTERVAL)
-        while self.meteors_marked < expected:
-            self._mark_meteor()
-            self.meteors_marked += 1
-        if self.state_timer <= 0:
-            self.state = self.VOO_FURIA_LANDING
-            self.state_timer = self.VOO_FURIA_LANDING_DURATION
-
-    def _mark_meteor(self):
-        """Marca um ponto no chão (indicador_perigo.png) — só depois de
-        METEOR_TELEGRAPH_DURATION quadros o meteoro de verdade nasce lá e
-        começa a cair (ver _update_meteors). Um de cada vez, ao contrário
-        das pedras de Brasas (que caem direto): aqui o aviso É o desafio,
-        não a queda em si."""
-        left = self.platform.rect.left + self.PLATFORM_MARGIN
-        right = self.platform.rect.right - self.PLATFORM_MARGIN
-        x = random.uniform(left, right) if right > left else self.rect.centerx
-        self.meteors.append({
-            "x": x,
-            "y": self.platform.rect.top - self.METEOR_START_HEIGHT,
-            "phase": "telegraph",
-            "timer": self.METEOR_TELEGRAPH_DURATION,
-        })
-
-    def _update_meteors(self):
-        """Roda todo quadro (igual _update_rocks), independente do estado
-        — um meteoro marcado antes do Dragão pousar precisa continuar a
-        contagem/queda mesmo se ele já estiver recuperando."""
-        floor_y = self.platform.rect.top
-        remaining = []
-        for meteor in self.meteors:
-            if meteor["phase"] == "telegraph":
-                meteor["timer"] -= 1
-                if meteor["timer"] <= 0:
-                    meteor["phase"] = "falling"
-            elif meteor["phase"] == "falling":
-                meteor["y"] += self.METEOR_FALL_SPEED
-                if meteor["y"] >= floor_y:
-                    meteor["y"] = floor_y
-                    meteor["phase"] = "impact"
-                    meteor["timer"] = self.METEOR_IMPACT_DURATION
-            elif meteor["phase"] == "impact":
-                meteor["timer"] -= 1
-                if meteor["timer"] <= 0:
-                    meteor["phase"] = "explosion"
-                    meteor["timer"] = self.METEOR_EXPLOSION_DURATION
-            elif meteor["phase"] == "explosion":
-                meteor["timer"] -= 1
-                if meteor["timer"] <= 0:
-                    continue
-            remaining.append(meteor)
-        self.meteors = remaining
-
     def _sopro_breath_rect(self):
         width, height = self.SOPRO_RANGE, self.SOPRO_HEIGHT
         y = self.platform.rect.top - height
@@ -2707,31 +2663,38 @@ class Dragon:
         return pygame.Rect(round(x), round(y), width, height)
 
     def active_hazards(self):
-        """Jato do Sopro enquanto varre o chão, pedras das Brasas e
-        meteoros do Voo da Fúria (caindo/no impacto) — todos continuam
-        valendo mesmo fora dos estados de ataque que os originaram, ver
-        _update_rocks/_update_meteors (rodam todo quadro, incondicional).
-        A MARCA no chão (fase "telegraph") não é um perigo em si — é só o
-        aviso — por isso não entra aqui, só a partir de "falling"."""
+        """Jato do Sopro enquanto varre o chão e pedaços de pedra caídos do
+        Terremoto (caindo/no impacto) — continuam valendo mesmo depois do
+        estado de ataque que os originou (ver _update_rocks, roda todo
+        quadro, incondicional). Sem mais meteoros: o antigo Voo da Fúria
+        (marca no chão + meteoro mirado) saiu de cena, ver docstring da
+        classe. Isso aqui é o que REALMENTE causa dano (ver Game.
+        _check_enemy_attack_hazards) — Level._draw_enemy_attack_hazards usa
+        essa mesma lista como aviso pintado, não precisa mais de um
+        overlay_hazards à parte (não tem mais nada especial pra excluir)."""
         hazards = []
         if self.state == self.SOPRO_BREATH:
             hazards.append(self._sopro_breath_rect())
         size = self.ROCK_SIZE
         for rock in self.rocks:
             hazards.append(pygame.Rect(round(rock["x"] - size / 2), round(rock["y"] - size / 2), size, size))
-        meteor_size = self.METEOR_SIZE
-        for meteor in self.meteors:
-            if meteor["phase"] in ("falling", "impact"):
-                hazards.append(pygame.Rect(
-                    round(meteor["x"] - meteor_size / 2), round(meteor["y"] - meteor_size / 2),
-                    meteor_size, meteor_size,
-                ))
         return hazards
 
+    def overlay_hazards(self):
+        """Sem retângulo laranja translúcido genérico pra NENHUM hazard do
+        Dragão agora (Level._draw_enemy_attack_hazards) — dragon_fire.png
+        deu arte de verdade ao Sopro (ver _draw_sopro_fire) e os pedaços de
+        pedra do Terremoto já têm sprite própria (dragon_rock.png, maior
+        agora — ver Game.ROCK_SPRITE_SCALE, pedido do Raul: "retire isso e
+        deixe apenas a sprite dos meteoros"). O dano de ambos continua
+        intacto (active_hazards, sem mudança) — isso aqui é só o aviso
+        pintado por cima, que agora fica sempre vazio."""
+        return []
+
     def parryable_hazards(self):
-        """Sopro enquanto varre, pedras das Brasas e meteoros do Voo da
-        Fúria — só enquanto ainda estão "voando" (fase "falling"); depois de
-        "impact"/"explosion" já pousaram, não tem mais o que aparar (pedido
+        """Sopro enquanto varre e pedaços de pedra do Terremoto — só
+        enquanto ainda estão "voando" (fase "falling"); depois de
+        "impact"/"explosion" já caíram, não tem mais o que aparar (pedido
         do Raul: só projéteis/objetos que voam, nunca coisa que já caiu)."""
         pairs = []
         if self.state == self.SOPRO_BREATH:
@@ -2744,20 +2707,12 @@ class Dragon:
             if rock["phase"] == "falling":
                 rect = pygame.Rect(round(rock["x"] - size / 2), round(rock["y"] - size / 2), size, size)
                 pairs.append((rect, lambda r=rock: self.rocks.remove(r) if r in self.rocks else None))
-        meteor_size = self.METEOR_SIZE
-        for meteor in self.meteors:
-            if meteor["phase"] == "falling":
-                rect = pygame.Rect(
-                    round(meteor["x"] - meteor_size / 2), round(meteor["y"] - meteor_size / 2),
-                    meteor_size, meteor_size,
-                )
-                pairs.append((rect, lambda m=meteor: self.meteors.remove(m) if m in self.meteors else None))
         return pairs
 
     def _update_hurt(self):
         self.state_timer -= 1
         if self.state_timer <= 0:
-            self.state = self.WALK
+            self.state = self.IDLE
 
     def take_hit(self, damage=1):
         if not self.alive or self.state == self.HURT:
@@ -2780,74 +2735,52 @@ class Dragon:
     def _start_dying(self):
         self.state = self.DYING
         self.state_timer = self.DEATH_FRAMES * self.DEATH_FRAME_TIME
-        self.death_frame = 0
 
     def _update_death(self):
+        """Sem quadros de morte próprios na folha nova (ver docstring da
+        classe) — esmaece o quadro parado até sumir (ver draw/
+        _current_frame, que aplica o alpha proporcional a state_timer).
+        Pedido do Raul: chefe derrotado fica morto pra sempre — sem
+        RESPAWN_TIME/_update_respawn (removidos), DEAD é estado terminal,
+        ver update() acima."""
         self.state_timer -= 1
-        self.death_frame = min(
-            self.DEATH_FRAMES - 1,
-            self.death_frame + int(self.state_timer % self.DEATH_FRAME_TIME == 0),
-        )
         if self.state_timer <= 0:
             self.state = self.DEAD
-            self.state_timer = self.RESPAWN_TIME
-
-    def _update_respawn(self):
-        self.state_timer -= 1
-        if self.state_timer <= 0:
-            self.health = self.HEALTH
-            self.state = self.WALK
-            self.death_frame = 0
-            self.x = self.platform.rect.centerx - self.WIDTH // 2
-            self.y = self.platform.rect.top - self.HEIGHT
-            self.rocks = []
-            self.meteors = []
 
     def _sprite_key(self):
-        if self.state == self.DYING:
-            return "dead"
+        """4 chaves só (ver game._load_dragon_sprites): "idle" (1 quadro,
+        cobre parado/dormente/dano/morte também — sem arte própria pra
+        essas, ver docstring da classe), "sopro" (2 quadros), "voo" (3
+        quadros, fase TERREMOTO_FLY) e "terremoto" (3 quadros, fase
+        TERREMOTO_SLAM)."""
         if self.state in (self.SOPRO_TELEGRAPH, self.SOPRO_BREATH, self.SOPRO_RECOVER):
-            return "attack_a"
-        if self.state in (
-            self.BRASAS_TELEGRAPH, self.BRASAS_FLIGHT, self.BRASAS_LANDING, self.BRASAS_RECOVER,
-            # Voo da Fúria reaproveita a animação de voo do attack_b — só o
-            # que cai do céu é diferente (meteoro em vez de brasa), não o
-            # corpo do Dragão, então não precisa de quadros próprios.
-            self.VOO_FURIA_TELEGRAPH, self.VOO_FURIA, self.VOO_FURIA_LANDING, self.VOO_FURIA_RECOVER,
-        ):
-            return "attack_b"
-        if self.state == self.DORMANT:
-            return self.IDLE
-        return self.state
+            return "sopro"
+        if self.state == self.TERREMOTO_FLY:
+            return "voo"
+        if self.state == self.TERREMOTO_SLAM:
+            return "terremoto"
+        return "idle"
 
-    def _attack_frame_index(self):
-        if self.state == self.SOPRO_TELEGRAPH:
-            return self._phase_frame(0, 4, self.SOPRO_TELEGRAPH_DURATION)
-        if self.state == self.SOPRO_BREATH:
-            return self._phase_frame(4, 4, self.SOPRO_BREATH_DURATION)
-        if self.state == self.SOPRO_RECOVER:
-            return self._phase_frame(8, 2, self.SOPRO_RECOVER_DURATION)
-        if self.state in (self.BRASAS_TELEGRAPH, self.VOO_FURIA_TELEGRAPH):
-            duration = self.BRASAS_TELEGRAPH_DURATION if self.state == self.BRASAS_TELEGRAPH else self.VOO_FURIA_TELEGRAPH_DURATION
-            return self._phase_frame(0, 3, duration)
-        if self.state in (self.BRASAS_FLIGHT, self.VOO_FURIA):
-            # Voo prolongado do Voo da Fúria: em vez de mapear a duração
-            # inteira (150 quadros) num loop de 4 quadros só uma vez — o que
-            # ia ficar devagar demais — repete o ciclo de bater asas a cada
-            # BRASAS_FLIGHT_DURATION quadros, pra continuar com a mesma
-            # cadência visual do voo curto de Brasas.
-            elapsed = self.animation % self.BRASAS_FLIGHT_DURATION
-            return 3 + max(0, min(3, elapsed * 4 // self.BRASAS_FLIGHT_DURATION))
-        if self.state in (self.BRASAS_LANDING, self.VOO_FURIA_LANDING):
-            return 7
-        if self.state in (self.BRASAS_RECOVER, self.VOO_FURIA_RECOVER):
-            duration = self.BRASAS_RECOVER_DURATION if self.state == self.BRASAS_RECOVER else self.VOO_FURIA_RECOVER_DURATION
-            return self._phase_frame(8, 2, duration)
+    def _frame_index(self, key, count):
+        if key == "sopro":
+            # 2 quadros só: o 1º cobre antecipação/recuperação (boca
+            # carregando/fechando), o 2º é o jato ativo.
+            return 1 if self.state == self.SOPRO_BREATH else 0
+        if key == "voo":
+            # Bate asas em loop enquanto sobe/paira (duração de sobra pra
+            # não ficar rápido demais, ~0.4s por ciclo a 60fps).
+            return (self.animation // 8) % count
+        if key == "terremoto":
+            # Percorre os 3 quadros de impacto rápido (TERREMOTO_SLAM_
+            # FRAME_DURATION, bem menor que o SLAM inteiro de ~5s) e
+            # segura o último (poeira assentada) pro resto do tremor,
+            # enquanto os pedaços continuam caindo — ver TERREMOTO_SLAM_
+            # FRAME_DURATION.
+            elapsed = self.TERREMOTO_SLAM_DURATION - self.state_timer
+            if elapsed >= self.TERREMOTO_SLAM_FRAME_DURATION:
+                return count - 1
+            return max(0, min(count - 1, elapsed * count // self.TERREMOTO_SLAM_FRAME_DURATION))
         return 0
-
-    def _phase_frame(self, start, count, duration):
-        elapsed = duration - self.state_timer
-        return start + max(0, min(count - 1, elapsed * count // duration))
 
     def _rock_frame_index(self, rock):
         if rock["phase"] == "falling":
@@ -2857,20 +2790,39 @@ class Dragon:
         elapsed = self.ROCK_EXPLOSION_DURATION - rock["timer"]
         return 5 + min(2, elapsed // 4)
 
+    def _current_frame(self, sprites):
+        key = self._sprite_key()
+        frames = sprites[key]
+        index = self._frame_index(key, len(frames))
+        return frames[min(index, len(frames) - 1)]
+
     def draw(self, surface, camera_x, camera_y, sprites):
         if self.state != self.DEAD:
-            key = self._sprite_key()
-            frames = sprites[key]
-            if key in ("attack_a", "attack_b"):
-                frame = frames[min(self._attack_frame_index(), len(frames) - 1)]
-            else:
-                frame = self._animation_frame(frames)
-            if self.direction < 0:
+            frame = self._current_frame(sprites)
+            # A arte nova (dragon.png) já nasce olhando pra ESQUERDA em
+            # todo quadro (cabeça/chifres sempre do lado esquerdo da tira —
+            # diferente da folha antiga). Por isso o flip é invertido aqui
+            # (direction > 0, não < 0): direction=1 (Lia à direita) precisa
+            # virar o desenho pra ele passar a olhar pra direita; direction
+            # =-1 (Lia à esquerda) já sai certo sem flip nenhum. Bug real
+            # do Raul (2026-08-27): com o sinal antigo o Dragão sempre
+            # ficava olhando pro lado ERRADO — se ela ficasse parada de um
+            # lado só (comum numa luta à distância parada), parecia
+            # "travado" sempre olhando pro mesmo lado.
+            if self.direction > 0:
                 frame = pygame.transform.flip(frame, True, False)
+            if self.state == self.DYING:
+                # Sem quadros de morte próprios (ver docstring) — esmaece o
+                # quadro parado até sumir de vez.
+                frame = frame.copy()
+                total = self.DEATH_FRAMES * self.DEATH_FRAME_TIME
+                alpha = max(0, min(255, round(255 * self.state_timer / total)))
+                frame.set_alpha(alpha)
             frame_w, frame_h = frame.get_size()
             offset_x = (frame_w - self.WIDTH) // 2
             offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
             surface.blit(frame, (self.x - offset_x - camera_x, self.y - offset_y - camera_y))
+        self._draw_sopro_fire(surface, camera_x, camera_y, sprites)
         rock_frames = sprites.get("rock")
         if rock_frames:
             for rock in self.rocks:
@@ -2879,38 +2831,58 @@ class Dragon:
                     frame,
                     (rock["x"] - camera_x - frame.get_width() / 2, rock["y"] - camera_y - frame.get_height() / 2),
                 )
-        self._draw_meteors(surface, camera_x, camera_y, sprites)
 
-    def _draw_meteors(self, surface, camera_x, camera_y, sprites):
-        """Marca (fase "telegraph", parada no chão) e meteoro (demais fases,
-        caindo/no impacto/queimando) — sprites únicos e estáticos (ver
-        game._load_dragon_sprites), sem animação própria."""
-        marker_sprite = sprites.get("danger_marker")
-        meteor_sprite = sprites.get("meteor")
-        floor_y = self.platform.rect.top
-        for meteor in self.meteors:
-            if meteor["phase"] == "telegraph" and marker_sprite:
-                surface.blit(
-                    marker_sprite,
-                    (
-                        meteor["x"] - camera_x - marker_sprite.get_width() / 2,
-                        floor_y - camera_y - marker_sprite.get_height() / 2,
-                    ),
-                )
-            elif meteor["phase"] in ("falling", "impact") and meteor_sprite:
-                surface.blit(
-                    meteor_sprite,
-                    (
-                        meteor["x"] - camera_x - meteor_sprite.get_width() / 2,
-                        meteor["y"] - camera_y - meteor_sprite.get_height() / 2,
-                    ),
-                )
+    def _mouth_position(self, frame_w, frame_h):
+        """Posição aproximada da boca dele em coordenadas de mundo, pra o
+        jato/faísca nascerem ali em vez de na borda da hitbox (pedido do
+        Raul: "que o sopro saia da boca dele"). Usa o mesmo offset_x/
+        offset_y do corpo (ver draw) pra achar a borda do sprite VISUAL
+        (bem maior que a hitbox) e desloca pra dentro pelas frações
+        SOPRO_MOUTH_X/Y_FRACTION. Como a cabeça nasce sempre do lado
+        ESQUERDO do quadro cru, direction=-1 (olhando pra esquerda, sem
+        flip) usa a fração direto; direction=1 (flipado) espelha a fração
+        (1 - fração) pra continuar caindo em cima da cabeça depois de
+        virada."""
+        offset_x = (frame_w - self.WIDTH) // 2
+        offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
+        sprite_left = self.x - offset_x
+        sprite_top = self.y - offset_y
+        x_fraction = (
+            self.SOPRO_MOUTH_X_FRACTION if self.direction < 0
+            else 1 - self.SOPRO_MOUTH_X_FRACTION
+        )
+        mouth_x = sprite_left + x_fraction * frame_w
+        mouth_y = sprite_top + self.SOPRO_MOUTH_Y_FRACTION * frame_h
+        return mouth_x, mouth_y
 
-    def _animation_frame(self, frames):
-        if self.state == self.DYING:
-            return frames[min(self.death_frame, len(frames) - 1)]
-        if self.state in (self.IDLE, self.DORMANT):
-            return frames[(self.animation // 10) % len(frames)]
-        if self.state == self.HURT:
-            return frames[(self.animation // 4) % len(frames)]
-        return frames[(self.animation // 6) % len(frames)]
+    def _draw_sopro_fire(self, surface, camera_x, camera_y, sprites):
+        """Chama de verdade (dragon_fire.png, ver game._load_dragon_fire_
+        sprites) nascendo da boca dele (ver _mouth_position) — o hitbox
+        real não muda (_sopro_breath_rect continua sendo o que
+        active_hazards usa pra dano, baseado na hitbox, não na arte), isso
+        aqui é só o visual. TELEGRAPH mostra uma faísca crescendo na boca
+        (carregando o jato); BREATH estica a chama grande a partir dela
+        até cobrir o alcance do jato (SOPRO_RANGE)."""
+        sopro_frames = sprites.get("sopro")
+        if not sopro_frames:
+            return
+        frame_w, frame_h = sopro_frames[0].get_size()
+        mouth_x, mouth_y = self._mouth_position(frame_w, frame_h)
+        ember = sprites.get("sopro_ember")
+        flame = sprites.get("sopro_flame")
+        if self.state == self.SOPRO_TELEGRAPH and ember:
+            progress = 1 - self.state_timer / self.SOPRO_TELEGRAPH_DURATION
+            scale = 0.4 + 0.6 * progress
+            size = (max(1, round(ember.get_width() * scale)), max(1, round(ember.get_height() * scale)))
+            spark = pygame.transform.scale(ember, size)
+            surface.blit(spark, (mouth_x - camera_x - size[0] / 2, mouth_y - camera_y - size[1] / 2))
+        elif self.state == self.SOPRO_BREATH and flame:
+            width, height = self.SOPRO_RANGE, self.SOPRO_HEIGHT
+            stretched = pygame.transform.scale(flame, (width, height))
+            # Espelha igual ao corpo (ver draw) — não dá pra garantir sem
+            # rodar o jogo que bate certo com a arte crua do dragon_fire.png;
+            # avise se a chama sair virada pro lado errado que eu ajusto.
+            if self.direction > 0:
+                stretched = pygame.transform.flip(stretched, True, False)
+            rect_x = mouth_x if self.direction > 0 else mouth_x - width
+            surface.blit(stretched, (rect_x - camera_x, mouth_y - height / 2 - camera_y))

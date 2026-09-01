@@ -53,6 +53,11 @@ logical_screen = LogicalScreen()
 # primeiro quadro (não no import, porque o `screen` que o pgzero injeta só
 # existe depois que pgzrun.go() começa a rodar o laço).
 _fullscreen_applied = False
+# F11 alterna cheia/janela (pedido do Raul: tela cheia bloqueia print
+# screen em alguns sistemas). Troca só acontece na tecla — never dentro de
+# update()/draw() — pelo mesmo motivo do _apply_fullscreen acima: recriar a
+# janela todo quadro é o que gerava o "failed to create renderer".
+_is_fullscreen = True
 
 
 def _apply_fullscreen():
@@ -61,6 +66,14 @@ def _apply_fullscreen():
         return
     _fullscreen_applied = True
     screen.surface = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+    pygame.display.set_caption(TITLE)
+
+
+def _toggle_fullscreen():
+    global _is_fullscreen
+    _is_fullscreen = not _is_fullscreen
+    flags = pygame.FULLSCREEN if _is_fullscreen else 0
+    screen.surface = pygame.display.set_mode((WIDTH, HEIGHT), flags)
     pygame.display.set_caption(TITLE)
 
 
@@ -78,6 +91,11 @@ def draw():
 def on_mouse_down(pos, button):
     if button == mouse.LEFT:
         game.request_mouse_attack()
+
+
+def on_key_down(key):
+    if key == keys.F11:
+        _toggle_fullscreen()
 
 
 pgzrun.go()

@@ -76,6 +76,24 @@ PHASES = [
     },
 ]
 
+# A vila (prólogo, ver PLANO_VILA.md) não é uma fase de verdade — não entra em
+# PHASES pra não bagunçar todo código que assume índice 0/1/2 (fase_N_music,
+# COMPLETE em len(PHASES)-1, chefe do índice 2 etc.). VILLAGE é a "chave" que
+# Level/Game usam no lugar de um índice inteiro; como nenhum desses lugares
+# indexa PHASES/listas com ela diretamente (só compara com == ou usa .get),
+# ela passa por eles sem quebrar nada — só cai nos poucos pontos com um
+# branch dedicado (ver level.TILED_MAP_FILES/_build_course/_make_npcs e
+# game._draw_background/_advance_level_if_ready/_desired_music_track).
+VILLAGE = "vila"
+VILLAGE_DATA = {
+    "name": "Vila", "subtitle": "Antes da estrada — a vila onde Lia cresceu.",
+    # world/world_height só valem se maps/vila.tmx sumir (fallback sem
+    # Tiled) — com o mapa presente, _configure_world_dimensions troca os
+    # dois pelo tamanho real do .tmx (150x20 tiles de 32px = 4800x640).
+    "world": 4800, "world_height": 640, "world_top": 0,
+    "checkpoints": (), "research": (), "dialogues": (), "moving": (),
+}
+
 class Level:
     """Fases de plataformas; a primeira também possui um laboratório subterrâneo."""
 
@@ -94,7 +112,10 @@ class Level:
 
     # Mapa do Tiled por fase (índice em PHASES). Fases sem entrada aqui, ou cujo
     # arquivo ainda não existe em maps/, caem no percurso gerado por código.
-    TILED_MAP_FILES = {0: "fase1_escola.tmx", 1: "fase2_universidade.tmx", 2: "fase3_pesquisa.tmx"}
+    TILED_MAP_FILES = {
+        0: "fase1_escola.tmx", 1: "fase2_universidade.tmx", 2: "fase3_pesquisa.tmx",
+        VILLAGE: "vila.tmx",
+    }
 
     # Salas secundárias, acessadas por uma porta interativa no corredor
     # principal (ver Game.enter_room/_use_doors) — não fazem parte da
@@ -108,7 +129,9 @@ class Level:
     def __init__(self, index, room=None):
         self.index = index
         self.room = room
-        self.data = PHASES[index]
+        # A vila (index == VILLAGE, uma string, ver VILLAGE_DATA acima) não
+        # existe em PHASES — só fases de verdade (int 0/1/2) indexam a lista.
+        self.data = PHASES[index] if isinstance(index, int) else VILLAGE_DATA
         self.tiled_map = self._load_tiled_map()
         self._configure_world_dimensions()
         self.is_underground = index == 0
@@ -345,6 +368,12 @@ class Level:
             # Tiled (self.grounds); esta lista cobre só as plataformas extras
             # (flutuantes/móveis) desenhadas como objetos.
             return self._build_tiled_object_platforms()
+        if self.index == VILLAGE:
+            # A vila só existe com mapa do Tiled (chão pintado na camada
+            # Colisão) — sem percurso gerado por código de fallback, já que
+            # VILLAGE_DATA não tem "step"/"widths"/"heights"/"layout"
+            # (_build_generated_course quebraria tentando ler essas chaves).
+            return self._build_tiled_object_platforms() if self.tiled_map else []
         return self._build_generated_course()
 
     def _build_generated_course(self):
@@ -824,21 +853,17 @@ class Level:
     # fim do mundo colada na arena.
     SLIME_KING_ARENA_MARGIN = 300
 
-    # A arena do Dragão, ao contrário, reaproveita um trecho de chão já
-    # pintado na caverna da Fase 3 (self.column_tops) perto do fim do mapa —
-    # tem piso de verdade vindo do Tiled, então não precisa de uma Platform
-    # nova nem de estender world_width.
+    # A arena do Dragão agora é objeto tipo "dragao" na camada Entidades,
+    # igual ao rei_slime (pedido do Raul) — o retângulo do objeto vira o
+    # "chão" que Dragon(_StaticZone(...)) usa pra se posicionar (ele não
+    # anda mais, ver enemy.Dragon, então isso só define onde ele nasce +
+    # o quanto os pedaços de pedra do Terremoto podem se espalhar). Ainda
+    # precisa ter chão de verdade (Colisão) pintado por baixo, mesma
+    # dependência de sempre. DRAGON_ARENA_LEFT/WIDTH abaixo viram só o
+    # FALLBACK (mapa antigo sem o objeto ainda) — ver _make_boss_arenas.
     # x alinhado a um tile (múltiplo de 32) — precisa bater com uma chave de
     # self.column_tops, que só guarda o topo real de cada COLUNA de tile.
     DRAGON_ARENA_LEFT = 8576
-    # O Raul removeu a escada que existia logo depois do Dragão no .tmx e
-    # deixou o chão reto até perto do fim do mapa (que também cresceu 15
-    # tiles, 300->315, ver <map width=...>) — a fileira de colisão que
-    # começa em DRAGON_ARENA_LEFT (tile "10"/"130"/"137"...) agora continua
-    # reta por dezenas de tiles através do novo piso "119", sem mais o
-    # degrau que limitava a largura antiga (350) — deixei uma margem de
-    # segurança generosa antes do fim real do chão, já que não dá pra rodar
-    # o jogo aqui pra conferir o último pixel exato.
     DRAGON_ARENA_WIDTH = 1200
 
     def _make_boss_arenas(self):
@@ -867,9 +892,18 @@ class Level:
                     self.world_width, zone_rect.right + self.SLIME_KING_ARENA_MARGIN
                 )
         if self.index == 2 and not self.room and self.tiled_map:
-            floor = self.column_tops.get(self.DRAGON_ARENA_LEFT)
-            if floor is not None:
-                span = pygame.Rect(self.DRAGON_ARENA_LEFT, floor.top, self.DRAGON_ARENA_WIDTH, floor.height)
+            item = self.tiled_map.entity("dragao")
+            if item:
+                span = self._rect_from_object(item)
+            else:
+                # Fallback: mapa antigo sem o objeto "dragao" ainda —
+                # reaproveita o trecho de chão fixo de sempre.
+                floor = self.column_tops.get(self.DRAGON_ARENA_LEFT)
+                span = (
+                    pygame.Rect(self.DRAGON_ARENA_LEFT, floor.top, self.DRAGON_ARENA_WIDTH, floor.height)
+                    if floor is not None else None
+                )
+            if span is not None:
                 boss = Dragon(_StaticZone(span))
                 self.enemies.append(boss)
                 zone = pygame.Rect(span.left - 60, 0, span.width + 120, self.world_height)
@@ -896,10 +930,15 @@ class Level:
         if not self.tiled_map:
             return []
         npcs = []
-        for item in self.tiled_map.entities("cientista"):
-            name = item["properties"].get("nome", "")
-            rect = pygame.Rect(item["x"], item["y"], self.NPC_WIDTH, self.NPC_HEIGHT)
-            npcs.append({"rect": rect, "name": name})
+        # "cientista" é o tipo usado nas fases (Rosalind Franklin etc.);
+        # "npc" é o tipo genérico da vila (ver PLANO_VILA.md/maps/vila.tmx) —
+        # os dois caem na mesma self.npcs, o nome é que decide a fala
+        # (NPC_DIALOGUES em game.py).
+        for entity_type in ("cientista", "npc"):
+            for item in self.tiled_map.entities(entity_type):
+                name = item["properties"].get("nome", "")
+                rect = pygame.Rect(item["x"], item["y"], self.NPC_WIDTH, self.NPC_HEIGHT)
+                npcs.append({"rect": rect, "name": name})
         return npcs
 
     def _enemy_platform_from_map_object(self, item):
@@ -1150,18 +1189,23 @@ class Level:
 
     def _draw_enemy_attack_hazards(self, surface, camera_x, camera_y):
         """Pinta um aviso translúcido sobre cada hazard de ataque ativo (o
-        feixe do jato, a onda do Silêncio, os tomos do Errata) — sem isso o
-        jogador só veria a hitbox por levar dano, não por enxergar a ameaça,
-        o oposto do que os LEIA-ME pedem ("comunicar a mecânica sem
-        tutorial")."""
+        feixe do jato, a onda do Silêncio, os tomos do Errata, as pedras do
+        Dragão) — sem isso o jogador só veria a hitbox por levar dano, não
+        por enxergar a ameaça, o oposto do que os LEIA-ME pedem ("comunicar
+        a mecânica sem tutorial"). overlay_hazards (opcional, ver
+        enemy.Dragon) deixa um chefe excluir daqui hazards que já têm aviso
+        visual próprio (ex.: o jato do Sopro, que agora tem arte de fogo de
+        verdade — ver Dragon._draw_sopro_fire) sem afetar o dano de
+        verdade — quem decide dano é sempre active_hazards, nunca isso
+        aqui."""
         for enemy in self.enemies:
             if not enemy.alive:
                 continue
-            get_hazards = getattr(enemy, "active_hazards", None)
+            get_hazards = getattr(enemy, "overlay_hazards", None) or getattr(enemy, "active_hazards", None)
             color = getattr(enemy, "HAZARD_COLOR", None)
             if not get_hazards or not color:
                 continue
-            for rect in enemy.active_hazards():
+            for rect in get_hazards():
                 overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
                 overlay.fill(color)
                 surface.blit(overlay, (rect.x - camera_x, rect.y - camera_y))

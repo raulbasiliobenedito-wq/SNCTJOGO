@@ -4,10 +4,10 @@
   <property name="plataformas_automaticas" value="true"/>
  </properties>
  <tileset firstgid="1" source="escola_tileset_64x64.tsx"/>
- <tileset firstgid="481" source="fase3_pesquisa.tsx"/>
+ <tileset firstgid="121" source="fase3_pesquisa.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt2M1qFEEUhuG5Bb0WURdBl7pVzL72uf99OjCBEEfpn1P9Vfc8DxxIIFQX0+cNJJcLAAAAAAAAAAAAANDDY/oCADCQP6HnPl3n7ffA+J5mzqg+pS8ABda2N7ff0Vt+SF+AIey9s2v6+de91rRX9ew9vfyd8XWaD9N8vH699bzP03wpOIvb9tqr1B5v7XjtvavP622k/51/m+Z7+hI72vq+99qp5A4nOu75+4HzqHrfe+xTeofT7emZW6re9V77lNzfdG865pb0/qQ7XrrD6c9Hx+eTfvc6Ps+Qk373Oh5ntt6ZnPTu3GPHPZ6/1/11PKb0/ui47hl73Pt/zyEn3dy9dpxwxDszT7o5HcN26eZ0DNulm9MxbJdu7iwda5mkdHNn6Zhl2nWokW5uhI4rPoeUX9P8Dj5/qfZuqJFuLtXx2s/j1s+O7Mc0P9OXuPzd7+tQI93caB2ntMv59rvNGGqkm9PwMXa8dRpqpLu7x47bwll6TuWzew81qtpJ93uUjpvRcSdVvfRo8EwNv2hGxx316KXqvDP0+6oZHXN4zeiYw2tGxxxeMzrm8NqCqTxrztmJswAAzuIZkPLidw==
+   eJzt2MFKLDEQheF+BX0WUReiS90qzr728/57e6AHZByxk1TlVOL/QcEVJJWu1Fl4lwUAAAAAAAAAAAAAAAAAAABAhIP6AgAAJPIp6nvc6vvPAPI77qys7tQXABzUZm9vfrNn+Ul9AaTQe2dr8vPbvWqy59W7p9PfGY9r3ax1u/279bz7tR4czsJ1vfZKtcetOa69t/d50TL93/nzWi9//I7iXaPeorVHr+9Qzk313qPsUA8e36aefcQbePXq8S3q+anfPfsu9aCeV8bZe/Xr9U3KGarfPPsu9aKeV7bZq7+h5puUc1TPJ/Mu9aSeF9W+T8odVs9HOfdM1POi2vdJucPq+dR8g/cM9vSKPks9b6p9nxQ9I/v3ur/nDGp6eH2fet5U+Ztdo+jZ2l9xZkkfLz3eRr2jVN27XVL0VBvtzpFvo95RyidTip7IQ72H3n3UmSPHyGi091dnjhwD7dSZmyXHZBlK6szNkmOUsa3gQ525DDn2mIPK+1ofwv6l7KLgQ505VY5r53HtdzN7XetNfYnlZ37PBR/qzGXLsYot8+237Sj4UGeODI+x4xZU8KHO3X/MsRVW6TmevaMLPryyo87vKDk2ihwH8cpLRAZnyvCJUeQ4UERevM6bIb9nRpFjDM8ocozhGUWOMTyjyDGGZwXledaesxVnAQAAzOILl0Lejw==
   </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
@@ -20,7 +20,7 @@
    <property name="colisao" type="bool" value="true"/>
   </properties>
   <data encoding="base64" compression="zlib">
-   eJzt18tuwyAQQFH/ZrsJ++b/11XUWEUW4JlheOYeiUXbxA/KNclxwMvzPQCsi46B9dExMIcv4UihY6CvXJ9P4Uj1TMdAX9JepT3HzwAAfXh1nBoA+rC2SMfAHugY2AcNAwAAAEj5LgwA7dX0d772pzDoGfhT2u80I3VcS39xv3foGVo1a9rrfC2U9jvNiK+v1GHpPdJ+JcebBd8JfHjM493nu9Katl5v6W/ea0LbTu4YNXvp+bP13DPtzfH/JrdGRlxLz+F9/bXfrax7hOVerPdfO28919X1vJ7rumfPpTUsedZrjqfpY6d9/zqXV9K909JwfA7pfHrMec0xRnXcSst9T9OqpmPptfbaB0fTfEa7Prtzz1Ur6XryXG+W/+VuHZ+859Wj39qOV1H7uVzbnna+LXp2/KJ9Nu+2hk4e9+Xd76d03GKORuvdsfaYM86Zh9r7atHvp3S8Izoeo/a+WjVMx2ui4zE876tlw97XijboeIxd7wtj0DGwvtk7BnCPjoH10fH8Hu8B5NDx3F79hvcAcuh4TuceHA46xj06nsPjMsJBv9jbdc3P9N0xdW2SERID2FVuzZdavmvI8h5Nj9oB7KTUSez8nbWtVj1qB7CjkBnS140aAP4F43tSQ/t6y7kBAAAAAAAAAAAAAAAA9PMLNRRFWQ==
+   eJzt181uozAUBtC85sym7Kfvvx5VUzQIBcfXP9hxz5HuoikB27kfhscDAACgrV+ZBYx3lc/PzJJlGC83r7IM82qR48/bRw0cRfMpxzCfmkzKMQAAAKztd6KA/mrytx/7J1HyDP+k9rtIPTtvSf6O+X1Fnomq6elW1+shtd9F6ji+VA5T38nNb875ZuGdoI0W6/jq+S7V06XjTf2vdU9Es3N1jpq9dP+79Noz7c3H3+aqR0aM5c5qPf7ad6vSPaJkLqXzr123O/vqfN2WfX1nnlM9nHOvj5wvko+V9v3zWp7l7p0lGT5eI3c9W6x5zTlG5biXnvteJKuRHOeO9a59cLTIM9r53n11Xy2V208t+63kt1wtx7vW69oiv7U5fhe1z+XR7EXXu8SdOf4SvTev1kO7FvNqnd+fkuMeazTa3TmOnnPGNWuhdl498vtTcrwiOR6jdl69MizH70mOx2g5r54Zbj1W+pDjMVadF2PIMby/2XMMvCbH8P7keH4f3wVX5HhuX/ndvguuyPGc9j14e8gxr8nxHD5OtT3kl7Wde36md8dnY8up7UnBqq56PpXlVxkq+U4kj9GClaRycrR/VpqtXnmMFqxou6jc40YV8N9W+J1nFT2+5NoAAAAAAAAAAMB9/gIBZjlW
   </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
@@ -36,12 +36,12 @@
  <objectgroup id="1" name="Plataformas"/>
  <objectgroup id="2" name="Paredes"/>
  <objectgroup id="3" name="Rota Retorno">
-  <object id="36" type="plataforma" x="5120" y="801.333" width="140" height="32"/>
-  <object id="37" type="plataforma" x="4950" y="700" width="140" height="32"/>
-  <object id="39" type="plataforma" x="4751" y="604" width="180" height="32"/>
+  <object id="36" type="plataforma" x="5120" y="799.833" width="128.5" height="32"/>
+  <object id="37" type="plataforma" x="4958.5" y="703.5" width="130" height="32"/>
+  <object id="39" type="plataforma" x="4767" y="608.5" width="160" height="32"/>
  </objectgroup>
  <objectgroup id="4" name="Entidades">
-  <object id="40" type="spawn" x="6464" y="571.333" width="32" height="48"/>
+  <object id="40" type="spawn" x="44.6667" y="640" width="32" height="48"/>
   <object id="41" type="checkpoint" x="2351.33" y="423.667" width="35" height="90"/>
   <object id="42" type="checkpoint" x="5854" y="391" width="35" height="90"/>
   <object id="44" type="livro" x="2175.5" y="448" width="28" height="34">
@@ -72,14 +72,14 @@
   <object id="49" type="slime" x="711.333" y="474.833" width="52" height="34"/>
   <object id="50" type="slime" x="4314" y="351" width="52" height="34"/>
   <object id="51" type="slime" x="6278.5" y="509" width="52" height="34"/>
-  <object id="53" type="elevador_principal" x="2670" y="650" width="160" height="32">
+  <object id="53" type="elevador_principal" x="2708.67" y="654" width="160" height="32">
    <properties>
     <property name="bottom" value="1090"/>
     <property name="estilo" value="2"/>
     <property name="top" value="650"/>
    </properties>
   </object>
-  <object id="54" type="elevador_superior" x="1750" y="575" width="160" height="32">
+  <object id="54" type="elevador_superior" x="1760.5" y="577.5" width="160" height="32">
    <properties>
     <property name="bottom" value="575"/>
     <property name="estilo" value="1"/>
@@ -87,77 +87,77 @@
    </properties>
   </object>
   <object id="55" type="painel" x="3192" y="974" width="34" height="52"/>
-  <object id="56" type="botao" x="2238.5" y="75" width="36" height="20">
+  <object id="56" type="botao" x="2192" y="75.5" width="36" height="20">
    <properties>
     <property name="ordem" value="1"/>
    </properties>
   </object>
-  <object id="57" type="botao" x="2305.83" y="75.1667" width="36" height="20">
+  <object id="57" type="botao" x="2271.83" y="75.1667" width="36" height="20">
    <properties>
     <property name="ordem" value="2"/>
    </properties>
   </object>
-  <object id="58" type="botao" x="2370" y="75" width="36" height="20">
+  <object id="58" type="botao" x="2365" y="75" width="36" height="20">
    <properties>
     <property name="ordem" value="3"/>
    </properties>
   </object>
-  <object id="59" type="botao" x="2434.5" y="75.5" width="36" height="20">
+  <object id="59" type="botao" x="2440.5" y="75.5" width="36" height="20">
    <properties>
     <property name="ordem" value="4"/>
    </properties>
   </object>
-  <object id="60" type="parte_microscopio" x="4506.43" y="990" width="34.178" height="34.178">
+  <object id="60" type="parte_microscopio" x="4511.93" y="959.5" width="34.178" height="34.178">
    <properties>
     <property name="nome" value="Lente"/>
     <property name="ordem" value="1"/>
    </properties>
   </object>
-  <object id="61" type="parte_microscopio" x="3997.5" y="1022.32" width="34.178" height="34.178">
+  <object id="61" type="parte_microscopio" x="3999" y="986.82" width="34.178" height="34.178">
    <properties>
     <property name="nome" value="Base"/>
     <property name="ordem" value="2"/>
    </properties>
   </object>
-  <object id="62" type="parte_microscopio" x="4282.89" y="1022.75" width="34.178" height="34.178">
+  <object id="62" type="parte_microscopio" x="4285.89" y="989.25" width="34.178" height="34.178">
    <properties>
     <property name="nome" value="Luz"/>
     <property name="ordem" value="3"/>
    </properties>
   </object>
-  <object id="63" type="parte_microscopio" x="3806.5" y="1056.5" width="34" height="32.5">
+  <object id="63" type="parte_microscopio" x="3807.5" y="1021" width="34" height="32.5">
    <properties>
     <property name="nome" value="Ocular"/>
     <property name="ordem" value="4"/>
    </properties>
   </object>
-  <object id="64" type="bancada" x="4673" y="967.5" width="85" height="56.5"/>
+  <object id="64" type="bancada" x="4672" y="951" width="85" height="56.5"/>
   <object id="65" type="cientista" x="171.333" y="592.667" width="48" height="48">
    <properties>
     <property name="nome" value="Rosalind Franklin"/>
    </properties>
   </object>
-  <object id="67" type="slime" x="2326.33" y="54" width="52" height="34"/>
+  <object id="67" type="slime" x="2312.83" y="52.5" width="52" height="34"/>
   <object id="69" type="rei_slime" x="6891.33" y="514" width="581.333" height="28.6667"/>
-  <object id="70" type="alavanca" x="1674.3" y="545.178" width="30.7273" height="30.7273">
+  <object id="70" type="alavanca" x="1674.3" y="551.178" width="25.7273" height="24.7273">
    <properties>
     <property name="elevador" value="superior"/>
     <property name="posicao" value="base"/>
    </properties>
   </object>
-  <object id="74" type="alavanca" x="2002.96" y="97.3863" width="30.7273" height="30.7273">
+  <object id="74" type="alavanca" x="2002.96" y="106.386" width="24.7273" height="21.7273">
    <properties>
     <property name="elevador" value="superior"/>
     <property name="posicao" value="topo"/>
    </properties>
   </object>
-  <object id="75" type="alavanca" x="2607.64" y="609.636" width="30.7273" height="30.7273">
+  <object id="75" type="alavanca" x="2613.14" y="617.636" width="25.2273" height="22.7273">
    <properties>
     <property name="elevador" value="principal"/>
     <property name="posicao" value="topo"/>
    </properties>
   </object>
-  <object id="76" type="alavanca" x="2960.89" y="1057.97" width="30.7273" height="30.7273">
+  <object id="76" type="alavanca" x="2960.89" y="1066.47" width="24.7273" height="22.2273">
    <properties>
     <property name="elevador" value="principal"/>
     <property name="posicao" value="base"/>

@@ -4,11 +4,12 @@ import random
 
 import pygame
 
+import audio
 from cutscene import IntroCutscene
 from dialogue import DialogueBox
 from hint import Hint
 from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
-from level import PHASES, Level
+from level import PHASES, VILLAGE, Level
 from player import Player
 from projectile import Projectile
 from vfx import VFXManager
@@ -81,6 +82,14 @@ BOSS_NAMES = {
     "Specimen": "Espécime",
     "Dragon": "Dragão",
 }
+# Nome da faixa em music/ (ver PLANO_AUDIO.md) tocada enquanto cada chefe
+# está acordado — mesmas 4 chaves de BOSS_DROP_TABLE/BOSS_NAMES.
+BOSS_MUSIC = {
+    "SlimeKing": "rei_slime_music",
+    "Librarian": "bibliotecario_music",
+    "Specimen": "especime_music",
+    "Dragon": "dragao_music",
+}
 # Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
 ENEMY_DROP_TABLE = {
     "Slime": ("gororoba", 0.40),
@@ -138,6 +147,15 @@ PARRY_INVULN_FRAMES = FPS
 PARRY_HITSTOP_FRAMES = 3
 PARRY_SHAKE_DURATION = 14
 PARRY_SHAKE_MAGNITUDE = 6
+
+# Tremor do impacto do Terremoto do Dragão (ver enemy.Dragon._start_
+# terremoto_slam/consume_shake_event e Game._check_boss_shake_events) —
+# pedido do Raul: uns 5 segundos tremendo (300 quadros a 60fps) enquanto
+# MUITOS pedaços da caverna caem (ver Dragon.TERREMOTO_ROCK_TOTAL). A
+# magnitude decai sozinha ao longo da duração (ver _shake_offset), então
+# começa forte e vai assentando — não fica 5s inteiros no talo.
+EARTHQUAKE_SHAKE_DURATION = 300
+EARTHQUAKE_SHAKE_MAGNITUDE = 14
 
 # Ataque à distância: desbloqueado ao concluir a Fase 1 (ver
 # _advance_level_if_ready). Cooldown baixo de propósito (quase semi-
@@ -219,6 +237,36 @@ NPC_DIALOGUES = {
         "Sequenciei o genoma do coronavírus com uma equipe inteira ao meu "
         "lado. Compartilhe o que aprendeu, Lia."
     ),
+    # NPCs da vila (prólogo antes da Fase 1, ver PLANO_VILA.md/maps/vila.tmx)
+    # — mesmo dicionário, mesma tecla [E], sem sprite próprio ainda (ver
+    # Level._draw_npcs: NPC sem entrada em NPC_SPRITE_ROWS só não desenha
+    # corpo, mas continua interagível normalmente). Sra. Amélia usa uma
+    # TUPLA (múltiplas falas em sequência, ver _talk_to_npc/_update_dialogue)
+    # em vez de uma string só — as outras têm uma fala fixa, como sempre.
+    "Seu Joaquim": (
+        "Ei, Lia! Cedo pra andar por aí, hein? Vai com calma: as setas te "
+        "movem, o espaço faz pular. Se precisar bater em alguma coisa — ou "
+        "em alguém —, é só apertar o F. Segurou fôlego demais parada? "
+        "Aperta Q e sai correndo no susto. E qualquer um por aqui que "
+        "quiser conversar, é só chegar perto e apertar E."
+    ),
+    "Dona Marta": (
+        "Bom dia, flor! Olha o tanto que você cresceu... Sua mãe tem muito "
+        "orgulho de você, sabia? Ela fala isso toda vez que passo lá em "
+        "casa."
+    ),
+    "Bento": (
+        "Lia! Depois eu te chamo pra jogar bola, tá? ...Ou você tá com "
+        "pressa hoje? Parece que tá indo em algum lugar importante."
+    ),
+    "Sra. Amélia": (
+        "Lia, filha, vem cá um instantinho.",
+        "É chato de perguntar, mas... me falaram que sua mãe não anda bem. "
+        "É verdade, isso? Que ela tá com câncer?",
+        "Eu sinto muito. Mas você tem uma cara decidida hoje — vai atrás "
+        "de alguma coisa, não vai? Então vai. E volta pra contar pra "
+        "gente.",
+    ),
 }
 
 SCHOOL_SPRITE_RECTS = {
@@ -249,6 +297,11 @@ class Game:
         self._load_assets()
         self.player = Player()
         self.dialogue = DialogueBox()
+        # Fila de falas restantes de uma conversa de NPC com múltiplos
+        # beats (ex.: Sra. Amélia na vila, ver NPC_DIALOGUES/_talk_to_npc/
+        # _update_dialogue) — vazia pra NPCs de fala única (a maioria).
+        self._npc_dialogue_queue = []
+        self._npc_dialogue_speaker = None
         # Cutscene inicial (mãe de Lia no hospital) — reaproveita a mesma
         # DialogueBox acima pro texto e o quadro parado de Lia pro retrato,
         # ver cutscene.IntroCutscene. Só toca entre TITLE e PLAYING.
@@ -361,6 +414,12 @@ class Game:
     # Mesma ideia pro fundo da escola (céu/montanhas ao longe, visto pelas
     # janelas dos corredores) — anda bem mais devagar que a câmera.
     SCHOOL_BACKGROUND_PARALLAX = 0.3
+    # Fundo dedicado da vila (céu com nuvens) — mesma ideia de parallax.
+    VILLAGE_BACKGROUND_PARALLAX = 0.3
+    # Cor lisa usada enquanto não existe backgrounds/village_background.png
+    # (ver _draw_background) — um azul de céu simples, só pra não reaproveitar
+    # o fundo da escola nem deixar a vila preta.
+    VILLAGE_PLACEHOLDER_SKY = (144, 197, 230)
 
     def _load_backgrounds(self):
         school_background = self._load_scaled_background("backgrounds/background_school.png")
@@ -368,6 +427,15 @@ class Game:
         cave_background = self._load_scaled_background("backgrounds/cave_background_v2.png")
         self.backgrounds = [school_background, university_background, cave_background]
         self.background_mirror = pygame.transform.flip(university_background, True, False)
+        # Opcional: só existe depois que a arte "backgrounds/ceu.png" (céu com
+        # nuvens, pedida pro Raul) for colocada na pasta. Até lá,
+        # _draw_background cai no preenchimento liso (VILLAGE_PLACEHOLDER_SKY).
+        village_path = ASSET_DIR / "backgrounds" / "ceu.png"
+        self.village_background = (
+            self._load_scaled_background("backgrounds/ceu.png")
+            if village_path.exists()
+            else None
+        )
 
     def _load_scaled_background(self, relative_path):
         """Várias artes de fundo (universidade, caverna) vêm em baixa
@@ -634,16 +702,26 @@ class Game:
         )
         return {"walk": rows[1], "hurt": rows[2], "dead": rows[3]}
 
-    # slime_king.png/dragon.png já nascem grandes (64x64/112x96); esta escala
-    # é só o empurrão extra pedido no LEIA-ME pra eles lerem como os maiores
-    # do jogo, o topo da hierarquia de tamanho.
+    # slime_king.png/dragon.png já nascem grandes (64x64/324x265); esta
+    # escala é só o empurrão extra pedido no LEIA-ME pra eles lerem como os
+    # maiores do jogo, o topo da hierarquia de tamanho.
     SLIME_KING_SCALE = 1.3
-    # Aumentado bastante (era 1.25) pra luta estilo Cuphead pedida pelo
-    # Raul — o Dragão precisa "ler" como o chefe mais imponente do jogo,
-    # dominando boa parte da tela. Ver Dragon.WIDTH/HEIGHT em enemy.py pro
-    # ajuste equivalente da hitbox (menor que o visual, mesmo padrão já
-    # usado nos outros inimigos).
-    DRAGON_SCALE = 2.4
+    # Folha nova do Dragão (2026-08, 9 quadros de 324x265 desenhados pelo
+    # Raul) já nasce bem maior em pixels crus que a antiga (112x96) — daí a
+    # escala em si ser menor que antes (era 2.4), mas o resultado final
+    # ainda é BEM maior (324*2.0=648 x 265*2.0=530, quase 1/3 da largura da
+    # tela de 1920 — pedido explícito: "ele será BEM maior do que o atual
+    # já é... enorme"). Ver Dragon.WIDTH/HEIGHT em enemy.py pro ajuste
+    # equivalente da hitbox (menor que o visual, mesmo padrão já usado nos
+    # outros inimigos).
+    DRAGON_SCALE = 2.0
+    # Pedido do Raul: pedaços de pedra do Terremoto maiores (dragon_rock.png
+    # nasce só 24x24, pequeno demais perto do Dragão enorme). A hitbox
+    # (Dragon.ROCK_SIZE, em enemy.py) foi atualizada pra bater com o
+    # mesmo tamanho final (24 * 2.2 arredondado = 53) — pedido do Raul:
+    # "aumente a hitbox dos meteoros para ficarem iguais ao tamanho deles".
+    # Mudar este número aqui exige atualizar ROCK_SIZE lá também.
+    ROCK_SPRITE_SCALE = 2.2
 
     def _load_slime_king_sprites(self):
         """slime_king.png: quadro 64x64, grade 12x6 — repouso(8)/pulo(8)/
@@ -658,31 +736,57 @@ class Game:
         }
 
     def _load_dragon_sprites(self):
-        """dragon.png: quadro 112x96, grade 14x6 — repouso(8)/marcha(8)/
-        ataque A sopro(10)/ataque B brasas(10)/dano(4)/morte(14). As pedras
-        das Brasas usam dragon_rock.png (24x24, 8 quadros: queda/impacto/
-        explosão), desenhadas à parte pelo próprio Dragon.draw.
+        """dragon.png: folha nova do Raul (2026-08), UMA fileira só de 9
+        quadros de 324x265 — 1 idle, 2 sopro (jato de fogo), 3 voo
+        (decolagem/pairando) e 3 terremoto (batendo no chão), ver
+        enemy.Dragon._sprite_key pro mapeamento exato de cada estado pra
+        cada fatia. As pedras da queda do Terremoto (reaproveitadas da
+        antiga Brasas) usam dragon_rock.png (24x24, 8 quadros: queda/
+        impacto/explosão), desenhadas à parte pelo próprio Dragon.draw.
 
-        "meteor" e "danger_marker" são o ataque novo Meteoros em Mira (ver
-        enemy.Dragon._update_meteors/draw): sprites únicos e estáticos
-        (chapados, feitos por código determinístico — ver
-        LEIA-ME_sprites_chapados.md), não spritesheets animados como o
-        resto acima, por isso não passam por _load_grid_sheet. Ficam em
-        images/vfx/boss_attacks/ — pasta nova, precisa existir com os
-        arquivos meteoro.png e indicador_perigo.png copiados lá antes de
-        rodar, senão o load quebra."""
+        Sem mais meteor/danger_marker aqui — o antigo ataque Voo da Fúria
+        (meteoros mirados no chão) saiu de cena, ver docstring de
+        enemy.Dragon."""
         rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "dragon.png", 112, 96, [8, 8, 10, 10, 4, 14], scale=self.DRAGON_SCALE
+            ASSET_DIR / "enemies" / "dragon.png", 324, 265, [9], scale=self.DRAGON_SCALE
         )
-        rock_rows = self._load_grid_sheet(ASSET_DIR / "enemies" / "dragon_rock.png", 24, 24, [8])
+        frames = rows[0]
+        rock_rows = self._load_grid_sheet(
+            ASSET_DIR / "enemies" / "dragon_rock.png", 24, 24, [8], scale=self.ROCK_SPRITE_SCALE
+        )
+        sopro_ember, sopro_flame = self._load_dragon_fire_sprites()
         return {
-            "idle": rows[0], "walk": rows[1],
-            "attack_a": rows[2], "attack_b": rows[3],
-            "hurt": rows[4], "dead": rows[5],
+            "idle": frames[0:1],
+            "sopro": frames[1:3],
+            "voo": frames[3:6],
+            "terremoto": frames[6:9],
             "rock": rock_rows[0],
-            "meteor": self._load_image("vfx/boss_attacks/meteoro.png"),
-            "danger_marker": self._load_image("vfx/boss_attacks/indicador_perigo.png"),
+            "sopro_flame": sopro_flame,
+            "sopro_ember": sopro_ember,
         }
+
+    def _load_dragon_fire_sprites(self):
+        """dragon_fire.png (imagem do Raul): uma faísca pequena e uma chama
+        grande lado a lado no mesmo arquivo, tamanhos bem diferentes, sem
+        grade fixa — em vez de recortar por coordenada fixa (frágil, ia
+        quebrar se o Raul reexportar com proporções um pouco diferentes),
+        corta a folha ao meio por proporção (a faísca sempre nasceu bem
+        menor e à esquerda) e deixa get_bounding_rect achar o conteúdo real
+        de cada metade, mesma técnica que _load_enemy_sheet já usa pros
+        slimes. Devolve (faísca, chama) crus, sem escala — Dragon.draw (ver
+        enemy.py) redimensiona a chama pra caber no retângulo de verdade
+        do jato (SOPRO_RANGE x SOPRO_HEIGHT) a cada quadro."""
+        sheet = pygame.image.load(ASSET_DIR / "enemies" / "dragon_fire.png").convert_alpha()
+        split_x = round(sheet.get_width() * 0.32)
+        ember_half = sheet.subsurface(pygame.Rect(0, 0, split_x, sheet.get_height()))
+        flame_half = sheet.subsurface(
+            pygame.Rect(split_x, 0, sheet.get_width() - split_x, sheet.get_height())
+        )
+        ember_content = ember_half.get_bounding_rect()
+        flame_content = flame_half.get_bounding_rect()
+        ember = ember_half.subsurface(ember_content).copy() if ember_content.width else None
+        flame = flame_half.subsurface(flame_content).copy() if flame_content.width else None
+        return ember, flame
 
     # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
     # destacarem melhor perto dela sem deixar de ler como "gente", mesma
@@ -722,6 +826,8 @@ class Game:
         self._base_level = None
         self._base_state = None
         self.seen_dialogues = set()
+        self._npc_dialogue_queue = []
+        self._npc_dialogue_speaker = None
         self.hints_shown = set()
         self.lever_on = False
         self.sequence_solved = False
@@ -834,6 +940,7 @@ class Game:
             self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
             self.message = "O escudo absorveu o dano!"
             self.message_timer = 90
+            audio.play_sfx("shield_sound")
             return False
         # Na universidade, o "toque que machuca" costuma ser vidro quebrado
         # ou a poça química — o estilhaço de vidro combina melhor com o
@@ -847,6 +954,7 @@ class Game:
         else:
             vfx_kind = "impact"
         self.vfx.spawn(vfx_kind, self.player.rect.centerx, self.player.rect.centery)
+        audio.play_sfx("damage_sound")
         # max(0, ...) em vez de só subtrair: sem isso um chefe (1 coração
         # inteiro) batendo com meio coração sobrando deixaria self.lives
         # negativo, o que o HUD não sabe desenhar.
@@ -856,6 +964,7 @@ class Game:
             self.state = GAME_OVER
             self.game_over_fade = 0
             self.game_over_characters = 0
+            audio.play_sfx("death_sound")
             return False
         return True
 
@@ -903,6 +1012,7 @@ class Game:
         self.message_timer = 0
 
     def update(self, keyboard, dt=1 / FPS):
+        self._update_music()
         dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed = self._read_input(keyboard)
 
         if self.state == TITLE:
@@ -985,20 +1095,23 @@ class Game:
 
     def _update_title(self, keyboard):
         if keyboard.space or keyboard.RETURN:
+            audio.play_sfx("select_sound")
             self.lives = STARTING_LIVES
             self.state = INTRO
             self.intro.start()
 
     def _update_intro(self, keyboard, dialogue_advance_pressed):
         """A mãe de Lia no hospital (ver cutscene.IntroCutscene) — ESC pula
-        direto pra Fase 1, senão a cena avança do mesmo jeito que qualquer
-        outro diálogo do jogo (E/Enter/Espaço)."""
+        direto pra vila, senão a cena avança do mesmo jeito que qualquer
+        outro diálogo do jogo (E/Enter/Espaço). Dali ela vai pra vila (ver
+        PLANO_VILA.md/level.VILLAGE) antes da Fase 1 — não direto pra
+        Fase 1 como antes."""
         if getattr(keyboard, "escape", False):
             self.intro.skip()
         else:
             self.intro.update(dialogue_advance_pressed)
         if not self.intro.active:
-            self.state = PLAYING
+            self.load_level(VILLAGE)
 
     def _update_end_state(self, keyboard):
         if self.state == GAME_OVER:
@@ -1006,6 +1119,7 @@ class Game:
             if self.game_over_fade >= 18:
                 self.game_over_characters += 0.75
         if keyboard.r:
+            audio.play_sfx("select_sound")
             self.lives = STARTING_LIVES
             self.shield = 0
             if self.state == COMPLETE:
@@ -1018,8 +1132,15 @@ class Game:
         if self.level.is_underground:
             self.level.update_lever_animations()
         if dialogue_advance_pressed:
+            audio.play_sfx("dialogue_sound")
             if self.dialogue.finished:
-                self.dialogue.close()
+                if self._npc_dialogue_queue:
+                    # Conversa de vários beats (ex.: Sra. Amélia, ver
+                    # _talk_to_npc) — próxima fala em vez de fechar.
+                    next_text = self._npc_dialogue_queue.pop(0)
+                    self.dialogue.start(self._npc_dialogue_speaker, next_text)
+                else:
+                    self.dialogue.close()
             else:
                 self.dialogue.reveal_all()
         else:
@@ -1044,13 +1165,15 @@ class Game:
             return
         self.player.update_abilities()
         if dash_pressed and not self.player.swimming:
-            self.player.start_dash()
+            if self.player.start_dash():
+                audio.play_sfx("dash_sound")
         self.player.read_controls(keyboard)
         self._update_attack(attack_pressed)
         self._update_ranged_attack(ranged_pressed)
         self._maybe_wake_bosses()
         self._face_bosses_at_player()
         self.level.update()
+        self._check_boss_shake_events()
         if self.level.tiled_map:
             # Avança a animação dos tiles do Tiled (ex.: água da Fase 3) em ms.
             self.level.tiled_map.update(dt * 1000)
@@ -1124,6 +1247,7 @@ class Game:
             dy = enemy.rect.centery - player_center[1]
             if dx * dx + dy * dy <= self.BOSS_WAKE_RADIUS * self.BOSS_WAKE_RADIUS:
                 wake_up()
+                audio.play_sfx("boss_wake_sound")
 
     def _face_bosses_at_player(self):
         """Chefes sempre virados pra Lia (pedido do Raul: eles às vezes
@@ -1138,6 +1262,18 @@ class Game:
             face_player = getattr(enemy, "face_player", None)
             if face_player:
                 face_player(player_x)
+
+    def _check_boss_shake_events(self):
+        """Genérico de propósito (getattr, só o Dragão define isso hoje —
+        ver enemy.Dragon.consume_shake_event/_slam_impact): dá o "peso" do
+        tranco do Terremoto sacudindo a câmera + tocando earthquake_dragon_
+        sound, igual ao hit-stop/shake que o parry já usa (ver
+        _trigger_shake)."""
+        for enemy in self.level.enemies:
+            consume = getattr(enemy, "consume_shake_event", None)
+            if consume and consume():
+                self._trigger_shake(EARTHQUAKE_SHAKE_DURATION, EARTHQUAKE_SHAKE_MAGNITUDE)
+                audio.play_sfx("earthquake_dragon_sound")
 
     # Distância (px) antes do elevador em que o corredor de aproximação
     # começa — folga generosa de propósito, pra não depender de acertar uma
@@ -1180,6 +1316,10 @@ class Game:
             else:
                 self.combo_count = 1
             self.combo_timer = COMBO_RESET_WINDOW
+            # 4 variações gravadas (sounds/punch/punch_1..4, ver
+            # PLANO_AUDIO.md) — uma pra cada hit do combo, em vez de tocar
+            # sempre o mesmo som de soco.
+            audio.play_sfx(f"punch.punch_{self.combo_count}")
             if self.player.dashing:
                 self.attack_power = DASH_ATTACK_POWER
             elif self.combo_count == COMBO_HIT_COUNT:
@@ -1205,6 +1345,7 @@ class Game:
         if not (ranged_pressed and self.ranged_unlocked and self.ranged_cooldown == 0):
             return
         self.ranged_cooldown = RANGED_ATTACK_COOLDOWN
+        audio.play_sfx("projectile_sound")
         direction = 1 if self.player.facing_right else -1
         # Nasce um pouco à frente da hitbox, na altura do peito — assim o
         # projétil não colide "dentro" da própria Lia no quadro em que nasce.
@@ -1387,7 +1528,8 @@ class Game:
             player.coyote_time = 0
         else:
             player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
-        player.try_jump()
+        if player.try_jump():
+            audio.play_sfx("jump")
 
     def _player_in_water(self, player):
         return any(player.rect.colliderect(zone) for zone in self.level.water_zones)
@@ -1467,8 +1609,10 @@ class Game:
         name = type(enemy).__name__
         quest_item = BOSS_DROP_TABLE.get(name)
         if quest_item:
+            audio.play_sfx("boss_death_sound")
             self._spawn_drop(quest_item, enemy.rect.centerx, enemy.rect.centery)
             return
+        audio.play_sfx("enemy_death_sound")
         entry = ENEMY_DROP_TABLE.get(name)
         if entry and random.random() < entry[1]:
             self._spawn_drop(entry[0], enemy.rect.centerx, enemy.rect.centery)
@@ -1493,6 +1637,7 @@ class Game:
                 self.inventory[key] = self.inventory.get(key, 0) + 1
                 self.message = f"Item obtido: {ITEM_DEFS[key]['name']}"
                 self.message_timer = 0
+                audio.play_sfx("item_sound")
                 self.vfx.spawn("dust", drop["x"], drop["y"])
             else:
                 remaining.append(drop)
@@ -1592,6 +1737,7 @@ class Game:
             self.artifacts_collected.add(index)
             self.message = f"Achado: {name}"
             self.message_timer = 0
+            audio.play_sfx("item_sound")
             lore = ROOM_LORE.get(name, DEFAULT_ROOM_LORE)
             self.dialogue.start("Lia", lore)
             return True
@@ -1695,6 +1841,7 @@ class Game:
                 self.invuln_timer = max(self.invuln_timer, PARRY_INVULN_FRAMES)
                 self.hitstop_timer = PARRY_HITSTOP_FRAMES
                 self._trigger_shake(PARRY_SHAKE_DURATION, PARRY_SHAKE_MAGNITUDE)
+                audio.play_sfx("parry_sound")
                 if enemy.take_hit(PARRY_DAMAGE) and not enemy.alive:
                     self._on_enemy_defeated(enemy)
                 return True
@@ -1703,7 +1850,10 @@ class Game:
     def _check_checkpoints(self, player):
         for checkpoint in self.level.checkpoints:
             if player.rect.colliderect(checkpoint):
-                self.checkpoint = (checkpoint.x, checkpoint.bottom - PLAYER_HEIGHT)
+                new_checkpoint = (checkpoint.x, checkpoint.bottom - PLAYER_HEIGHT)
+                if new_checkpoint != self.checkpoint:
+                    audio.play_sfx("checkpoint_sound")
+                self.checkpoint = new_checkpoint
                 self.message = "Checkpoint: Centro de pesquisa alcançado!"
                 self.message_timer = 130
 
@@ -1715,6 +1865,7 @@ class Game:
             self.collected.add(index)
             self.message = f"Parte da pesquisa obtida: {name}"
             self.message_timer = 0
+            audio.play_sfx("item_sound")
             fact = SCIENCE_FACTS.get(name, DEFAULT_SCIENCE_FACT)
             self.dialogue.start("Ciência Delas", fact)
             return True
@@ -1726,6 +1877,7 @@ class Game:
         for index, (item, _) in enumerate(self.level.microscope_parts):
             if index not in self.microscope_collected and player.rect.colliderect(item):
                 self.microscope_collected.add(index)
+                audio.play_sfx("item_sound")
 
     def _start_pending_dialogue(self, player):
         for index, (position, speaker, text) in enumerate(self.level.data["dialogues"]):
@@ -1753,6 +1905,11 @@ class Game:
             self.message = f"Ainda falta: {names}."
             self.message_timer = 0
             player.x = self.level.world_width - 160
+        elif self.level.index == VILLAGE:
+            # Fim da rua da vila = caminho pra floresta → Fase 1 (ver
+            # PLANO_VILA.md). Não é "fase+1" porque VILLAGE não é um índice
+            # numérico — cai fora de PHASES de propósito.
+            self.load_level(0)
         elif self.level.index == len(PHASES) - 1:
             self.state = COMPLETE
         else:
@@ -1788,6 +1945,9 @@ class Game:
                     self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
                         self._on_enemy_defeated(enemy)
+                    else:
+                        is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
+                        audio.play_sfx("boss_hit_sound" if is_boss else "enemy_hit_sound")
             elif self.invuln_timer <= 0 and self.player.rect.colliderect(enemy.rect):
                 is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
                 self.take_damage(BOSS_CONTACT_DAMAGE if is_boss else MOB_CONTACT_DAMAGE)
@@ -1832,6 +1992,7 @@ class Game:
         for door in self.level.doors:
             if not player.rect.colliderect(door["rect"].inflate(self.DOOR_INTERACT_RANGE, self.DOOR_INTERACT_RANGE)):
                 continue
+            audio.play_sfx("door_sound")
             if door["target"] == "sair":
                 self.exit_room()
             else:
@@ -1842,36 +2003,50 @@ class Game:
     NPC_INTERACT_RANGE = 40
 
     def _talk_to_npc(self):
-        """As cientistas nunca são consumidas — dá pra falar com elas quantas
-        vezes quiser, sempre a mesma fala fixa (ver NPC_DIALOGUES). Mesmo
-        raio/padrão de detecção das portas, só que contra Level.npcs."""
+        """Os NPCs nunca são consumidos — dá pra falar com eles quantas
+        vezes quiser (ver NPC_DIALOGUES). Mesmo raio/padrão de detecção das
+        portas, só que contra Level.npcs. NPC_DIALOGUES[nome] pode ser uma
+        string (fala única, a maioria) ou uma tupla (várias falas em
+        sequência, ex.: Sra. Amélia na vila) — nesse caso só a primeira
+        entra aqui; o resto é consumido por _update_dialogue a cada [E]
+        seguinte, via self._npc_dialogue_queue."""
         player = self.player
         for npc in self.level.npcs:
             if not player.rect.colliderect(npc["rect"].inflate(self.NPC_INTERACT_RANGE, self.NPC_INTERACT_RANGE)):
                 continue
             text = NPC_DIALOGUES.get(npc["name"])
-            if text:
+            if isinstance(text, tuple):
+                if text:
+                    self._npc_dialogue_speaker = npc["name"]
+                    self._npc_dialogue_queue = list(text[1:])
+                    self.dialogue.start(npc["name"], text[0])
+            elif text:
+                self._npc_dialogue_queue = []
                 self.dialogue.start(npc["name"], text)
             return True
         return False
 
     def _use_elevator_lever(self, player):
         if self.level.top_lever and player.rect.colliderect(self.level.top_lever.inflate(55, 55)):
+            audio.play_sfx("lever_sound")
             self.level.call_elevator("down")
             return True
         if self.level.bottom_lever and player.rect.colliderect(self.level.bottom_lever.inflate(55, 55)):
+            audio.play_sfx("lever_sound")
             self.level.call_elevator("up")
             return True
         if (
             self.level.upper_bottom_lever
             and player.rect.colliderect(self.level.upper_bottom_lever.inflate(55, 55))
         ):
+            audio.play_sfx("lever_sound")
             self.level.call_upper_elevator("up")
             return True
         if (
             self.level.upper_top_lever
             and player.rect.colliderect(self.level.upper_top_lever.inflate(55, 55))
         ):
+            audio.play_sfx("lever_sound")
             self.level.call_upper_elevator("down")
             return True
         return False
@@ -1880,6 +2055,7 @@ class Game:
         if not player.rect.colliderect(self.level.panel_lever.inflate(55, 55)):
             return False
 
+        audio.play_sfx("lever_sound")
         self.lever_on = not self.lever_on
         self.level.set_lever_active("panel", self.lever_on)
         if self.lever_on:
@@ -1907,14 +2083,17 @@ class Game:
                     "Sequência concluída. As peças do microscópio foram liberadas.",
                 )
             elif index == self.sequence_progress:
+                audio.play_sfx("button_sound")
                 self.sequence_progress += 1
                 if self.sequence_progress == len(self.level.buttons):
                     self.sequence_solved = True
+                    audio.play_sfx("correct_sequence_sound")
                     self.dialogue.start(
                         "Painel",
                         "Sequência correta! As peças do microscópio foram liberadas.",
                     )
             else:
+                audio.play_sfx("wrong_sequence_sound")
                 self.sequence_progress = 0
                 self.dialogue.start("Painel", "Sequência incorreta. O painel foi reiniciado.")
             return True
@@ -1927,6 +2106,7 @@ class Game:
             self.dialogue.start("Lia", "Ainda faltam peças para montar o microscópio.")
         elif not self.microscope_assembled:
             self.microscope_assembled = True
+            audio.play_sfx("microscope_sound")
             self.level.activate_return_route()
             self.dialogue.start(
                 "Lia",
@@ -2003,15 +2183,33 @@ class Game:
         elif self.level.room == "biblioteca":
             self._draw_repeating_background(surface, self.library_background)
         elif self.level.index == 0:
-            self._draw_repeating_background(
-                surface, self.backgrounds[0], parallax=self.SCHOOL_BACKGROUND_PARALLAX
-            )
+            # Fase 1 (pedido do Raul: "vai ficar melhor") também usa o céu
+            # com nuvens novo assim que backgrounds/village_background.png
+            # existir — mesma arte da vila, mesma vibe "dia claro, ao ar
+            # livre". Até lá, cai de volta no fundo antigo da escola pra não
+            # quebrar nada.
+            if self.village_background is not None:
+                self._draw_repeating_background(
+                    surface, self.village_background, parallax=self.SCHOOL_BACKGROUND_PARALLAX
+                )
+            else:
+                self._draw_repeating_background(
+                    surface, self.backgrounds[0], parallax=self.SCHOOL_BACKGROUND_PARALLAX
+                )
         elif self.level.index == 1:
             self.draw_university_background(surface)
         elif self.level.index == 2:
             self._draw_repeating_background(
                 surface, self.backgrounds[2], parallax=self.CAVE_BACKGROUND_PARALLAX
             )
+        elif self.level.index == VILLAGE:
+            # Fundo dedicado (ver acima) — mesmo esquema de fallback.
+            if self.village_background is not None:
+                self._draw_repeating_background(
+                    surface, self.village_background, parallax=self.VILLAGE_BACKGROUND_PARALLAX
+                )
+            else:
+                surface.fill(self.VILLAGE_PLACEHOLDER_SKY)
         else:
             self._draw_repeating_background(surface, self.backgrounds[self.level.index])
 
@@ -2169,6 +2367,39 @@ class Game:
                 continue
             return enemy
         return None
+
+    def _update_music(self):
+        """Roda uma vez por quadro (ver update()); audio.play_music já
+        ignora a chamada se o nome pedido é o mesmo que já está tocando,
+        então isso é barato mesmo rodando todo quadro — muito mais simples
+        que espalhar play_music em cada ponto de transição de estado
+        (trocar de fase, entrar/sair de sala, chefe acordar/morrer, ganhar/
+        perder), que são muitos e fáceis de esquecer um. Mesma ideia de
+        _draw_background: decide o resultado a partir do estado atual, sem
+        guardar histórico de transições."""
+        audio.play_music(self._desired_music_track())
+
+    def _desired_music_track(self):
+        """Nome da faixa (ver PLANO_AUDIO.md pro arquivo esperado em
+        music/) que deveria estar tocando agora, dado o estado atual."""
+        if self.state == GAME_OVER:
+            return "derrota_music"
+        if self.state == COMPLETE:
+            return "vitoria_music"
+        if self.state == TITLE:
+            return "menu_music"
+        if self.state == INTRO:
+            return "intro_music"
+        boss = self._active_boss()
+        if boss is not None:
+            return BOSS_MUSIC.get(type(boss).__name__)
+        if self.level.room == "laboratorio":
+            return "laboratorio_music"
+        if self.level.room == "biblioteca":
+            return "biblioteca_music"
+        if self.level.index == VILLAGE:
+            return "vila_music"
+        return f"fase_{self.level.index + 1}_music"
 
     BOSS_HEALTH_BAR_WIDTH = 520
     BOSS_HEALTH_BAR_HEIGHT = 20
