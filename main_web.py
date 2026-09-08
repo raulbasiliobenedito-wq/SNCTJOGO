@@ -37,7 +37,7 @@ import asyncio
 
 import pygame
 
-from game import Game
+from game import Game, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 
@@ -96,7 +96,22 @@ async def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                game.request_mouse_attack()
+                if game.minigame.active:
+                    game.handle_minigame_click(event.pos)
+                elif game.state in (TITLE_STATE, SETTINGS_STATE):
+                    game.handle_menu_click(event.pos)
+                else:
+                    game.request_mouse_attack()
+            elif event.type == pygame.MOUSEMOTION:
+                if game.minigame.active:
+                    game.handle_minigame_drag(event.pos)
+                elif game.state == SETTINGS_STATE:
+                    game.handle_menu_drag(event.pos)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if game.minigame.active:
+                    game.handle_minigame_release(event.pos)
+                else:
+                    game.handle_menu_release()
 
         keyboard.refresh(pygame.key.get_pressed())
         game.update(keyboard, dt)

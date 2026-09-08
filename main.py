@@ -104,19 +104,27 @@ def draw():
 def on_mouse_down(pos, button):
     if button != mouse.LEFT:
         return
-    if game.state in (TITLE_STATE, SETTINGS_STATE):
+    if game.minigame.active:
+        game.handle_minigame_click(pos)
+    elif game.state in (TITLE_STATE, SETTINGS_STATE):
         game.handle_menu_click(pos)
     else:
         game.request_mouse_attack()
 
 
 def on_mouse_up(pos, button):
-    if button == mouse.LEFT:
+    if button != mouse.LEFT:
+        return
+    if game.minigame.active:
+        game.handle_minigame_release(pos)
+    else:
         game.handle_menu_release()
 
 
 def on_mouse_move(pos, rel):
-    if game.state == SETTINGS_STATE:
+    if game.minigame.active:
+        game.handle_minigame_drag(pos)
+    elif game.state == SETTINGS_STATE:
         game.handle_menu_drag(pos)
 
 

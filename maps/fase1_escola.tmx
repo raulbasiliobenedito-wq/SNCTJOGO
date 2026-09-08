@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="78">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="80">
  <properties>
   <property name="plataformas_automaticas" value="true"/>
  </properties>
@@ -9,7 +9,7 @@
  <tileset firstgid="293" source="chao_vila.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt1DFOw0AQBVBzBLgF0CKgQFBCC4J+e+7f40hBgiATO97NeJz3pC+lyXoy65+uAwAAAAAAAAAAAAAAgPW5OhsO0N6c/v3X3wx9vokegJM0pTdjunRo/2rOEOkhegBO0twe/+xR6+8spcvvfe77nPe52H7eNWXGzXm3fe4GzoJ9avVoKWnlo8Iua3ns8zRzlhb5rPcTmSi6d5m6PHdfc85sOZce5xd991l63HKu6H3pcX7Rd7/0Hh9jruh96XF+0Xe/5B4fa67ofelxftF3r8fx+9Lj/KLv/pR6PPSeR+9Lj3O7XMDdL7nHm/ey9Xte+xl6DL8d2rHriv8lwHx6DAAAAEAGZRug6177vEUPMUHZCbDfc5+X6CG6v/39DqxJ6db3fpcRgbUoA1mS0iiQVZmYqefUfHbrQEZF9Jj0iugx6RXRY9IrosekV0SPSa+IHpNemZCaZ405O+IsAIC1+ALcT5Jw
+   eJzt271OwzAUBtD0EWDmR7ABKwIGBCOsINi98/47qVSkUlpoars3DudIn9Ql7sX2V3UoXQcAAJDneJb3/FHm8wAAAAAAAAAAALDO5WxzYFcni/tzvnSPztyptXL691t/W+jzdfQAbOU84P7U/O30kN5s06Vd+1dyhkj30QNMhP8XGCa3x8s9qv3MWLr81ueuz0Gfw8XrVUNmnK930+d2w1rwl1I9GktqeS+wl6U89HnMnKVGPsr9iQwU3buWupy7Xzlr1pyrdI99J85zusP+RZ99Kz2uOVf0fpXuMfsXffZj7/E+5oreLz1uX/TZj7nH+5orer/0uH3RZ6/H8fulx+2LPvv/1ONN9zx6v/S4bRcjOPsx93h+L2vf89Lvocfw3a4duyr4WQLk02MAAAAAWpAWAbrupc9r9BADpJUAf3vq8xw9RPezv1+BKUnd9O532iIwFWlDxiRVCrQqDczQdUq+d+1Ai5LoMc1Losc0L4ke07wkekzzkugxzUuixzQvDUjJtbZZO2ItAICp+AQwzpOp
   </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
@@ -157,6 +157,18 @@
    <properties>
     <property name="elevador" value="principal"/>
     <property name="posicao" value="base"/>
+   </properties>
+  </object>
+  <object id="78" type="elevador_lab" x="6450" y="460" width="110" height="90">
+   <properties>
+    <property name="destino" value="laboratorio_secreto"/>
+    <property name="chave" value="campo_contencao_lab"/>
+   </properties>
+  </object>
+  <object id="79" type="neblina" x="6800" y="400" width="20" height="20">
+   <properties>
+    <property name="chave" value="campo_contencao_lab"/>
+    <property name="mensagem" value="Tem um campo de contenção aqui, não dá pra passar assim... preciso achar outro caminho."/>
    </properties>
   </object>
  </objectgroup>

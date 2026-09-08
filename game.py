@@ -7,9 +7,17 @@ import pygame
 import audio
 from cutscene import IntroCutscene
 from dialogue import DialogueBox
+from elevator_cutscene import ElevatorCutscene
 from hint import Hint
 from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
 from level import PHASES, VILLAGE, Level
+from minigame import (
+    MICROSCOPE_ORDER,
+    WIRE_COLORS,
+    EnergyBoxMinigame,
+    MicroscopeMinigame,
+    MinigameManager,
+)
 from player import Player
 from projectile import Projectile
 from vfx import VFXManager
@@ -33,8 +41,8 @@ PLAYING = "playing"
 GAME_OVER = "game_over"
 COMPLETE = "complete"
 
-STARTING_LIVES = 3
-MAX_LIVES = 5
+STARTING_LIVES = 1000
+MAX_LIVES = 1000
 
 # Itens (LEIA-ME_bosses_e_itens.md, items.png 16x16, 4 quadros/6fps, 7
 # linhas). "consumable" tem efeito imediato ao usar (tecla própria);
@@ -48,10 +56,22 @@ ITEM_DEFS = {
     "amostra_especime": {"row": 4, "name": "Amostra de Espécime", "kind": "quest", "phase": 1},
     "dark_crystal": {"row": 5, "name": "Dark Crystal", "kind": "consumable", "heal": 1, "shield": 1, "key": "k_3"},
     "sangue_dragao": {"row": 6, "name": "Sangue do Dragão", "kind": "quest", "phase": 2},
+    # Ferramenta da caixa de energia (Fase 2, laboratório — ver
+    # PLANO_MINIGAMES.md §3). "tool": nem "consumable" nem "quest" — não
+    # ganha tecla de uso (ITEM_USE_KEYS só pega "consumable", abaixo) nem
+    # bloqueia avanço de fase (PHASE_REQUIRED_ITEMS não a lista). Fica na
+    # barra de itens sozinha, sem código novo em hud.draw_inventory (mostra
+    # qualquer item com contagem > 0). "row": 7 ainda não existe em
+    # items/items.png — ver _load_item_icons, que já tolera isso sem ícone
+    # até a arte chegar. SÓ o item está pronto por enquanto: a passagem
+    # secreta, a própria caixa de energia e o minigame de parafuso/fios
+    # (modo "esperar a arte pronta", ver PLANO_MINIGAMES.md §4/§6) ainda
+    # não existem — este item não é coletável em lugar nenhum do jogo hoje.
+    "chave_fenda": {"row": 7, "name": "Chave de Fenda", "kind": "tool"},
 }
 ITEM_ORDER = (
     "gororoba", "essencia_slime", "carcaca_robo", "livro_magico",
-    "amostra_especime", "dark_crystal", "sangue_dragao",
+    "amostra_especime", "dark_crystal", "sangue_dragao", "chave_fenda",
 )
 # Itens de pesquisa exigidos por fase pra liberar o avanço (ver
 # _advance_level_if_ready) — Fase 2 depende dos dois chefes de sala
@@ -102,7 +122,7 @@ ENEMY_DROP_TABLE = {
 DROP_PICKUP_RADIUS = 22
 ATTACK_DURATION = 11
 ATTACK_COOLDOWN = 20
-STANDARD_ATTACK_POWER = 1
+STANDARD_ATTACK_POWER = 100
 DASH_ATTACK_POWER = 2
 STANDARD_ATTACK_REACH = 22
 DASH_ATTACK_REACH = 36
@@ -307,11 +327,22 @@ class Game:
         # DialogueBox acima pro texto e o quadro parado de Lia pro retrato,
         # ver cutscene.IntroCutscene. Só toca entre TITLE e PLAYING.
         self.intro = IntroCutscene(self.dialogue, self.player.frames[0])
+        # Cutscene curta do elevador secreto do laboratório (Fase 1, ver
+        # elevator_cutscene.ElevatorCutscene e Level._make_secret_elevators)
+        # — mesma ideia do Hint/minigame abaixo: pausa o jogo, mas sem
+        # precisar de um estado (self.state) novo, já que ela só acontece
+        # durante PLAYING (ver update()/draw()).
+        self.elevator_cutscene = ElevatorCutscene(self.player.frames[0])
         # Dicas contextuais (vinheta + texto, ver hint.Hint) — pausam o jogo
         # igual à DialogueBox, mas não são conversas com NPC, são avisos de
         # mecânica (ex.: painel do elevador na Fase 1). hints_shown mora em
         # load_level (reseta por fase, igual seen_dialogues).
         self.hint = Hint()
+        # Minigames de arraste com mouse (montar o microscópio, e no futuro
+        # a caixa de energia — ver minigame.py e PLANO_MINIGAMES.md). Mesmo
+        # padrão de pausa do Hint acima: Game.update dá prioridade a
+        # minigame.active antes até do dialogue.active (ver update()).
+        self.minigame = MinigameManager()
         # Ataque à distância (ver RANGED_* acima e _advance_level_if_ready):
         # desbloqueia ao concluir a Fase 1 e, como inventário/escudo, atravessa
         # trocas de fase normais — só reseta num Game() novo de verdade (não
@@ -368,6 +399,21 @@ class Game:
         self.slime_king_sprites = self._load_slime_king_sprites()
         self.dragon_sprites = self._load_dragon_sprites()
         self.item_icons = self._load_item_icons()
+        self.energy_box_sprites = self._load_energy_box_sprites()
+        # Elevador secreto do laboratório escondido (ver
+        # elevator_cutscene.ElevatorCutscene/fog.FogBarrier) — três
+        # arquivos totalmente independentes entre si, cada um opcional na
+        # veia do resto do jogo: falta um, cai pro desenho por código
+        # correspondente, sem travar nada.
+        self.secret_elevator_sprite = self._load_optional_object_sprite("elevador_lab.png")
+        self.fog_sprite = self._load_optional_object_sprite("fog_cloud.png")
+        # Animação de verdade da névoa (ver fog.py/build_pixel_anim.py do
+        # Raul) — 24 quadros em loop, "quadros" com rostos e
+        # "quadros_corpo" só a massa (pra ladrilhar sem repetir cara).
+        # Cai pro fog_sprite/desenho por código se as pastas não existirem
+        # ainda (mesmo padrão opcional de tudo isso).
+        self.fog_frames = self._load_fog_frame_sequence("quadros", "quadro")
+        self.fog_frames_corpo = self._load_fog_frame_sequence("quadros_corpo", "corpo")
         self.scientist_sprites = self._load_scientist_sprites()
         self.artifact_image = self._load_scaled_image("items/artifact_lab.png", (28, 28))
         self.artifact_library_image = self._load_scaled_image("items/artifact_library.png", (28, 28))
@@ -396,6 +442,41 @@ class Game:
 
     def _load_scaled_image(self, relative_path, size):
         return pygame.transform.smoothscale(self._load_image(relative_path), size)
+
+    @staticmethod
+    def _load_optional_object_sprite(filename):
+        """Um único arquivo opcional em images/objects — mesmo padrão de
+        _load_energy_box_sprites (checa .exists() antes, devolve None
+        sem quebrar nada enquanto a arte não chegar). Usado pelos
+        arquivos independentes do elevador secreto/neblina (ver
+        _load_assets)."""
+        path = ASSET_DIR / "objects" / filename
+        if not path.exists():
+            return None
+        return pygame.image.load(path).convert_alpha()
+
+    @staticmethod
+    def _load_fog_frame_sequence(subfolder, prefix, count=24):
+        """Carrega images/fog/<subfolder>/<prefix>_00.png .. _23.png (ver
+        Game._load_assets/fog.FogBarrier._draw_animated) e redimensiona
+        cada quadro pra tela (WIDTH x HEIGHT) — os quadros do Raul nascem
+        em 480x270 pensados pra 4x, que bate exatamente com 1920x1080,
+        mas escalar direto pro tamanho da tela deixa isso independente de
+        WIDTH/HEIGHT mudarem no futuro. `pygame.transform.scale` (sem
+        suavizar) mantém a pixel art nítida. Devolve None (não uma lista
+        vazia) se a pasta ainda não existir — mesmo padrão opcional do
+        resto do jogo, FogBarrier cai pro fog_sprite/desenho por código."""
+        folder = ASSET_DIR / "fog" / subfolder
+        if not folder.exists():
+            return None
+        frames = []
+        for i in range(count):
+            path = folder / f"{prefix}_{i:02d}.png"
+            if not path.exists():
+                return None
+            raw = pygame.image.load(path).convert_alpha()
+            frames.append(pygame.transform.scale(raw, (WIDTH, HEIGHT)))
+        return frames
 
     def _load_platform_tiles(self):
         return [
@@ -811,20 +892,129 @@ class Game:
         )
 
     def _load_item_icons(self):
-        """items.png: quadro 16x16, 4 col x 7 lin, 6fps — usa só o primeiro
+        """items.png: quadro 16x16, 4 col x N lin, 6fps — usa só o primeiro
         quadro de cada linha como ícone estático do inventário/HUD (ver
         hud.draw_inventory); a animação de 4 quadros fica pro chão, se algum
-        dia o item ganhar uma versão "largada" animada."""
-        rows = self._load_grid_sheet(ASSET_DIR / "items" / "items.png", 16, 16, [4] * 7)
+        dia o item ganhar uma versão "largada" animada.
+
+        N vem da altura real do arquivo (não fixo em 7): a chave de fenda
+        (ver ITEM_DEFS, PLANO_MINIGAMES.md §3.1) pede uma linha 7 nova que
+        ainda não foi desenhada. Enquanto ela não existir, o item continua
+        funcionando (inventário, sem tecla de uso) só que sem ícone — ver o
+        `continue` abaixo e hud.draw_inventory (`icons.get(key)`, tolera
+        ícone ausente)."""
+        sheet_path = ASSET_DIR / "items" / "items.png"
+        row_count = pygame.image.load(sheet_path).get_height() // 16
+        rows = self._load_grid_sheet(sheet_path, 16, 16, [4] * row_count)
         icons = {}
         for key, definition in ITEM_DEFS.items():
-            frame = rows[definition["row"]][0]
+            row = definition["row"]
+            if row >= len(rows):
+                continue
+            frame = rows[row][0]
             icons[key] = pygame.transform.scale(frame, (28, 28))
         return icons
+
+    def _load_energy_box_sprites(self):
+        """Caixa de energia (Fase 2, laboratório — ver PLANO_MINIGAMES.md
+        §3, minigame.EnergyBoxMinigame). Só carrega de verdade se TODOS os
+        arquivos já existirem: enquanto faltar um só, devolve None e a
+        mecânica inteira fica desligada — Level._draw_energy_box não
+        desenha nada (self.energy_box_sprites nunca chega lá) e
+        _use_energy_box não abre o minigame. Mesmo padrão já usado pro céu
+        da vila (village_background) e pro parry_flash.png: o jogo não
+        quebra enquanto a arte não chega, só a mecânica fica invisível."""
+        objects_dir = ASSET_DIR / "objects"
+        required = (
+            "caixa_energia_fechada.png", "caixa_energia_aberta.png",
+            "caixa_energia_ligada.png", "tampa_caixa.png", "parafuso.png",
+            "fio_ponta.png", "terminal.png", "chave_fenda_grande.png",
+        )
+        if not all((objects_dir / name).exists() for name in required):
+            return None
+
+        def load(name):
+            return pygame.image.load(objects_dir / name).convert_alpha()
+
+        def split(name, count):
+            # Divide a folha em `count` quadros iguais lado a lado — não
+            # assume nenhum tamanho de pixel fixo (o Raul pode ter
+            # exportado em qualquer resolução), só que os quadros têm
+            # todos a mesma largura dentro do arquivo.
+            sheet = load(name)
+            frame_width = sheet.get_width() // count
+            return [
+                sheet.subsurface(pygame.Rect(index * frame_width, 0, frame_width, sheet.get_height())).copy()
+                for index in range(count)
+            ]
+
+        parafuso_no_lugar, parafuso_caindo = split("parafuso.png", 2)
+        terminal_vazio, terminal_conectado = split("terminal.png", 2)
+        fio_frames = split("fio_ponta.png", len(WIRE_COLORS))
+        sprites = {
+            "fechada": load("caixa_energia_fechada.png"),
+            "aberta": load("caixa_energia_aberta.png"),
+            "ligada": load("caixa_energia_ligada.png"),
+            "tampa": load("tampa_caixa.png"),
+            "parafuso_no_lugar": parafuso_no_lugar,
+            "parafuso_caindo": parafuso_caindo,
+            "terminal_vazio": terminal_vazio,
+            "terminal_conectado": terminal_conectado,
+            "fio_por_cor": dict(zip(WIRE_COLORS, fio_frames)),
+            "chave_grande": load("chave_fenda_grande.png"),
+        }
+
+        # Dois extras totalmente opcionais, cada um checado por conta
+        # própria (não entram no `required` acima — o minigame já sabe
+        # cair pro visual desenhado por código enquanto um dos dois não
+        # existir, ver minigame.py EnergyBoxMinigame._draw_wire_band e
+        # _draw_fios):
+        # - fio_corpo.png: 4 quadros lado a lado (mesma ordem de
+        #   WIRE_COLORS — vermelho/azul/verde/amarelo), cada um um trecho
+        #   sólido de fio na cor certa. O código estica/encolhe e
+        #   rotaciona esse quadro pra caber entre âncora e ponta — não
+        #   precisa ser do tamanho exato, pygame.transform.scale ajusta
+        #   pra qualquer comprimento. Sem ele, o fio continua sendo
+        #   desenhado por círculos.
+        fio_corpo_path = objects_dir / "fio_corpo.png"
+        if fio_corpo_path.exists():
+            sprites["fio_esticado_por_cor"] = dict(
+                zip(WIRE_COLORS, split("fio_corpo.png", len(WIRE_COLORS)))
+            )
+        # - tomada.png: 2 quadros pra desenhar no lugar de
+        #   terminal_vazio/terminal_conectado. Sem ele, usa os quadros de
+        #   terminal.png que já carregam sempre (ver `required`). Já
+        #   inverti essa ordem uma vez e saiu do jeito errado (conectado
+        #   parecendo desligado e vice-versa) — voltando pra ordem
+        #   original do arquivo: quadro 1 = vazia, quadro 2 = conectada.
+        tomada_path = objects_dir / "tomada.png"
+        if tomada_path.exists():
+            tomada_vazia, tomada_conectada = split("tomada.png", 2)
+            sprites["tomada_vazia"] = tomada_vazia
+            sprites["tomada_conectada"] = tomada_conectada
+
+        # - chave_desparafusando.png: laço de giro da chave "desapertando",
+        #   6 quadros. Sem ele, minigame.py rotaciona chave_grande em
+        #   tempo real (pygame.transform.rotate borra a pixel art fora de
+        #   múltiplos de 90°, então isso é só o provisório até o
+        #   quadro-a-quadro chegar — ver EnergyBoxMinigame._draw_screw_anim).
+        chave_anim_path = objects_dir / "chave_desparafusando.png"
+        if chave_anim_path.exists():
+            sprites["chave_desparafusando"] = split("chave_desparafusando.png", 6)
+
+        # - parafuso_caindo_anim.png: o parafuso saltando pra fora e
+        #   tombando até o chão, 6 quadros. Sem ele, mesma lógica acima:
+        #   rotaciona parafuso_caindo em tempo real como provisório.
+        parafuso_anim_path = objects_dir / "parafuso_caindo_anim.png"
+        if parafuso_anim_path.exists():
+            sprites["parafuso_caindo_anim"] = split("parafuso_caindo_anim.png", 6)
+
+        return sprites
 
     def load_level(self, index):
         """Inicia uma fase sem modificar a quantidade atual de vidas."""
         self.level = Level(index)
+        self._apply_fog_sprite(self.level)
         self.checkpoint = self.level.spawn
         self.player.reset(*self.checkpoint)
         self.collected = set()
@@ -843,6 +1033,34 @@ class Game:
         self.microscope_assembled = False
         self.sequence_progress = 0
         self.microscope_collected = set()
+        # Progresso do minigame de montagem (ver minigame.MicroscopeMinigame
+        # e _open_microscope_minigame) — dict identidade->bool, começa tudo
+        # False. Passado por referência pro minigame, então fechar com ESC
+        # no meio não perde peça já encaixada; reseta aqui junto com
+        # microscope_collected porque os dois nascem de novo a cada troca
+        # de fase (só existe de verdade na Fase 1).
+        self.microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
+        # Segunda bancada de microscópio, independente da acima — a do
+        # laboratório ESCONDIDO (ver Level._make_lab_bench/
+        # _make_lab_microscope_parts e a conversa sobre o elevador
+        # secreto). Mesmo esquema de estado (set de índices coletados +
+        # dict de encaixes), só que sem nenhuma ligação com is_underground/
+        # sequence_progress/buttons do sistema antigo.
+        self.lab_microscope_collected = set()
+        self.lab_microscope_assembled = False
+        self.lab_microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
+        # Ferramentas largadas no mapa (hoje só a chave de fenda, na sala do
+        # laboratório da Fase 2 — ver Level._make_tool_pickups,
+        # PLANO_MINIGAMES.md §3.1) e progresso da caixa de energia (mesmo
+        # esquema de referência mutável do microscope_slots acima: fechar
+        # com ESC no meio do modo fios não perde progresso). Nenhum dos
+        # dois faz nada visível enquanto self.level.energy_box/tool_pickups
+        # estiverem vazios (sem o objeto no Tiled ainda) ou enquanto
+        # self.energy_box_sprites for None (arte ainda não chegou).
+        self.tools_collected = set()
+        self.energy_box_state = {"screws_removed": False, "wired": False}
+        self.energy_box_wires = dict.fromkeys(WIRE_COLORS, False)
+        self.minigame.close()
         self.riding_platform = None
         self.pending_drops = []
         self._reset_combat_state()
@@ -862,6 +1080,7 @@ class Game:
         self._base_level = self.level
         self._base_state = (self.player.x, self.player.y, self.camera_x, self.camera_y)
         self.level = Level(self.level.index, room=room_key)
+        self._apply_fog_sprite(self.level)
         self.player.reset(*self.level.spawn)
         self.riding_platform = None
         self.pending_drops = []
@@ -908,6 +1127,7 @@ class Game:
         # mesma ideia dos *_was_down acima, só que pra uma tecla que não
         # passa por _read_input.
         self._escape_was_down = False
+        self._minigame_escape_was_down = False
         self._item_key_was_down = {}
 
     def _reset_vfx_state(self):
@@ -1036,6 +1256,10 @@ class Game:
             self._update_intro(keyboard, dialogue_advance_pressed)
         elif self.state in (GAME_OVER, COMPLETE):
             self._update_end_state(keyboard)
+        elif self.minigame.active:
+            self._update_minigame(keyboard, dt)
+        elif self.elevator_cutscene.active:
+            self.elevator_cutscene.update()
         elif self.dialogue.active:
             self._update_dialogue(dialogue_advance_pressed)
         elif self.hint.active:
@@ -1228,6 +1452,72 @@ class Game:
             self._dragging_slider = None
             audio.save_settings()
 
+    def _update_minigame(self, keyboard, dt):
+        """Chamado por update() enquanto self.minigame.active — ver
+        minigame.py. ESC fecha sem terminar (progresso já mora num
+        atributo do próprio Game, passado por referência ao abrir, ver
+        _open_microscope_minigame), com o mesmo debounce que Configurações
+        usa (_escape_was_down) só que numa flag própria, pra não interferir
+        com o ESC do menu."""
+        escape_down = getattr(keyboard, "escape", False)
+        if escape_down and not self._minigame_escape_was_down:
+            self._minigame_escape_was_down = escape_down
+            audio.play_sfx("select_sound")
+            self.minigame.close()
+            return
+        self._minigame_escape_was_down = escape_down
+
+        self.minigame.update(dt)
+        for name in self.minigame.drain_sfx():
+            audio.play_sfx(name)
+        result = self.minigame.pop_result()
+        if result is not None:
+            self._finish_minigame(*result)
+
+    def _finish_minigame(self, key, result):
+        if key == "microscope" and result == "completed":
+            self.microscope_assembled = True
+            audio.play_sfx("microscope_sound")
+            self.level.activate_return_route()
+            self.dialogue.start(
+                "Lia",
+                "Microscópio montado! As plataformas de retorno foram liberadas; preciso voltar pelo caminho acima.",
+            )
+        elif key == "lab_microscope" and result == "completed":
+            self.lab_microscope_assembled = True
+            audio.play_sfx("microscope_sound")
+            libera = (self.level.lab_bench or {}).get("libera")
+            if libera:
+                self._release_fog_barrier(libera)
+            self.dialogue.start(
+                "Lia",
+                "Microscópio montado! Acho que isso acabou de abrir alguma coisa lá fora.",
+            )
+        elif key == "energy_box":
+            if result == "wired":
+                audio.play_sfx("correct_sequence_sound")
+                self.dialogue.start(
+                    "Lia",
+                    "A caixa de energia está ligada! Bom saber que funciona — ainda preciso descobrir o que"
+                    " isso destrava por aqui.",
+                )
+            elif result == "closed_mistakes":
+                self.dialogue.start(
+                    "Lia",
+                    "Uma faísca! Melhor conferir o diagrama de novo antes de tentar outra vez.",
+                )
+
+    def handle_minigame_click(self, pos):
+        """Chamado por main.py/main_web.py (mouse down) quando
+        self.minigame.active é True — ver PLANO_MINIGAMES.md §0/§1."""
+        self.minigame.on_click(pos)
+
+    def handle_minigame_drag(self, pos):
+        self.minigame.on_drag(pos)
+
+    def handle_minigame_release(self, pos):
+        self.minigame.on_release(pos)
+
     def _update_intro(self, keyboard, dialogue_advance_pressed):
         """A mãe de Lia no hospital (ver cutscene.IntroCutscene) — ESC pula
         direto pra vila, senão a cena avança do mesmo jeito que qualquer
@@ -1300,7 +1590,8 @@ class Game:
         self._update_ranged_attack(ranged_pressed)
         self._maybe_wake_bosses()
         self._face_bosses_at_player()
-        self.level.update()
+        self.level.update(dt)
+        self._check_fog_barriers()
         self._check_boss_shake_events()
         if self.level.tiled_map:
             # Avança a animação dos tiles do Tiled (ex.: água da Fase 3) em ms.
@@ -1662,6 +1953,57 @@ class Game:
     def _player_in_water(self, player):
         return any(player.rect.colliderect(zone) for zone in self.level.water_zones)
 
+    def _check_fog_barriers(self):
+        """Fala de "bloqueio" na primeira vez que a Lia esbarra numa
+        neblina ainda sólida (ver fog.FogBarrier) — só a fala; a neblina
+        continua bloqueando fisicamente do mesmo jeito (ver
+        _all_solid_rectangles), quem libera de verdade é
+        _release_fog_barrier. barrier.encountered marca isso pra sempre
+        nesta passagem pela fase (mesmo objeto Level entre entrar/sair de
+        uma sala — ver enter_room/exit_room —, então não repete a fala à
+        toa), e também é o que outro sistema (ex.: o elevador do
+        laboratório escondido) pode checar pra saber se já pode ser usado."""
+        if self.dialogue.active:
+            return
+        for barrier in self.level.fog_barriers:
+            if barrier.encountered or not barrier.solid():
+                continue
+            if self.player.rect.colliderect(barrier.rect.inflate(12, 12)):
+                barrier.encountered = True
+                self.dialogue.start(
+                    "Lia",
+                    barrier.mensagem
+                    or "Tem um campo de contenção aqui, não dá pra passar assim... preciso achar outro caminho.",
+                )
+                break
+
+    def _apply_fog_sprite(self, level):
+        """FogBarrier nasce sem sprite (ver Level._make_fog_barriers —
+        Level não tem acesso às sprites carregadas por Game); isso é
+        chamado logo depois de criar/trocar de Level (load_level/
+        enter_room) pra ligar a arte de verdade em cada barreira, se já
+        tiver sido carregada (ver _load_assets). None é um valor válido
+        pra tudo isso — sem os quadros animados nem o fog_cloud.png,
+        FogBarrier.draw cai pro desenho por código igual antes."""
+        for barrier in level.fog_barriers:
+            barrier.sprite = self.fog_sprite
+            barrier.frames = self.fog_frames
+            barrier.frames_corpo = self.fog_frames_corpo
+
+    def _release_fog_barrier(self, chave):
+        """Chamado por quem completar o que libera uma neblina (ex.: o
+        microscópio do laboratório escondido — ver
+        minigame.MicroscopeMinigame/_finish_minigame) — inicia a
+        animação de dissipar (fog.FogBarrier.release) em vez de sumir na
+        hora. Sem efeito se nenhuma neblina desta fase tiver essa chave.
+        A neblina vive no corredor principal, não na sala — se quem
+        chamou isso estiver dentro de uma sala (self._base_level not
+        None, ver enter_room), procura lá, não em self.level."""
+        target_level = self._base_level if self._base_level is not None else self.level
+        for barrier in target_level.fog_barriers:
+            if barrier.chave == chave:
+                barrier.release()
+
     def _all_solid_rectangles(self):
         # solids_near em vez de self.level.grounds inteiro: numa
         # fase grande (Fase 3, 315x100 tiles) essas listas passam de mil
@@ -1671,6 +2013,7 @@ class Game:
         return (
             self.level.solids_near(self.player.rect)
             + [platform.rect for platform in self.level.platforms]
+            + [barrier.rect for barrier in self.level.fog_barriers if barrier.solid()]
         )
 
     @staticmethod
@@ -1846,9 +2189,13 @@ class Game:
         self._collect_drops(self.player)
         if self.level.room:
             # Dentro de uma sala secundária não há checkpoint, pesquisa
-            # obrigatória nem avanço de fase — só o achado opcional e a
-            # porta de saída (tratada em handle_interactions).
+            # obrigatória nem avanço de fase — só o achado opcional, as
+            # peças do microscópio do laboratório escondido (se for o
+            # caso, ver Level.lab_microscope_parts) e a porta de saída
+            # (tratada em handle_interactions).
             self._collect_artifacts(player)
+            self._collect_tools(player)
+            self._collect_lab_microscope_parts(player)
             return
         self._check_checkpoints(player)
         if self._collect_research(player):
@@ -1870,6 +2217,21 @@ class Game:
             self.dialogue.start("Lia", lore)
             return True
         return False
+
+    def _collect_tools(self, player):
+        """Ferramentas largadas no mapa (hoje só a chave de fenda — ver
+        Level._make_tool_pickups, PLANO_MINIGAMES.md §3.1). Mesmo padrão de
+        índice de _collect_artifacts/_collect_research, mas vai pro
+        inventário em vez de um set separado, porque a chave se comporta
+        como qualquer outro item (aparece na barra, ver ITEM_DEFS)."""
+        for index, (item, item_key) in enumerate(self.level.tool_pickups):
+            if index in self.tools_collected or not player.rect.colliderect(item):
+                continue
+            self.tools_collected.add(index)
+            self.inventory[item_key] = self.inventory.get(item_key, 0) + 1
+            self.message = f"Item obtido: {ITEM_DEFS[item_key]['name']}"
+            self.message_timer = 90
+            audio.play_sfx("item_sound")
 
     def _update_oxygen(self, player):
         """Consome o fôlego enquanto a cabeça está submersa em alguma zona de
@@ -2007,6 +2369,57 @@ class Game:
                 self.microscope_collected.add(index)
                 audio.play_sfx("item_sound")
 
+    def _collect_lab_microscope_parts(self, player):
+        """Peças do microscópio do laboratório ESCONDIDO (ver
+        Level._make_lab_microscope_parts) — sem nenhuma condição prévia
+        (ao contrário de _collect_microscope_parts, que exige a
+        sequência antiga resolvida): a sala em si só é alcançável depois
+        do elevador liberado, isso já é gate suficiente."""
+        for index, (item, _name) in enumerate(self.level.lab_microscope_parts):
+            if index not in self.lab_microscope_collected and player.rect.colliderect(item):
+                self.lab_microscope_collected.add(index)
+                audio.play_sfx("item_sound")
+
+    def _use_lab_microscope_bench(self, player):
+        """Bancada do laboratório escondido (ver Level._make_lab_bench) —
+        mesmo formato de _use_microscope_bench, mas totalmente
+        independente: progresso próprio (lab_microscope_*) e libera uma
+        fog.FogBarrier (propriedade "libera" do objeto "bancada_
+        microscopio") em vez de ativar rota de retorno nenhuma."""
+        if self.level.lab_bench is None:
+            return False
+        if not player.rect.colliderect(self.level.lab_bench["rect"].inflate(70, 60)):
+            return False
+        if len(self.lab_microscope_collected) < len(self.level.lab_microscope_parts):
+            self.dialogue.start("Lia", "Ainda faltam peças para montar o microscópio.")
+            return True
+        if not self.lab_microscope_assembled:
+            self._open_lab_microscope_minigame()
+        return True
+
+    def _open_lab_microscope_minigame(self):
+        self.minigame.open(
+            MicroscopeMinigame(
+                WIDTH,
+                HEIGHT,
+                self._microscope_sprites_by_identity(),
+                self.puzzle_sprites["microscope_complete"],
+                self.lab_microscope_slots,
+                key="lab_microscope",
+            )
+        )
+
+    def _lab_microscope_sprites(self):
+        """Empacota as MESMAS sprites do microscópio (ver
+        _microscope_sprites_by_identity) no formato que
+        Level._draw_lab_microscope espera — lista simples por posição em
+        vez de dict por identidade, igual ao antigo puzzle_sprites[
+        "microscope_parts"] já usava."""
+        return {
+            "parts": self.puzzle_sprites["microscope_parts"],
+            "complete": self.puzzle_sprites["microscope_complete"],
+        }
+
     def _start_pending_dialogue(self, player):
         for index, (position, speaker, text) in enumerate(self.level.data["dialogues"]):
             if index not in self.seen_dialogues and player.x >= position:
@@ -2019,7 +2432,9 @@ class Game:
         if player.x < self.level.world_width - 100:
             return
 
-        needs_microscope = self.level.is_underground and not self.microscope_assembled
+        needs_microscope = (
+            self.level.is_underground and not self.level.room and not self.microscope_assembled
+        )
         missing_items = [
             key for key in PHASE_REQUIRED_ITEMS.get(self.level.index, ())
             if self.inventory.get(key, 0) <= 0
@@ -2093,15 +2508,28 @@ class Game:
         return self.player.rect.move(offset, 4).inflate(reach, 10)
 
     def handle_interactions(self):
-        """Processa portas (qualquer fase) e, na Fase 1 subterrânea,
-        elevadores, painel, botões e bancada do laboratório."""
+        """Processa portas (qualquer fase), a caixa de energia (sala do
+        laboratório, Fase 2) e, na Fase 1 subterrânea, elevadores, painel,
+        botões e bancada do laboratório."""
         if not self.interact_pressed:
             return
         if self._use_doors():
             return
+        if self._use_secret_elevator():
+            return
         if self._talk_to_npc():
             return
-        if not self.level.is_underground:
+        if self.level.room == "laboratorio" and self._use_energy_box(self.player):
+            return
+        if self.level.room == "laboratorio_secreto" and self._use_lab_microscope_bench(self.player):
+            return
+        if not self.level.is_underground or self.level.room:
+            # "or self.level.room": o laboratório escondido tem
+            # index==0 (is_underground True) mas não usa NADA do sistema
+            # antigo abaixo (alavancas/painel/botões/bancada do
+            # corredor) — sem este corte, _use_microscope_bench quebraria
+            # tentando usar self.level.bench, que fica None numa sala
+            # (ver Level._reset_lab_state).
             return
 
         player = self.player
@@ -2112,6 +2540,35 @@ class Game:
         if self._use_sequence_button(player):
             return
         self._use_microscope_bench(player)
+
+    def _use_energy_box(self, player):
+        """Caixa de energia (Fase 2, laboratório — ver PLANO_MINIGAMES.md
+        §3.2/§3.3). self.level.energy_box é None em qualquer mapa sem o
+        objeto "caixa_energia" ainda (ver Level._make_energy_box), e
+        self.energy_box_sprites é None enquanto faltar algum arquivo de
+        arte (ver _load_energy_box_sprites) — os dois casos fazem esse
+        método devolver False sem fazer nada, exatamente como se a caixa
+        não existisse no jogo ainda."""
+        if self.level.energy_box is None or self.energy_box_sprites is None:
+            return False
+        if not player.rect.colliderect(self.level.energy_box.inflate(70, 60)):
+            return False
+        if self.energy_box_state["wired"]:
+            self.dialogue.start("Lia", "A caixa de energia está funcionando normalmente.")
+            return True
+        if not self.energy_box_state["screws_removed"] and self.inventory.get("chave_fenda", 0) <= 0:
+            self.dialogue.start("Lia", "A tampa está parafusada. Preciso de uma chave de fenda.")
+            return True
+        self.minigame.open(
+            EnergyBoxMinigame(
+                WIDTH,
+                HEIGHT,
+                self.energy_box_sprites,
+                self.energy_box_state,
+                self.energy_box_wires,
+            )
+        )
+        return True
 
     DOOR_INTERACT_RANGE = 40
 
@@ -2127,6 +2584,47 @@ class Game:
                 self.enter_room(door["target"])
             return True
         return False
+
+    SECRET_ELEVATOR_RANGE = 40
+
+    def _use_secret_elevator(self):
+        """Elevador secreto (objeto "elevador_lab" — ver
+        Level._make_secret_elevators e a conversa sobre o "elevador
+        chat"). Mesmo raio/formato de _use_doors, mas a troca de sala só
+        acontece depois de uma cutscene curta (ver
+        elevator_cutscene.ElevatorCutscene): do lado de fora, o elevador
+        só funciona depois da Lia esbarrar no bloqueio de neblina ligado
+        a ele pela propriedade "chave" (ver _check_fog_barriers, que
+        marca barrier.encountered) — do lado de dentro da sala (objeto
+        sem "chave", destino "sair"), sempre funciona."""
+        if self.elevator_cutscene.active:
+            return False
+        player = self.player
+        for elevator in self.level.secret_elevators:
+            if not player.rect.colliderect(
+                elevator["rect"].inflate(self.SECRET_ELEVATOR_RANGE, self.SECRET_ELEVATOR_RANGE)
+            ):
+                continue
+            if elevator["chave"] and not self._fog_barrier_encountered(elevator["chave"]):
+                self.dialogue.start(
+                    "Lia",
+                    "Melhor eu não usar isso ainda — vou ver o que tem lá na frente primeiro.",
+                )
+                return True
+            audio.play_sfx("door_sound")
+            if elevator["destino"] == "sair":
+                self.elevator_cutscene.start(reverse=True, on_finish=self.exit_room)
+            else:
+                target = elevator["destino"]
+                self.elevator_cutscene.start(reverse=False, on_finish=lambda: self.enter_room(target))
+            return True
+        return False
+
+    def _fog_barrier_encountered(self, chave):
+        return any(
+            barrier.chave == chave and barrier.encountered
+            for barrier in self.level.fog_barriers
+        )
 
     NPC_INTERACT_RANGE = 40
 
@@ -2233,19 +2731,38 @@ class Game:
         if len(self.microscope_collected) < len(self.level.microscope_parts):
             self.dialogue.start("Lia", "Ainda faltam peças para montar o microscópio.")
         elif not self.microscope_assembled:
-            self.microscope_assembled = True
-            audio.play_sfx("microscope_sound")
-            self.level.activate_return_route()
-            self.dialogue.start(
-                "Lia",
-                "Microscópio montado! As plataformas de retorno foram liberadas; preciso voltar pelo caminho acima.",
+            self._open_microscope_minigame()
+
+    # Ordem fixa de carregamento em _load_puzzle_sprites (lens, base,
+    # light, ocular) — não tem relação com a ordem de Level.microscope_parts
+    # (que é sobre onde as peças nascem largadas no mapa, não sobre qual
+    # sprite é qual peça), então esse mapeamento é sempre o mesmo,
+    # independente de fase/room/Tiled.
+    MICROSCOPE_SPRITE_IDENTITY_ORDER = ("objetiva", "base", "iluminador", "ocular")
+
+    def _microscope_sprites_by_identity(self):
+        sprites = self.puzzle_sprites["microscope_parts"]
+        return dict(zip(self.MICROSCOPE_SPRITE_IDENTITY_ORDER, sprites))
+
+    def _open_microscope_minigame(self):
+        self.minigame.open(
+            MicroscopeMinigame(
+                WIDTH,
+                HEIGHT,
+                self._microscope_sprites_by_identity(),
+                self.puzzle_sprites["microscope_complete"],
+                self.microscope_slots,
             )
+        )
 
     def draw(self, screen):
         real_surface = screen.surface
         real_surface.fill((6, 14, 29))
         if self.state == INTRO:
             self.intro.draw(real_surface, draw_text)
+            return
+        if self.elevator_cutscene.active:
+            self.elevator_cutscene.draw(real_surface, draw_text)
             return
         # Mundo inteiro continua desenhado do jeito de sempre, só que numa
         # surface separada do mesmo tamanho (WIDTH x HEIGHT) em vez de ir
@@ -2281,6 +2798,7 @@ class Game:
         self._draw_interface(real_surface)
         self._draw_state_overlay(real_surface)
         self.hint.draw(real_surface, draw_text)
+        self.minigame.draw(real_surface, draw_text)
 
     def _blit_zoomed_world(self, real_surface, world_surface):
         """Recorta uma janela CAMERA_ZOOM vezes menor que a tela, centrada
@@ -2391,6 +2909,14 @@ class Game:
             self.dragon_sprites,
             self.scientist_sprites,
             NPC_SPRITE_ROWS,
+            tool_icon=self.item_icons.get("chave_fenda"),
+            tools_collected=self.tools_collected,
+            energy_box_sprites=self.energy_box_sprites,
+            energy_box_state=self.energy_box_state,
+            lab_microscope_sprites=self._lab_microscope_sprites(),
+            lab_microscope_collected=self.lab_microscope_collected,
+            lab_microscope_assembled=self.lab_microscope_assembled,
+            secret_elevator_sprite=self.secret_elevator_sprite,
         )
 
     def _draw_world_foreground(self, surface):

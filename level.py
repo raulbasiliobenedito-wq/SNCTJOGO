@@ -3,8 +3,9 @@ from enemy import (
     CrystalStag, DarkWraith, Dragon, JanitorGuardian, Librarian, PossessedStudent,
     Slime, SlimeKing, SmallSlime, Specimen,
 )
+from fog import FogBarrier
 from plataform import Platform
-from settings import ASSET_DIR, PLAYER_HEIGHT
+from settings import ASSET_DIR, HEIGHT, PLAYER_HEIGHT
 from tiled_map import TiledMap
 
 
@@ -124,6 +125,10 @@ class Level:
     ROOM_MAP_FILES = {
         "laboratorio": "fase2_laboratorio_sala.tmx",
         "biblioteca": "fase2_biblioteca_sala.tmx",
+        # Laboratório escondido da Fase 1 (ver a conversa sobre o
+        # elevador secreto/fog.FogBarrier) — mapa novo, ainda por criar
+        # (ver LEIA-ME/instruções passadas ao Raul).
+        "laboratorio_secreto": "fase1_laboratorio_secreto.tmx",
     }
 
     def __init__(self, index, room=None):
@@ -171,6 +176,22 @@ class Level:
         # de fase (ver Game._advance_level_if_ready, que só olha research).
         self.doors = self._make_doors()
         self.artifacts = self._make_artifacts()
+        self.tool_pickups = self._make_tool_pickups()
+        self.energy_box = self._make_energy_box()
+        # Bloqueios de neblina (objeto tipo "neblina" — ver fog.FogBarrier
+        # e a conversa sobre o elevador do laboratório secreto). Genérico
+        # por padrão: qualquer passagem do jogo que precise de "bloqueada
+        # até X" usa o mesmo objeto, distinguido pela propriedade "chave".
+        self.fog_barriers = self._make_fog_barriers()
+        # Elevador secreto (objeto "elevador_lab" — ver
+        # Game._use_secret_elevator/elevator_cutscene.ElevatorCutscene) e
+        # bancada/peças do microscópio do laboratório escondido, do outro
+        # lado dele. Ambos genéricos e vazios até Raul posicionar os
+        # objetos correspondentes no Tiled (ver LEIA-ME combinado com a
+        # conversa sobre o elevador chat).
+        self.secret_elevators = self._make_secret_elevators()
+        self.lab_microscope_parts = self._make_lab_microscope_parts()
+        self.lab_bench = self._make_lab_bench()
         # Objeto "lago_lava" (Entidades): só a área de perigo (ver
         # Game._check_hazards, que respawna a Lia no contato) — sem desenho
         # nenhum vinculado a ele. O visual da lava é 100% as tiles pintadas
@@ -205,7 +226,15 @@ class Level:
         self.university_decor = (
             self._make_university_decor() if self.index == 1 and not self.tiled_map else None
         )
-        if self.is_underground:
+        if self.is_underground and not self.room:
+            # "and not self.room": o laboratório ESCONDIDO (room=
+            # "laboratorio_secreto", ver a conversa sobre o elevador
+            # secreto/fog.FogBarrier) também tem index==0 (mesma fase),
+            # mas não deve herdar elevadores/alavancas/painel antigos —
+            # esses continuam existindo só no corredor principal da Fase
+            # 1, e o laboratório escondido usa seu próprio sistema
+            # genérico (self.lab_bench/self.lab_microscope_parts/
+            # self.secret_elevators), independente deste.
             self._build_underground_lab()
 
     def _configure_world_dimensions(self):
@@ -278,6 +307,127 @@ class Level:
             (self._rect_from_object(item), item["properties"].get("nome", "Achado"))
             for item in self.tiled_map.entities("artefato")
         ]
+
+    def _make_tool_pickups(self):
+        """Ferramentas largadas no mapa (hoje só a chave de fenda, na
+        passagem secreta do laboratório da Fase 2 — ver PLANO_MINIGAMES.md
+        §3.1). Mesmo padrão de objeto tipado + _rect_from_object de sempre;
+        genérico o bastante pra outra ferramenta um dia reaproveitar sem
+        mudar este método. Fica vazio até o Raul desenhar a passagem e
+        posicionar o objeto "chave_fenda" no Tiled — não é preciso nenhuma
+        flag extra pra "desligar" isso enquanto não existir."""
+        if not self.tiled_map:
+            return []
+        return [
+            (self._rect_from_object(item), "chave_fenda")
+            for item in self.tiled_map.entities("chave_fenda")
+        ]
+
+    def _make_secret_elevators(self):
+        """Elevador(es) secreto(s) (objeto tipo "elevador_lab",
+        propriedades "destino" — mesma convenção de "porta": chave de
+        ROOM_MAP_FILES pra entrar, "sair" pra voltar — e opcionalmente
+        "chave", que liga esse elevador a uma fog.FogBarrier específica:
+        só pode ser chamado depois da Lia esbarrar nela, ver
+        Game._use_secret_elevator/_fog_barrier_encountered). Sem "chave"
+        — o mesmo tipo de objeto usado do OUTRO lado, dentro da sala
+        escondida, pra voltar — fica sempre liberado."""
+        if not self.tiled_map:
+            return []
+        elevators = []
+        for item in self.tiled_map.entities("elevador_lab"):
+            properties = item["properties"]
+            elevators.append(
+                {
+                    "rect": self._rect_from_object(item),
+                    "destino": properties.get("destino", "sair"),
+                    "chave": properties.get("chave") or None,
+                }
+            )
+        return elevators
+
+    def _make_lab_microscope_parts(self):
+        """Peças do microscópio do laboratório ESCONDIDO (objeto tipo
+        "peca_microscopio", propriedade "nome" — mesmo formato de
+        self.research/self.artifacts). Nome de objeto deliberadamente
+        diferente do antigo "parte_microscopio" (área subterrânea da Fase
+        1 que está saindo de uso — ver a conversa sobre o elevador
+        secreto), pra nunca haver ambiguidade entre os dois sistemas
+        mesmo que os dois objetos um dia coexistam no mesmo .tmx."""
+        if not self.tiled_map:
+            return []
+        return [
+            (self._rect_from_object(item), item["properties"].get("nome", "Peça"))
+            for item in self.tiled_map.entities("peca_microscopio")
+        ]
+
+    def _make_lab_bench(self):
+        """Bancada de montagem do laboratório escondido (objeto tipo
+        "bancada_microscopio", propriedade opcional "libera" — a "chave"
+        de qual fog.FogBarrier essa bancada libera ao terminar, ver
+        Game._use_lab_microscope_bench/_release_fog_barrier). None até
+        Raul posicionar o objeto, mesmo padrão de self.energy_box."""
+        if not self.tiled_map:
+            return None
+        item = self.tiled_map.entity("bancada_microscopio")
+        if not item:
+            return None
+        return {
+            "rect": self._rect_from_object(item),
+            "libera": item["properties"].get("libera") or None,
+        }
+
+    def _make_fog_barriers(self):
+        """Bloqueios de neblina (objeto tipo "neblina", propriedades "chave"
+        e opcionalmente "mensagem") — ver fog.FogBarrier. Genérico: qualquer
+        passagem do jogo que precise de "bloqueada até X" usa este mesmo
+        objeto, distinguido só pela "chave" (ex.: "campo_contencao_lab"),
+        que é o que liga essa neblina específica a quem for liberá-la (ver
+        Game._release_fog_barrier).
+
+        Pedido do Raul: em vez do Raul ter que acertar a altura/largura
+        exata do objeto no Tiled (arriscado de errar sem ver o jogo
+        rodando — já aconteceu), só o X do objeto importa. A partir dali
+        a neblina cobre TUDO: do topo até o fundo do mapa, e do X
+        colocado até a borda direita — a "parede" inteira que bloqueia
+        a passagem, altura e largura do objeto em si são ignoradas (o
+        Raul pode deixar qualquer tamanho no Tiled, só pra enxergar o
+        objeto lá).  Sem objeto "neblina" no mapa, fica vazio — sem
+        custo pra fases que não usam o sistema.
+
+        O topo do rect começa BEM acima de y=0 (não exatamente em y=0) —
+        Raul reportou um vão de céu/nuvem aparecendo por cima da parede
+        (a câmera às vezes mostra um pouco além do topo real do mapa, que
+        é só cenário de fundo ali, sem tile nenhum). Esticando pra cima
+        uma margem generosa (algumas telas de altura) garante que não
+        sobra brecha nenhuma ali em cima, mesmo com zoom da câmera."""
+        if not self.tiled_map:
+            return []
+        SKY_MARGIN = HEIGHT * 3
+        barriers = []
+        for item in self.tiled_map.entities("neblina"):
+            properties = item["properties"]
+            chave = properties.get("chave", "")
+            mensagem = properties.get("mensagem") or None
+            x = item["x"]
+            rect = pygame.Rect(
+                x, -SKY_MARGIN, max(1, self.world_width - x), self.world_height + SKY_MARGIN
+            )
+            barriers.append(FogBarrier(rect, chave, mensagem))
+        return barriers
+
+    def _make_energy_box(self):
+        """Caixa de energia (Fase 2, laboratório — ver PLANO_MINIGAMES.md
+        §3.2/§3.3, minigame.py EnergyBoxMinigame). None em qualquer mapa
+        que ainda não tenha o objeto "caixa_energia" na camada Entidades —
+        é assim que a mecânica fica "desligada" até o Raul posicionar a
+        caixa no Tiled, sem precisar de nenhuma flag extra (ver
+        Game._use_energy_box, que já lida com self.level.energy_box is
+        None)."""
+        if not self.tiled_map:
+            return None
+        item = self.tiled_map.entity("caixa_energia")
+        return self._rect_from_object(item) if item else None
 
     @staticmethod
     def _rect_from_object(item):
@@ -1050,14 +1200,18 @@ class Level:
         span = pygame.Rect(left, surface.top, right - left, surface.height)
         return _StaticZone(span)
 
-    def update(self):
+    def update(self, dt=1 / 60):
         self.npc_animation += 1
         for platform in self.platforms:
             platform.update()
         for enemy in self.enemies:
             enemy.update()
             self._drain_pending_spawns(enemy)
-        if self.is_underground:
+        for barrier in self.fog_barriers:
+            barrier.update(dt)
+        if self.is_underground and not self.room:
+            # Ver comentário equivalente em __init__: o laboratório
+            # escondido não usa este sistema antigo de alavancas/elevador.
             self._update_lever_timers(self.elevator_lever_timers)
             self._update_lever_timers(self.upper_lever_timers, "upper_")
             self._update_elevator_return_timers()
@@ -1119,7 +1273,11 @@ class Level:
              student_sprites=None, janitor_sprites=None, specimen_sprites=None,
              artifact_image=None, artifacts_collected=None, librarian_sprites=None,
              small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None,
-             scientist_sprites=None, scientist_rows=None):
+             scientist_sprites=None, scientist_rows=None,
+             tool_icon=None, tools_collected=None,
+             energy_box_sprites=None, energy_box_state=None,
+             lab_microscope_sprites=None, lab_microscope_collected=None,
+             lab_microscope_assembled=False, secret_elevator_sprite=None):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
         if self.index == 1 and self.university_decor:
@@ -1149,9 +1307,26 @@ class Level:
         )
         if artifact_image is not None:
             self._draw_artifacts(surface, camera_x, camera_y, artifact_image, artifacts_collected or set())
+        if tool_icon is not None:
+            self._draw_tool_pickups(surface, camera_x, camera_y, tool_icon, tools_collected or set())
+        if energy_box_sprites is not None:
+            self._draw_energy_box(surface, camera_x, camera_y, energy_box_sprites, energy_box_state or {})
+        self._draw_secret_elevators(surface, camera_x, camera_y, secret_elevator_sprite)
+        if lab_microscope_sprites is not None:
+            self._draw_lab_microscope(
+                surface,
+                camera_x,
+                camera_y,
+                lab_microscope_sprites,
+                lab_microscope_collected or set(),
+                lab_microscope_assembled,
+            )
         if scientist_sprites is not None:
             self._draw_npcs(surface, camera_x, camera_y, scientist_sprites, scientist_rows or {})
-        if self.is_underground:
+        if self.is_underground and not self.room:
+            # Idem: o laboratório escondido desenha sua própria bancada/
+            # peças (ver Game._draw_lab_bench/_draw_lab_microscope_parts),
+            # não a antiga bancada/microscópio do corredor.
             self._draw_lab(
                 surface,
                 camera_x,
@@ -1186,6 +1361,8 @@ class Level:
             else:
                 enemy.draw(surface, camera_x, camera_y, slime_sprites)
         self._draw_enemy_attack_hazards(surface, camera_x, camera_y)
+        for barrier in self.fog_barriers:
+            barrier.draw(surface, camera_x, camera_y)
 
     def _draw_enemy_attack_hazards(self, surface, camera_x, camera_y):
         """Pinta um aviso translúcido sobre cada hazard de ataque ativo (o
@@ -1273,6 +1450,103 @@ class Level:
         for index, (item, _) in enumerate(self.artifacts):
             if index not in artifacts_collected:
                 surface.blit(artifact_image, (item.x - camera_x, item.y - camera_y))
+
+    def _draw_tool_pickups(self, surface, camera_x, camera_y, tool_icon, tools_collected):
+        """Ferramentas largadas no mapa (ver _make_tool_pickups) ainda não
+        pegas — mesmo padrão de _draw_artifacts, centralizado no rect do
+        objeto do Tiled em vez de ancorado no canto (o ícone de items.png
+        é pequeno, 16x16 ampliado; centralizar evita flutuar estranho
+        sobre objetos maiores)."""
+        for index, (item, _key) in enumerate(self.tool_pickups):
+            if index in tools_collected:
+                continue
+            surface.blit(
+                tool_icon,
+                (
+                    item.centerx - tool_icon.get_width() // 2 - camera_x,
+                    item.centery - tool_icon.get_height() // 2 - camera_y,
+                ),
+            )
+
+    def _draw_energy_box(self, surface, camera_x, camera_y, energy_box_sprites, energy_box_state):
+        """A caixa de energia embutida na parede (ver _make_energy_box,
+        PLANO_MINIGAMES.md §3.2) — troca de sprite conforme o progresso
+        (fechada/aberta/ligada), mesmos 3 estados que Game.energy_box_state
+        já guarda para o minigame. self.energy_box é None em qualquer mapa
+        sem o objeto ainda, então isso nunca desenha nada até o Raul
+        posicioná-lo no Tiled."""
+        if self.energy_box is None:
+            return
+        if energy_box_state.get("wired"):
+            image = energy_box_sprites["ligada"]
+        elif energy_box_state.get("screws_removed"):
+            image = energy_box_sprites["aberta"]
+        else:
+            image = energy_box_sprites["fechada"]
+        surface.blit(
+            image,
+            (
+                self.energy_box.centerx - image.get_width() // 2 - camera_x,
+                self.energy_box.bottom - image.get_height() - camera_y,
+            ),
+        )
+
+    def _draw_secret_elevators(self, surface, camera_x, camera_y, sprite):
+        """Porta do elevador secreto (ver _make_secret_elevators e a
+        conversa sobre o elevador chat). `sprite` opcional (ver
+        Game._load_optional_object_sprite("elevador_lab.png")) é
+        esticado pro tamanho exato do objeto do Tiled — sem ele, cai num
+        retângulo simples, só pra Lia ter uma pista visual de onde
+        interagir enquanto a arte não chega."""
+        for elevator in self.secret_elevators:
+            rect = elevator["rect"]
+            if sprite is not None:
+                image = pygame.transform.scale(sprite, rect.size)
+                surface.blit(image, (rect.x - camera_x, rect.y - camera_y))
+            else:
+                draw_rect = (rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+                pygame.draw.rect(surface, (46, 68, 82), draw_rect, border_radius=6)
+                pygame.draw.rect(surface, (120, 176, 196), draw_rect, 3, border_radius=6)
+
+    def _draw_lab_microscope(self, surface, camera_x, camera_y, sprites, collected, assembled):
+        """Peças + bancada do microscópio do laboratório ESCONDIDO (ver
+        _make_lab_microscope_parts/_make_lab_bench e a conversa sobre o
+        elevador secreto) — reaproveita as MESMAS sprites do microscópio
+        já usadas na Fase 1 (sprites["parts"]: lista de 4 imagens,
+        sprites["complete"]: montado, ver
+        Game._microscope_sprites_by_identity), só que como sistema
+        independente de _draw_lab, pra não herdar nada da área
+        subterrânea que está saindo de uso."""
+        parts = sprites["parts"]
+        for index, (item, _name) in enumerate(self.lab_microscope_parts):
+            if index in collected:
+                continue
+            image = parts[index % len(parts)]
+            surface.blit(image, (item.x - camera_x, item.y - camera_y))
+
+        if self.lab_bench is None:
+            return
+        bench = self.lab_bench["rect"]
+        bench_color = (102, 220, 160) if assembled else (168, 112, 67)
+        pygame.draw.rect(
+            surface, bench_color,
+            (bench.x - camera_x, bench.y - camera_y, bench.width, bench.height),
+            border_radius=8,
+        )
+        pygame.draw.rect(
+            surface, (57, 42, 32),
+            (bench.x - camera_x, bench.y - camera_y, bench.width, bench.height),
+            3, border_radius=8,
+        )
+        if assembled:
+            complete = sprites["complete"]
+            surface.blit(
+                complete,
+                (
+                    bench.centerx - complete.get_width() // 2 - camera_x,
+                    bench.bottom - complete.get_height() - camera_y,
+                ),
+            )
 
     # 8 quadros a 8fps (cientistas_idle.png) — ver LEIA-ME_cientistas.md.
     NPC_ANIMATION_TICKS_PER_FRAME = 7

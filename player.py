@@ -19,7 +19,7 @@ class Player:
 
     DASH_SPEED = 14.0
     DASH_DURATION = 10
-    DASH_COOLDOWN = 90
+    DASH_COOLDOWN = 10
 
     # --- Mecânica de natação (água da Fase 3) ---
     SWIM_SPEED = 2.6

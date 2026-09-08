@@ -12,9 +12,9 @@ FPS = 60
 # Movimento da personagem. Estes valores definem a jogabilidade e não devem
 # ser alterados durante ajustes exclusivamente visuais.
 GRAVITY = 0.65
-MAX_FALL_SPEED = 13
+MAX_FALL_SPEED = 11
 MOVE_SPEED = 4
-JUMP_SPEED = -12.0
+JUMP_SPEED = -13.5
 # Sheet nova da Lia (player_sheet.png) vem em 64x96 por quadro no arquivo,
 # mas isso ficava enorme em jogo (pedido do Raul) — Player._load_frames
 # reduz cada quadro pela metade ao carregar (ver Player.SHEET_FRAME_WIDTH/
