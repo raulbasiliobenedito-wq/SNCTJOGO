@@ -1843,7 +1843,6 @@ class Game:
         self._update_camera()
         self.message_timer = max(0, self.message_timer - 1)
         self.handle_interactions()
-        self._maybe_trigger_hints()
         self.check_events()
 
     def _update_hint(self, dialogue_advance_pressed):
@@ -1856,28 +1855,7 @@ class Game:
         if dialogue_advance_pressed:
             self.hint.close()
 
-    def _maybe_trigger_hints(self):
-        """Dicas contextuais de uma vez só por fase (hints_shown reseta em
-        load_level, igual seen_dialogues). Por enquanto só a do painel do
-        elevador na Fase 1: dispara ao pisar na plataforma que antecede o
-        primeiro elevador — ANTES da Lia sequer chegar na alavanca —
-        enquanto o painel ainda não foi ligado."""
-        if self.hint.active or self.dialogue.active:
-            return
-        if (
-            self.level.is_underground
-            and not self.lever_on
-            and "elevator_panel" not in self.hints_shown
-            and self._touching_elevator_approach()
-        ):
-            self.hints_shown.add("elevator_panel")
-            self.hint.show(
-                "Painel do Elevador",
-                (
-                    "Os botões lá em cima só funcionam com o painel ligado.",
-                    "Ative a alavanca do painel antes de subir pelo elevador.",
-                ),
-            )
+    
 
     # Raio (px, medido centro-a-centro) em que um chefe dormente acorda ao
     # se aproximar a Lia (ver enemy.py: SlimeKing/Librarian/Specimen/Dragon
@@ -1948,30 +1926,7 @@ class Game:
                 self._trigger_shake(EARTHQUAKE_SHAKE_DURATION, EARTHQUAKE_SHAKE_MAGNITUDE)
                 audio.play_sfx("earthquake_dragon_sound")
 
-    # Distância (px) antes do elevador em que o corredor de aproximação
-    # começa — folga generosa de propósito, pra não depender de acertar uma
-    # faixa estreita de pixels.
-    ELEVATOR_APPROACH_RANGE = 750
-
-    def _touching_elevator_approach(self):
-        """Corredor antes do PRIMEIRO elevador que a Lia encontra andando da
-        esquerda pra direita a partir do spawn. Conferindo fase1_escola.tmx:
-        elevador_superior nasce em x=1750 e elevador_principal em x=2670 —
-        ou seja, apesar do nome, é o "superior" (Level.upper_elevator, o que
-        leva lá em cima pros botões do painel) que vem PRIMEIRO no percurso,
-        não o "principal" (Level.elevator, que só aparece depois, e desce
-        pra um andar de baixo onde fica a alavanca do painel). A dica é
-        sobre os botões precisarem do painel ligado, então faz sentido
-        mesmo ser este: é o elevador que leva direto pra área dos botões.
-        Dispara em qualquer lugar dentro de ELEVATOR_APPROACH_RANGE px à
-        esquerda dele, sem exigir uma faixa vertical exata. Ancorado no x
-        (fixo; só a altura muda ao subir/descer, ver call_upper_elevator),
-        então funciona tanto no laboratório manual (fallback) quanto no
-        mapa do Tiled."""
-        elevator = self.level.upper_elevator
-        if not elevator:
-            return False
-        return elevator.rect.x - self.ELEVATOR_APPROACH_RANGE <= self.player.rect.centerx <= elevator.rect.x
+    
 
     def _update_attack(self, attack_pressed):
         self.attack_cooldown = max(0, self.attack_cooldown - 1)
@@ -2812,8 +2767,8 @@ class Game:
 
     def handle_interactions(self):
         """Processa portas (qualquer fase), a caixa de energia (sala do
-        laboratório, Fase 2) e, na Fase 1 subterrânea, elevadores, painel,
-        botões e bancada do laboratório."""
+        laboratório, Fase 2) e, na Fase 1 subterrânea, painel, botões e
+        bancada do laboratório."""
         if not self.interact_pressed:
             return
         if self._use_doors():
@@ -2829,15 +2784,13 @@ class Game:
         if not self.level.is_underground or self.level.room:
             # "or self.level.room": o laboratório escondido tem
             # index==0 (is_underground True) mas não usa NADA do sistema
-            # antigo abaixo (alavancas/painel/botões/bancada do
-            # corredor) — sem este corte, _use_microscope_bench quebraria
-            # tentando usar self.level.bench, que fica None numa sala
+            # antigo abaixo (painel/botões/bancada do corredor) — sem
+            # este corte, _use_microscope_bench quebraria tentando usar
+            # self.level.bench, que fica None numa sala
             # (ver Level._reset_lab_state).
             return
 
         player = self.player
-        if self._use_elevator_lever(player):
-            return
         if self._use_panel_lever(player):
             return
         if self._use_sequence_button(player):
@@ -2955,30 +2908,7 @@ class Game:
             return True
         return False
 
-    def _use_elevator_lever(self, player):
-        if self.level.top_lever and player.rect.colliderect(self.level.top_lever.inflate(55, 55)):
-            audio.play_sfx("lever_sound")
-            self.level.call_elevator("down")
-            return True
-        if self.level.bottom_lever and player.rect.colliderect(self.level.bottom_lever.inflate(55, 55)):
-            audio.play_sfx("lever_sound")
-            self.level.call_elevator("up")
-            return True
-        if (
-            self.level.upper_bottom_lever
-            and player.rect.colliderect(self.level.upper_bottom_lever.inflate(55, 55))
-        ):
-            audio.play_sfx("lever_sound")
-            self.level.call_upper_elevator("up")
-            return True
-        if (
-            self.level.upper_top_lever
-            and player.rect.colliderect(self.level.upper_top_lever.inflate(55, 55))
-        ):
-            audio.play_sfx("lever_sound")
-            self.level.call_upper_elevator("down")
-            return True
-        return False
+    
 
     def _use_panel_lever(self, player):
         if not player.rect.colliderect(self.level.panel_lever.inflate(55, 55)):

@@ -72,9 +72,6 @@ class Level:
 
     BUTTON_NAMES = ("AZUL", "VERDE", "AMARELO", "VERMELHO")
     LEVER_FRAME_DELAY = 6
-    LEVER_ACTIVATION_TIME = 300
-    ELEVATOR_RETURN_DELAY = 10 * 60
-    ELEVATOR_SPEED = 3
     DEFAULT_SPAWN = (100, 650 - PLAYER_HEIGHT)
     DEFAULT_SURFACE_RETURN = (4460, 412)
 
@@ -198,10 +195,9 @@ class Level:
             # "and not self.room": o laboratório ESCONDIDO (room=
             # "laboratorio_secreto", ver a conversa sobre o elevador
             # secreto/fog.FogBarrier) também tem index==0 (mesma fase),
-            # mas não deve herdar elevadores/alavancas/painel antigos —
-            # esses continuam existindo só no corredor principal da Fase
-            # 1, e o laboratório escondido usa seu próprio sistema
-            # genérico (self.lab_bench/self.lab_microscope_parts/
+            # mas não deve herdar nada do corredor antigo — o laboratório
+            # escondido usa seu próprio sistema genérico
+            # (self.lab_bench/self.lab_microscope_parts/
             # self.secret_elevators), independente deste.
             self._build_underground_lab()
 
@@ -214,26 +210,13 @@ class Level:
             self.world_height = self.tiled_map.pixel_height
 
     def _reset_lab_state(self):
-        self.top_lever = self.bottom_lever = self.panel_lever = None
-        self.elevator = None
-        self.elevator_target = None
-        self.elevator_home = None
-        self.elevator_return_timer = 0
-        self.elevator_return_target = None
-        self.elevator_lever_timers = {"top": 0, "bottom": 0}
-        self.upper_elevator = None
-        self.upper_elevator_target = None
-        self.upper_elevator_home = None
-        self.upper_elevator_return_timer = 0
-        self.upper_elevator_return_target = None
-        self.upper_lever_timers = {"bottom": 0, "top": 0}
-        # Cada alavanca guarda o quadro atual, o quadro-alvo e o tempo até o
+        self.panel_lever = None
+        # A alavanca guarda o quadro atual, o quadro-alvo e o tempo até o
         # próximo movimento. Os quadros 0..4 correspondem às imagens 1..5.
         self.lever_animations = {
             name: {"frame": 0, "target": 0, "delay": 0}
-            for name in ("top", "bottom", "upper_bottom", "upper_top", "panel")
+            for name in ("panel",)
         }
-        self.upper_bottom_lever = self.upper_top_lever = None
         self.buttons = []
         self.microscope_parts = []
         self.bench = None
@@ -496,110 +479,20 @@ class Level:
 
     def _build_underground_lab(self):
         self._build_tiled_underground_lab()
-        # Posição de "descanso" de cada elevador (onde ele nasce no mapa) — usada
-        # por call_elevator/call_upper_elevator pra só agendar o retorno automático
-        # quando o acionamento afasta o elevador dela (ver comentário lá).
-        self.elevator_home = self.elevator_target
-        self.upper_elevator_home = self.upper_elevator_target
 
-
-
-    LEVER_SHAFT_MARGIN = 20
-
-    def _configure_elevator_levers(self):
-        """Pedido do Raul: antes só existia UMA alavanca por elevador, e
-        ela andava junto com a plataforma (self.top_lever.midbottom =
-        elevator.rect.top, ver _update_elevator_lever_positions, que não
-        existe mais) — se o elevador ficasse parado longe da Lia, a
-        alavanca ficava fora de alcance junto com ele, e a única saída
-        era cair no void pra respawnar no checkpoint. Agora são 4
-        alavancas FIXAS (uma por andar de cada elevador — 2 andares x 2
-        elevadores), presas ao poço, nunca à plataforma: sempre dá pra
-        chamar o elevador de qualquer um dos dois lados. top_lever/
-        bottom_lever ficam nos dois andares do elevador principal;
-        upper_top_lever/upper_bottom_lever, nos do elevador superior.
-        Todo o resto (timers, animação de 5s, o prompt [E]) já era
-        genérico por nome de alavanca — só faltava estas 4 existirem de
-        verdade.
-
-        Posição: se o Tiled tiver um objeto tipo "alavanca" com as
-        propriedades elevador=principal/superior e posicao=topo/base
-        (mesmo esquema de "botao"+ordem), usa a posição exata desse
-        objeto — controle total pro Raul, igual ao Rei Slime. Sem
-        objeto, cai no cálculo automático (_fixed_lever), encostado na
-        borda do poço, pra nunca deixar o laboratório sem alavanca
-        enquanto o mapa ainda tá sendo desenhado."""
-        self.top_lever = self._lever_rect(self.elevator, self.elevator_top, "principal", "topo")
-        self.bottom_lever = self._lever_rect(self.elevator, self.elevator_bottom, "principal", "base")
-        self.upper_top_lever = self._lever_rect(
-            self.upper_elevator, self.upper_elevator_top, "superior", "topo"
-        )
-        self.upper_bottom_lever = self._lever_rect(
-            self.upper_elevator, self.upper_elevator_bottom, "superior", "base"
-        )
-
-    def _lever_rect(self, elevator, stop_y, elevador_name, posicao_name):
-        item = self._find_lever_object(elevador_name, posicao_name) if self.tiled_map else None
-        if item:
-            return self._rect_from_object(item)
-        return self._fixed_lever(elevator, stop_y)
-
-    def _find_lever_object(self, elevador_name, posicao_name):
-        for item in self.tiled_map.entities("alavanca"):
-            properties = item["properties"]
-            elevador = str(properties.get("elevador", "")).casefold()
-            posicao = str(properties.get("posicao", "")).casefold()
-            if elevador == elevador_name and posicao == posicao_name:
-                return item
-        return None
-
-    @classmethod
-    def _fixed_lever(cls, elevator, stop_y):
-        """Fallback usado quando não existe objeto "alavanca" correspondente
-        no Tiled (ver _lever_rect): alavanca encostada na borda do poço, na
-        altura de um dos andares que o elevador atende. `elevator.x`/
-        `.width` não mudam (só `.y`, ver Platform._move_elevator), então dá
-        pra usar `elevator.rect.right` com segurança mesmo com o elevador
-        se movendo — só a altura (`stop_y`, o `top`/`bottom` configurado no
-        Tiled ou no fallback) muda de uma alavanca pra outra."""
-        return pygame.Rect(
-            elevator.rect.right + cls.LEVER_SHAFT_MARGIN,
-            stop_y - 52,
-            34,
-            52,
-        )
 
     def _build_tiled_underground_lab(self):
-        """Lê os objetos especiais da camada Entidades do mapa do Tiled."""
-        lower = self.tiled_map.entity("elevador_principal")
-        upper = self.tiled_map.entity("elevador_superior")
-        if not lower or not upper:
-            raise ValueError(
-                "O mapa fase1_escola.tmx precisa dos objetos elevador_principal e elevador_superior."
-            )
-
-        self.elevator_top = int(lower["properties"].get("top", lower["y"]))
-        self.elevator_bottom = int(lower["properties"].get("bottom", lower["y"]))
-        self.elevator = self._platform_from_object(lower)
-        self.elevator_target = self.elevator.y
-        # Ver o comentário equivalente em _build_default_underground_lab.
-        self.elevator_home = self.elevator_target
-        self._add_dynamic_platform(self.elevator)
-
-        self.upper_elevator_top = int(upper["properties"].get("top", upper["y"]))
-        self.upper_elevator_bottom = int(upper["properties"].get("bottom", upper["y"]))
-        self.upper_elevator = self._platform_from_object(upper)
-        self.upper_elevator_target = self.upper_elevator.y
-        self.upper_elevator_home = self.upper_elevator_target
-        self._add_dynamic_platform(self.upper_elevator)
-
+        """Lê os objetos especiais da camada Entidades do mapa do Tiled
+        (Fase 1 subterránea). Os elevadores móviles (elevador_principal/
+        elevador_superior) e as alavancas ligadas a eles saíram — resta o
+        quebra-cabeza do painel (painel, botões, peças, bancada) e a Rota
+        Retorno."""
         self.return_route_platforms = [
             self._platform_from_object(item)
             for item in self.tiled_map.objects("Rota Retorno")
             if item["width"] > 0 and item["height"] > 0
         ]
 
-        self._configure_elevator_levers()
         panel = self.tiled_map.entity("painel")
         self.panel_lever = self._rect_from_object(panel) if panel else pygame.Rect(3180, 948, 34, 52)
 
@@ -619,10 +512,6 @@ class Level:
         if return_point:
             self.surface_return = (return_point["x"], return_point["y"] - PLAYER_HEIGHT)
 
-    def _add_dynamic_platform(self, platform):
-        self.platforms.append(platform)
-        self.dynamic_platforms.append(platform)
-
     def activate_return_route(self):
         """Libera as plataformas que conectam o laboratório ao caminho superior."""
         if not self.return_route_active:
@@ -630,52 +519,6 @@ class Level:
             self.platforms.extend(self.return_route_platforms)
             self.dynamic_platforms.extend(self.return_route_platforms)
 
-    def call_elevator(self, direction):
-        """Move o elevador. Ele só agenda o retorno automático (dez
-        segundos) quando o alvo novo o tira de "casa" (elevator_home); se o
-        alvo novo já É a posição original, ele fica ali parado até ser
-        chamado de novo — sem isso, apertar o botão de volta antes do
-        retorno automático reagendava um retorno pra posição ERRADA (sempre
-        "o oposto de onde ele estava indo"), e ele nunca mais ficava parado."""
-        lever_name = "top" if direction == "down" else "bottom"
-        if self.elevator_lever_timers[lever_name] != 0:
-            return
-        self.elevator_target = self._alternate_target(
-            self.elevator_target,
-            self.elevator_top,
-            self.elevator_bottom,
-        )
-        if self.elevator_target == self.elevator_home:
-            self.elevator_return_timer = 0
-        else:
-            self.elevator_return_target = self.elevator_home
-            self.elevator_return_timer = self.ELEVATOR_RETURN_DELAY
-        self.elevator_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
-        self.set_lever_active(lever_name, True)
-
-
-    def call_upper_elevator(self, direction):
-        """Mesma correção de call_elevator, pro segundo elevador."""
-        lever_name = "bottom" if direction == "up" else "top"
-        if self.upper_lever_timers[lever_name] != 0:
-            return
-        self.upper_elevator_target = self._alternate_target(
-            self.upper_elevator_target,
-            self.upper_elevator_top,
-            self.upper_elevator_bottom,
-        )
-        if self.upper_elevator_target == self.upper_elevator_home:
-            self.upper_elevator_return_timer = 0
-        else:
-            self.upper_elevator_return_target = self.upper_elevator_home
-            self.upper_elevator_return_timer = self.ELEVATOR_RETURN_DELAY
-        self.upper_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
-        self.set_lever_active(f"upper_{lever_name}", True)
-
-
-    @staticmethod
-    def _alternate_target(current, top, bottom):
-        return bottom if current == top else top
 
     def set_lever_active(self, lever_name, active):
         """Inicia a animação para o estado acionado ou de repouso."""
@@ -694,15 +537,6 @@ class Level:
 
     def lever_image(self, lever_name, puzzle_sprites):
         return puzzle_sprites["lever_animation"][self.lever_animations[lever_name]["frame"]]
-
-    @staticmethod
-    def _move_elevator(elevator, target):
-        old_y = elevator.y
-        if elevator.y < target:
-            elevator.y = min(target, elevator.y + Level.ELEVATOR_SPEED)
-        elif elevator.y > target:
-            elevator.y = max(target, elevator.y - Level.ELEVATOR_SPEED)
-        elevator.dy = elevator.y - old_y
 
     def _make_checkpoints(self):
         return [
@@ -975,12 +809,7 @@ class Level:
         if self.is_underground and not self.room:
             # Ver comentário equivalente em __init__: o laboratório
             # escondido não usa este sistema antigo de alavancas/elevador.
-            self._update_lever_timers(self.elevator_lever_timers)
-            self._update_lever_timers(self.upper_lever_timers, "upper_")
-            self._update_elevator_return_timers()
             self.update_lever_animations()
-            self._move_elevator(self.elevator, self.elevator_target)
-            self._move_elevator(self.upper_elevator, self.upper_elevator_target)
 
     # Zona (largura) em que os filhotes da Cisão se espalham ao redor do
     # ponto onde nasceram — não a arena inteira, só um pedaço em volta do
@@ -1003,33 +832,6 @@ class Level:
             zone = pygame.Rect(x - half, y, self.CISAO_SPAWN_ZONE_WIDTH, 32)
             destination.append(SmallSlime(_StaticZone(zone)))
         spawns.clear()
-
-    def _update_lever_timers(self, timers, name_prefix=""):
-        for name, timer in timers.items():
-            was_active = timer > 0
-            timers[name] = max(0, timer - 1)
-            if was_active and timers[name] == 0:
-                self.set_lever_active(f"{name_prefix}{name}", False)
-
-    def _update_elevator_return_timers(self):
-        self.elevator_return_timer = self._update_return_timer(
-            self.elevator_return_timer,
-            self.elevator_return_target,
-            "elevator_target",
-        )
-        self.upper_elevator_return_timer = self._update_return_timer(
-            self.upper_elevator_return_timer,
-            self.upper_elevator_return_target,
-            "upper_elevator_target",
-        )
-
-    def _update_return_timer(self, timer, return_target, target_name):
-        if not timer:
-            return 0
-        timer -= 1
-        if timer == 0:
-            setattr(self, target_name, return_target)
-        return timer
 
     def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
@@ -1327,24 +1129,16 @@ class Level:
 
     def _draw_lab(self, surface, camera_x, camera_y, lever_on, sequence_progress,
                   sequence_solved, microscope_collected, microscope_assembled, puzzle_sprites, text_fn):
-        # 5 alavancas ao todo: uma em cada andar dos 2 elevadores (top/
-        # bottom/upper_top/upper_bottom, ver _configure_elevator_levers)
-        # mais a do painel — mesmo desenho pra todas, só muda o rótulo.
-        levers = (
-            ("top", self.top_lever, "ELEVADOR [E]"),
-            ("bottom", self.bottom_lever, "ELEVADOR [E]"),
-            ("upper_top", self.upper_top_lever, "ELEVADOR [E]"),
-            ("upper_bottom", self.upper_bottom_lever, "ELEVADOR [E]"),
-            ("panel", self.panel_lever, "PAINEL [E]"),
-        )
-        for name, lever, label in levers:
-            image = self.lever_image(name, puzzle_sprites)
+        # Alavanca única que resta: a do painel (as dos elevadores saíram
+        # junto com eles — ver _build_tiled_underground_lab).
+        if self.panel_lever is not None:
+            lever = self.panel_lever
+            image = self.lever_image("panel", puzzle_sprites)
             # Centraliza o sprite (maior que o rect da alavanca) e mantém
             # sua base na posição original.
             surface.blit(image, (lever.centerx - image.get_width() // 2 - camera_x,
                                  lever.bottom - image.get_height() - camera_y))
-            label_offset_x = -30 if name == "panel" else -42
-            text_fn(surface, label, (lever.x + label_offset_x - camera_x, lever.y - 24 - camera_y), 14, "#f4e4a5")
+            text_fn(surface, "PAINEL [E]", (lever.x - 30 - camera_x, lever.y - 24 - camera_y), 14, "#f4e4a5")
 
         for index, button in enumerate(self.buttons):
             surface.blit(puzzle_sprites["buttons"][index], (button.x-camera_x, button.y-camera_y))

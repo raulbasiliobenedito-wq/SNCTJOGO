@@ -8,7 +8,7 @@
  <tileset firstgid="133" source="chao_vila.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt20tO40AUBVBvoVlLq2GAmmH3FATzmmcLfNTMGjaNkYIUPkn8Kfv5mXOkKxBKys9VvlIGoWkAAADGuRv5/tsqUwAAAAAAAAAAAMB7TwcCQ91vfz7u/O1fxCAJjOnfof5m6PPP6AHo5PH4S6qb8rvTfXrTpUtD+1dzhkjn0QOshP8X6Gdsj58GrlXz+nN3+brNWZsfbU62v3/UZ8bX9X61Od2zFhxTq0dLyVRuOrxmrtl+t7kYOcsU2VS6P/qL7l2mLjcTzVXjnqL3fLfHPhOP8zDgPdFnn6XHU84VvV+1e8z8os9+6T2eY67o/dLj/KLPfsk9nmuu6P3S4/yiz16P4/dLj/OLPvvv1ON9z3n0fulxbv+b+LNfco83lef66jmvfQ09hveGduw5YlhgLz0GAAAAIIOyDdA0l22uoofooXwIcNyfNn+jh2g+9/ctsCalWd/zXToE1qLsyZKUiQJZlZ7pu07Na08dyKiIHpNeET0mvSJ6THpF9Jj0iugx6RXRY9IrPVJzrS5rR6wFALAWL2jtJsk=
+   eJzt20tOwzAUBdBsAdaCgAGCIUxBMPecLfARnQGbJkhFKp+2+dh5cThHugKh1nmxc1UG0DQAAADjPI58/0OWKQAAAAAAAAAAAOC7tx2BoZ7WX1cbP3uJGKQCY/q3q7819PkoegA6We1/SXYl/3a6T2+6dGlo/3LOEOkseoCF8P8C/Yzt8dvAtXJef+ou37Y5bXPQ5nD9/U99Zvxc77jNyZa1YJ9cPZpLSrnr8JqpZjtvczFylhK5z3R/9Bfdu5q63BSaK8c9Re/5Zo9r/p14Ds/e84D3RJ99LT0uOVf0fuXKEj6P5/bcdRV99iWS0xRzRe9XrvznHkeLPvsSmeveTHWdqOhxnOizL5G57s1U14mKHseJPvsSmevebHvOo/er9P3VJPqZG+K1yXeGc0ou95nn+us5z32NyCyhxyzP0I69RwwLbKXHAAAAANQgrQM0zXWbm+ghekg/Aux32eYqeojmd3+/AkuSmuU936lDYCnSlsxJKhSoVeqZvuvkvHbpQI2S6DHVS6LHVC+JHlO9JHpM9ZLoMdVLosdUL/VIzrW6rB2xFgDAUnwANpZVrw==
   </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
@@ -21,7 +21,7 @@
    <property name="colisao" type="bool" value="true"/>
   </properties>
   <data encoding="base64" compression="zlib">
-   eJzt24tumzAUBmDetLxMN7VTO2l74QUtKAgRX+BwzfdJR1WrGDuO/5gU0jQAAABx3m/1davvTP2+1c+dxgg8dJn9MarPyhq3l23Y1kdTn9tc/dr0GQByDOcnx3B+cgwAAAA8M3Vd3bVx2M5UBkvz17dNkWd4eLbnldZUlt4T/aXyV5LfmuPBUOlaj1pP4/7WXKcfAccYji+V4VSb2vymjncUS85JeIiYx+4YNddtl7xO/XhL7p+OWhMROe70Y1q7Te54e+dkuOambHldv/S7NpEVOf+pPPSZKOmvNsNLsrxlX0NROT6StfOcOj/Lmcpxyfle6XqtGcsaot6navKQmpu5uRrvn7n5z73nlPY1d91eMcedNfa9iPP/qXGVvga5rB9BxLzPyd7f5v8c/Ln/7H/f6v7IZ/dk5kTtzXKcF5Hf3pIcn0H3/Jb+7zQqe5FVmuO5lu7NV1pDQ1H7QvQ+9wo5XuP7AntXSY4j1PS5Rv9HE5HjNebmFXK8d+bOnOMhOZbjvchxHDmO+3wcPT9yfM46eo6vSo73Ye1xRFfKGLwqOQaAbbzdCzinLr/tvYBz6ffgtpFjOIu3UbWN/HJt4zV/pM+OU2MrqXai4KqerflUlnMZmtOmJo+1BVeSyslQ/7e52Vorj7UFV9Q+qdLH7VXAQzuzzVTVPn5O3wAAAAAAAAAAwHb+Af/a6dM=
+   eJzt241ugjAUhuHeqdyMW9yyzWw3PIg2EFJP/w70732Sk8VFSq39LIgYAwAAAAB6rnN9zfXtqZ+53gv1EcBqyezbrj4ia7+9VOQe0Hcz8bnNqc9zXhbQle1661oLyTHQPnIMtI8cAwBwPt/5MgAAQC1c19U5hkEJox5DuzIY+vrttpLRxhOQvFrzcn4bdhX2J+UvJL8x7QFboXNdaz7t93fkPL0ptLHtn5RhaZvY/Ert1SLnmAQrjXFc2oi5NpvzPtn+hv5+WmNOaOR4Yft09Da+9krnZDvnXM68dh96r41maY6/lAebiZD9xWY4J8tn7mtLK8c1OTrP0vGZjyvHIcd7ofM1pi9H0PqcismDNDapuZLWT6ly95U6b3vM8eKIdU/j+N/Vr9D3wDeHaqAx7inZ+zOPMfh9/rWPU/KUK6YtrbWZHPtp5NfKyXELlteX+91pzpqmUSXkrM32c69HWuuC9jo3Qo7Pvl+ghxxb236EzmE73j3SyPER+Rohx6Vz2HKOrbt59CVkTSbHMnIcjxznu5s1x9I83n+f3yOt82PtjJHj+qsWvhzvz196RI7L4N521KinjAGjIscobdR7rQCM5/IsAG1a8js9C0Bb7Bo8GXKMtox8vnzZ1WTIL/q2n/M1nTu6+hZSk6OAXr2a81KWfRlK2SYmj7EF9ETKyZb9X2q2jspjbAE9ml5U6PNKFYDVlLiNq2Kfn7JvAAAAAAAAAAAAAAAAAOf5BwLo+xY=
   </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
@@ -73,20 +73,6 @@
   <object id="49" type="slime" x="711.333" y="474.833" width="52" height="34"/>
   <object id="50" type="slime" x="4314" y="351" width="52" height="34"/>
   <object id="51" type="slime" x="6278.5" y="509" width="52" height="34"/>
-  <object id="53" type="elevador_principal" x="2721.67" y="1088" width="160" height="32">
-   <properties>
-    <property name="bottom" value="1090"/>
-    <property name="estilo" value="2"/>
-    <property name="top" value="650"/>
-   </properties>
-  </object>
-  <object id="54" type="elevador_superior" x="1760.5" y="577.5" width="160" height="32">
-   <properties>
-    <property name="bottom" value="575"/>
-    <property name="estilo" value="1"/>
-    <property name="top" value="100"/>
-   </properties>
-  </object>
   <object id="55" type="painel" x="3192" y="974" width="34" height="52"/>
   <object id="56" type="botao" x="2192" y="75.5" width="36" height="20">
    <properties>
@@ -140,24 +126,6 @@
   </object>
   <object id="67" type="slime" x="2312.83" y="52.5" width="52" height="34"/>
   <object id="69" type="rei_slime" x="6891.33" y="514" width="581.333" height="28.6667"/>
-  <object id="70" type="alavanca" x="1674.3" y="551.178" width="25.7273" height="24.7273">
-   <properties>
-    <property name="elevador" value="superior"/>
-    <property name="posicao" value="base"/>
-   </properties>
-  </object>
-  <object id="74" type="alavanca" x="2002.96" y="106.386" width="24.7273" height="21.7273">
-   <properties>
-    <property name="elevador" value="superior"/>
-    <property name="posicao" value="topo"/>
-   </properties>
-  </object>
-  <object id="76" type="alavanca" x="2960.89" y="1066.47" width="24.7273" height="22.2273">
-   <properties>
-    <property name="elevador" value="principal"/>
-    <property name="posicao" value="base"/>
-   </properties>
-  </object>
   <object id="78" type="elevador_lab" x="6450" y="460" width="110" height="90">
    <properties>
     <property name="chave" value="campo_contencao_lab"/>
