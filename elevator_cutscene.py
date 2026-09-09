@@ -31,6 +31,7 @@ import math
 
 import pygame
 
+from sprites import load_optional
 from settings import ASSET_DIR, HEIGHT, WIDTH
 
 
@@ -61,8 +62,8 @@ class ElevatorCutscene:
         self._on_finish = None
 
         self.background = None
-        if self.BACKGROUND_PATH.exists():
-            raw = pygame.image.load(str(self.BACKGROUND_PATH)).convert_alpha()
+        raw = load_optional(self.BACKGROUND_PATH)
+        if raw is not None:
             # Redimensiona pra largura EXATA da tela, preservando a
             # proporção (a altura acompanha) — a arte pode ter vindo em
             # qualquer resolução, isso garante que a textura cobre a
@@ -77,9 +78,7 @@ class ElevatorCutscene:
             # folga em vez de suavizar um redimensionamento que não deveria
             # mais existir de verdade.
             self.background = pygame.transform.scale(raw, size)
-        self.frame = None
-        if self.FRAME_PATH.exists():
-            self.frame = pygame.image.load(str(self.FRAME_PATH)).convert_alpha()
+        self.frame = load_optional(self.FRAME_PATH)
 
     def start(self, reverse=False, on_finish=None):
         """`on_finish` é chamado exatamente uma vez, no quadro em que a

@@ -19,6 +19,13 @@ import pygame
 
 
 FLIPPED_GID_MASK = 0x1FFFFFFF
+# Bits que o Tiled liga no gid quando o tile é espelhado/girado no editor.
+# Eram MASCARADOS e jogados fora: um tile espelhado no Tiled aparecia sem
+# espelho no jogo, em silêncio. Agora são lidos e aplicados em
+# _oriented_image.
+FLIPPED_HORIZONTALLY = 0x80000000
+FLIPPED_VERTICALLY = 0x40000000
+FLIPPED_DIAGONALLY = 0x20000000
 ORTHOGONAL = "orthogonal"
 
 
@@ -62,6 +69,8 @@ class TiledMap:
         self.tile_collisions = []
         self.object_groups = {}
         self.elapsed_ms = 0.0
+        # Cache de tiles espelhados/girados (ver _oriented_image).
+        self._oriented_cache = {}
         self._read_layers(root)
         # Chunks de CHUNK_TILES x CHUNK_TILES tiles: o draw() só percorre os
         # tiles dos chunks que cruzam a câmera, em vez de checar a
@@ -81,14 +90,31 @@ class TiledMap:
 
     CHUNK_TILES = 8
 
-    def _chunk_key(self, x, y):
-        return (x // (self.CHUNK_TILES * self.tile_width), y // (self.CHUNK_TILES * self.tile_height))
-
     def _build_chunks(self, entries):
+        """Indexa cada tile nos chunks que ele REALMENTE cruza.
+
+        Antes só o chunk do canto superior esquerdo era usado; um tile maior
+        que o grid (casa de 128px numa grade de 32px) ficava registrado num
+        chunk só e dependia da margem de +-1 chunk de _draw_chunks pra
+        aparecer — funcionava por acidente, e deixaria de funcionar com
+        qualquer arte maior que CHUNK_TILES * tile_size."""
+        chunk_w = self.CHUNK_TILES * self.tile_width
+        chunk_h = self.CHUNK_TILES * self.tile_height
         chunks = {}
         for entry in entries:
             x, y = entry[0], entry[1]
-            chunks.setdefault(self._chunk_key(x, y), []).append(entry)
+            # Largura/altura são sempre os DOIS ÚLTIMOS campos: as tuplas de
+            # tile normal são (x, y, imagem, w, h) e as de tile animado são
+            # (x, y, tileset, local_id, w, h) — indexar por posição fixa
+            # pegaria o local_id no lugar da largura.
+            width, height = entry[-2], entry[-1]
+            first_col = int(x // chunk_w)
+            last_col = int((x + width - 1) // chunk_w)
+            first_row = int(y // chunk_h)
+            last_row = int((y + height - 1) // chunk_h)
+            for row in range(first_row, last_row + 1):
+                for col in range(first_col, last_col + 1):
+                    chunks.setdefault((col, row), []).append(entry)
         return chunks
 
     def update(self, dt_ms):
@@ -144,13 +170,33 @@ class TiledMap:
             return None
 
         image_path = base_dir / image.get("source", "")
+        surface = pygame.image.load(image_path).convert_alpha()
+        columns = int(tileset_root.get("columns", 1))
+        tile_w = int(tileset_root.get("tilewidth", self.tile_width))
+        tile_h = int(tileset_root.get("tileheight", self.tile_height))
+        # O Tiled às vezes deixa um tilecount desatualizado depois de trocar o
+        # tamanho do tile — aconteceu com escola_tileset_64x64.tsx, que
+        # declarava 480 numa imagem que só comporta 120. Confiar no declarado
+        # faz o tileset "reivindicar" GIDs que pertencem a outros e leva a
+        # subsurface() fora dos limites do atlas (crash no carregamento do
+        # mapa). Usar o menor entre o declarado e o que a imagem realmente
+        # comporta protege qualquer tileset futuro contra o mesmo erro.
+        declared = int(tileset_root.get("tilecount", 0))
+        real = max(0, (surface.get_width() // tile_w) * (surface.get_height() // tile_h))
+        if declared and declared != real:
+            print(
+                f"[TiledMap] aviso: {source or image_path.name} declara "
+                f"tilecount={declared} mas a imagem {surface.get_size()} com tiles "
+                f"de {tile_w}x{tile_h} comporta {real} — usando {min(declared, real)}."
+            )
+        tile_count = min(declared, real) if declared else real
         tileset = {
             "first_gid": first_gid,
-            "last_gid": first_gid + int(tileset_root.get("tilecount", 0)) - 1,
-            "image": pygame.image.load(image_path).convert_alpha(),
-            "columns": int(tileset_root.get("columns", 1)),
-            "tile_width": int(tileset_root.get("tilewidth", self.tile_width)),
-            "tile_height": int(tileset_root.get("tileheight", self.tile_height)),
+            "last_gid": first_gid + tile_count - 1,
+            "image": surface,
+            "columns": columns,
+            "tile_width": tile_w,
+            "tile_height": tile_h,
             "animations": self._load_animations(tileset_root),
             # "escala" (propriedade opcional do tileset no Tiled): amplia o
             # recorte de cada tile desse tileset na hora de desenhar, sem
@@ -198,10 +244,20 @@ class TiledMap:
         return animations
 
     def _read_layers(self, root):
-        for layer in root.findall("layer"):
-            self._read_tile_layer(layer)
-        for group in root.findall("objectgroup"):
-            self._read_object_group(group)
+        """Percorre camadas e grupos de objetos RECURSIVAMENTE.
+
+        Antes só olhava os filhos diretos do <map>: agrupar camadas no
+        Tiled (um <group>, que é o jeito natural de organizar um mapa
+        grande) fazia tudo dentro do grupo sumir do jogo sem erro nenhum.
+        A ordem de leitura continua sendo a ordem do arquivo, então a
+        pilha de desenho não muda pros mapas que já existem."""
+        for node in root:
+            if node.tag == "layer":
+                self._read_tile_layer(node)
+            elif node.tag == "objectgroup":
+                self._read_object_group(node)
+            elif node.tag == "group":
+                self._read_layers(node)
 
     def _read_tile_layer(self, layer):
         values = self._tile_values(layer)
@@ -218,6 +274,7 @@ class TiledMap:
             gid = raw_gid & FLIPPED_GID_MASK
             if not gid:
                 continue
+            flags = raw_gid & ~FLIPPED_GID_MASK
             column = index % layer_width + layer_x
             row = index // layer_width + layer_y
             x = column * self.tile_width
@@ -243,10 +300,59 @@ class TiledMap:
             rendered_height = tileset["tile_height"] * scale
             draw_x = x
             draw_y = y + self.tile_height - rendered_height
+            if flags and local_id not in tileset["animations"]:
+                # Tile espelhado/girado no editor: gera a variante uma vez
+                # aqui (cacheada por tileset+id+flags), em vez de nunca.
+                # Tiles ANIMADOS ficam de fora de propósito — a variante
+                # teria de ser gerada por quadro de animação, e nenhum mapa
+                # do projeto usa as duas coisas juntas hoje.
+                image = self._oriented_image(tileset, local_id, flags)
+                tiles.append((draw_x, draw_y, image, image.get_width(), image.get_height()))
+                continue
             if local_id in tileset["animations"]:
-                animated_tiles.append((draw_x, draw_y, tileset, local_id))
+                # (x, y, tileset, local_id, largura, altura) — o tamanho vem
+                # do primeiro quadro da animação, que é sempre igual aos
+                # outros dentro do mesmo tileset.
+                first_frame = tileset["animation_frames"][local_id][0][0]
+                animated_tiles.append(
+                    (draw_x, draw_y, tileset, local_id,
+                     first_frame.get_width(), first_frame.get_height())
+                )
             else:
-                tiles.append((draw_x, draw_y, self._tile_image(tileset, local_id)))
+                image = self._tile_image(tileset, local_id)
+                # Guarda o tamanho REAL da imagem junto com a posição: as
+                # casas da vila são 128x128 num grid de 32x32 (35 tiles
+                # assim na vila, 15 na Fase 1) e o culling comparava contra
+                # self.tile_height (32). Um tile de 128px cujo topo saísse
+                # pela borda de cima da câmera era descartado enquanto ainda
+                # cobria ~100px dentro da tela — casas e árvores piscando na
+                # borda superior.
+                tiles.append(
+                    (draw_x, draw_y, image, image.get_width(), image.get_height())
+                )
+
+    def _oriented_image(self, tileset, local_id, flags):
+        """Aplica os bits de espelhamento/rotação do Tiled a um tile.
+
+        O bit "diagonal" do Tiled é uma reflexão na diagonal principal
+        (transposição), não uma rotação — a combinação dele com os bits
+        horizontal/vertical é que produz as rotações de 90/270 graus. A
+        ordem aqui (transpõe primeiro, espelha depois) é a mesma que o
+        próprio Tiled documenta."""
+        cache = self._oriented_cache
+        key = (id(tileset), local_id, flags)
+        image = cache.get(key)
+        if image is not None:
+            return image
+        image = self._tile_image(tileset, local_id)
+        if flags & FLIPPED_DIAGONALLY:
+            image = pygame.transform.rotate(pygame.transform.flip(image, True, False), 90)
+        if flags & FLIPPED_HORIZONTALLY:
+            image = pygame.transform.flip(image, True, False)
+        if flags & FLIPPED_VERTICALLY:
+            image = pygame.transform.flip(image, False, True)
+        cache[key] = image
+        return image
 
     def _is_collision_layer(self, layer):
         """Reconhece a propriedade colisao=true ou nomes convencionais."""
@@ -356,9 +462,6 @@ class TiledMap:
             )
         return image
 
-    def _image_for_gid(self, gid):
-        tileset, local_id = self._tileset_for_gid(gid)
-        return self._tile_image(tileset, local_id) if tileset else None
 
     def objects(self, *group_names):
         result = []
@@ -398,14 +501,6 @@ class TiledMap:
     def _draw_chunks(self, surface, camera_x, camera_y, tile_chunks, animated_chunks):
         right = camera_x + surface.get_width()
         bottom = camera_y + surface.get_height()
-
-        def visible(x, y):
-            if x + self.tile_width < camera_x or x > right:
-                return False
-            if y + self.tile_height < camera_y or y > bottom:
-                return False
-            return True
-
         chunk_w = self.CHUNK_TILES * self.tile_width
         chunk_h = self.CHUNK_TILES * self.tile_height
         # camera_x/camera_y chegam como float (suavização da câmera em
@@ -414,14 +509,25 @@ class TiledMap:
         last_col = int(right // chunk_w) + 1
         first_row = int(camera_y // chunk_h) - 1
         last_row = int(bottom // chunk_h) + 1
-
+        # O laço interno roda ~1400 vezes por quadro numa fase grande: a
+        # closure `visible()` que existia aqui aparecia como a 4ª linha mais
+        # cara do jogo no cProfile (412.770 chamadas em 300 quadros). O teste
+        # agora é inline e usa a LARGURA/ALTURA REAL do tile (ver
+        # _read_tile_layer), não o tamanho do grid do mapa.
+        blit = surface.blit
+        current = self._current_frames
         for chunk_row in range(first_row, last_row + 1):
             for chunk_col in range(first_col, last_col + 1):
                 key = (chunk_col, chunk_row)
-                for x, y, image in tile_chunks.get(key, ()):
-                    if visible(x, y):
-                        surface.blit(image, (x - camera_x, y - camera_y))
-                for x, y, tileset, local_id in animated_chunks.get(key, ()):
-                    if visible(x, y):
-                        image = self._current_frames[(id(tileset), local_id)]
-                        surface.blit(image, (x - camera_x, y - camera_y))
+                for x, y, image, width, height in tile_chunks.get(key, ()):
+                    if x + width < camera_x or x > right:
+                        continue
+                    if y + height < camera_y or y > bottom:
+                        continue
+                    blit(image, (x - camera_x, y - camera_y))
+                for x, y, tileset, local_id, width, height in animated_chunks.get(key, ()):
+                    if x + width < camera_x or x > right:
+                        continue
+                    if y + height < camera_y or y > bottom:
+                        continue
+                    blit(current[(id(tileset), local_id)], (x - camera_x, y - camera_y))

@@ -1,5 +1,6 @@
 """Orquestra o ciclo de jogo, as interações e a renderização."""
 
+import json
 import random
 
 import pygame
@@ -20,9 +21,11 @@ from minigame import (
 )
 from player import Player
 from projectile import Projectile
+from sprites import load_optional
 from vfx import VFXManager
 from settings import (
     ASSET_DIR,
+    ROOT_DIR,
     CAMERA_ZOOM,
     FPS,
     HEIGHT,
@@ -40,9 +43,17 @@ INTRO = "intro"
 PLAYING = "playing"
 GAME_OVER = "game_over"
 COMPLETE = "complete"
+PAUSED = "paused"
 
-STARTING_LIVES = 1000
-MAX_LIVES = 1000
+# Vida em corações fracionários (mob = 0.5, chefe = 1.0 — ver
+# MOB_CONTACT_DAMAGE/BOSS_CONTACT_DAMAGE). 5 corações dá ~10 toques de mob
+# antes do game over: margem confortável pra uma primeira jogada sem tornar
+# a luta de chefe irrelevante. ATENÇÃO: estes dois valores estiveram em 1000
+# (valor de depuração) por várias sessões — com eles a Lia era matematicamente
+# invencível e todo o fluxo de derrota (pose de morte, death_sound, tela de
+# game over, MOTIVATION) era inalcançável. Ver o assert no fim deste bloco.
+STARTING_LIVES = 5
+MAX_LIVES = 5
 
 # Itens (LEIA-ME_bosses_e_itens.md, items.png 16x16, 4 quadros/6fps, 7
 # linhas). "consumable" tem efeito imediato ao usar (tecla própria);
@@ -122,7 +133,12 @@ ENEMY_DROP_TABLE = {
 DROP_PICKUP_RADIUS = 22
 ATTACK_DURATION = 11
 ATTACK_COOLDOWN = 20
-STANDARD_ATTACK_POWER = 100
+# Dano base do golpe corpo a corpo. Calibrado contra enemy.HEALTH:
+# Slime(2)=2 golpes, CrystalStag(3)=3, JanitorGuardian(4)=4, chefes(12)=12
+# golpes normais ou 6 finalizadores de combo, Dragon(16)=16 tiros de longe.
+# Esteve em 100 (valor de depuração): TODO chefe morria em um único golpe,
+# e o combo/dash/parry — que dão 2 e 3 — eram PUNIÇÕES, não recompensas.
+STANDARD_ATTACK_POWER = 1
 DASH_ATTACK_POWER = 2
 STANDARD_ATTACK_REACH = 22
 DASH_ATTACK_REACH = 36
@@ -166,6 +182,11 @@ PARRY_INVULN_FRAMES = FPS
 # infra de shake fica pronta pra ser reaproveitada depois pela ideia
 # guardada do tremor ao acordar o chefe (ver IDEIAS_FUTURAS.md).
 PARRY_HITSTOP_FRAMES = 3
+# Hit-stop curto em QUALQUER acerto de espada, não só no parry: dois
+# quadros de congelamento é o que separa "a espada encostou" de "a espada
+# acertou". Menor que o do parry de propósito — o parry continua sendo o
+# impacto mais pesado do jogo.
+HIT_STOP_FRAMES = 2
 PARRY_SHAKE_DURATION = 14
 PARRY_SHAKE_MAGNITUDE = 6
 
@@ -175,6 +196,13 @@ PARRY_SHAKE_MAGNITUDE = 6
 # MUITOS pedaços da caverna caem (ver Dragon.TERREMOTO_ROCK_TOTAL). A
 # magnitude decai sozinha ao longo da duração (ver _shake_offset), então
 # começa forte e vai assentando — não fica 5s inteiros no talo.
+# Acordar de chefe (pedido antigo do Raul, IDEIAS_FUTURAS.md): a mesma
+# infra de shake do parry, mais uma chuva de poeira caindo do teto da
+# arena. Curto e forte — é uma pontuação, não um terremoto.
+BOSS_WAKE_SHAKE_DURATION = 20
+BOSS_WAKE_SHAKE_MAGNITUDE = 9
+BOSS_WAKE_DUST_COUNT = 14
+
 EARTHQUAKE_SHAKE_DURATION = 300
 EARTHQUAKE_SHAKE_MAGNITUDE = 14
 
@@ -189,7 +217,30 @@ RANGED_ATTACK_COOLDOWN = 70
 RANGED_PROJECTILE_SPEED = 14.0
 RANGED_PROJECTILE_RANGE = 500
 
+# Travas de sanidade: os valores acima já foram parar em números de
+# depuração (STARTING_LIVES=1000, STANDARD_ATTACK_POWER=100) e ficaram
+# assim por sessões sem ninguém notar, porque nada no jogo reclama — ele
+# só vira um sandbox silenciosamente. Falhar no import é barulhento o
+# bastante pra isso não acontecer de novo.
+assert STANDARD_ATTACK_POWER < DASH_ATTACK_POWER <= PARRY_DAMAGE, (
+    "O golpe de dash e o parry precisam causar MAIS dano que o golpe padrão"
+)
+assert STANDARD_ATTACK_POWER < COMBO_FINISHER_POWER, (
+    "O 4º hit do combo precisa causar MAIS dano que os anteriores"
+)
+assert MAX_LIVES <= 12, "Vidas acima disso estouram a barra de corações do HUD"
+assert STARTING_LIVES <= MAX_LIVES, "Não dá pra começar com mais vida que o máximo"
+
+# Duração (em quadros) da caixa de mensagem da HUD. Existem como constantes
+# nomeadas porque oito pontos diferentes de Game setavam self.message junto
+# com `message_timer = 0`, e hud.draw_hud só desenha com `if message_timer`
+# — ou seja, a mensagem era escrita e NUNCA aparecia. Ver Game.show_message.
+MESSAGE_DURATION = 150          # 2,5 s — avisos comuns (item, pesquisa, achado)
+MESSAGE_DURATION_LONG = 240     # 4 s   — desbloqueios e bloqueios de progresso
+
 CAMERA_X_FOCUS = 0.42
+# Quanto a câmera se adianta na direção em que a Lia olha (px).
+CAMERA_LOOK_AHEAD = 80
 CAMERA_X_SMOOTHING = 0.12
 CAMERA_Y_FOCUS = 0.55
 CAMERA_Y_SMOOTHING = 0.10
@@ -236,6 +287,19 @@ NPC_SPRITE_ROWS = {
     "Katherine Johnson": 2,
     "Jaqueline Goes de Jesus": 3,
     "Rosalind Franklin": 4,
+}
+# Moradores da vila (ver PLANO_VILA.md). Cada um é uma FOLHA PRÓPRIA em
+# images/npcs/, não uma linha de cientistas_idle.png — por isso o mapa é
+# nome -> arquivo em vez de nome -> linha. Só o Seu Joaquim tem arte
+# desenhada até agora (288x48 = 6 quadros de 48x48, que estava no disco
+# há tempos sem nenhum código carregando); os outros três continuam
+# interagíveis e invisíveis até a folha deles existir, mesmo padrão de
+# asset opcional do resto do jogo.
+VILLAGER_SPRITE_FILES = {
+    "Seu Joaquim": "seu_joaquim_idle.png",
+    "Dona Marta": "dona_marta_idle.png",
+    "Bento": "bento_idle.png",
+    "Sra. Amélia": "sra_amelia_idle.png",
 }
 NPC_DIALOGUES = {
     "Rosalind Franklin": (
@@ -290,19 +354,12 @@ NPC_DIALOGUES = {
     ),
 }
 
-SCHOOL_SPRITE_RECTS = {
-    "chalkboard": (72, 54, 205, 124),
-    "whiteboard": (281, 54, 190, 124),
-    "clock": (600, 52, 112, 116),
-    "bulletin": (494, 176, 184, 80),
-    "exit": (415, 208, 74, 54),
-    "plant": (694, 158, 93, 125),
-    "desk_row": (912, 152, 310, 94),
-    "locker": (1268, 246, 150, 188),
-    "bookshelf": (478, 456, 196, 102),
-    "door": (250, 554, 136, 190),
-    "lab_table": (732, 610, 258, 126),
-}
+# SCHOOL_SPRITE_RECTS (chalkboard, whiteboard, clock, bulletin, exit,
+# plant, desk_row, locker, bookshelf, door, lab_table) foi removido: os 11
+# recortes eram fatiados de escola_sheet.png no carregamento e NENHUM era
+# usado em lugar nenhum — o único uso de school_sprites no projeto inteiro
+# é school_sprites[floor_name], que vem de SCHOOL_PLATFORM_SPRITES abaixo.
+# Eram sobras do draw_school_background procedural, removido faz tempo.
 SCHOOL_PLATFORM_SPRITES = {
     "grass_tile": ((448, 756, 32, 64), (32, 32)),
     "wood_tile": ((768, 850, 32, 60), (32, 32)),
@@ -362,6 +419,10 @@ class Game:
         # Surface intermediária pro zoom da câmera (ver _blit_zoomed_world) —
         # criada só uma vez (não a cada quadro) e reaproveitada.
         self._world_surface = None
+        # Pano de fundo estático do menu (ver draw/_render_world_snapshot).
+        # Invalidado em load_level, pra o menu nunca mostrar o mundo de uma
+        # fase anterior depois de um reinício.
+        self._menu_snapshot = None
         self.game_over_fade = 0
         self.game_over_characters = 0
         # Menu de título/Configurações (ver handle_menu_click/_drag/
@@ -379,11 +440,8 @@ class Game:
 
     def _load_assets(self):
         self.tiles = self._load_platform_tiles()
-        self.university_tiles = self._load_university_tiles()
-        self.university_props = self._load_university_props()
         self._load_backgrounds()
         self.school_sprites = self._load_school_sprites()
-        self._create_scene_filters()
         self.player_light = self._create_player_light()
         self.book = self._load_scaled_image("items/book.png", (30, 38))
         self.checkpoint_flag = self._load_image("objects/checkpoint_flag.png")
@@ -412,9 +470,17 @@ class Game:
         # "quadros_corpo" só a massa (pra ladrilhar sem repetir cara).
         # Cai pro fog_sprite/desenho por código se as pastas não existirem
         # ainda (mesmo padrão opcional de tudo isso).
-        self.fog_frames = self._load_fog_frame_sequence("quadros", "quadro")
-        self.fog_frames_corpo = self._load_fog_frame_sequence("quadros_corpo", "corpo")
+        # Carregados sob demanda por _apply_fog_sprite, só quando uma fase
+        # realmente tem barreira de neblina (hoje só a Fase 1) — ver lá.
+        self.fog_frames = None
+        self.fog_frames_corpo = None
+        self._fog_frames_tried = False
         self.scientist_sprites = self._load_scientist_sprites()
+        # Um dicionário só, por NOME, com os quadros de qualquer NPC —
+        # cientista ou morador. Level._draw_npcs consultava um índice de
+        # LINHA numa folha única, o que tornava impossível um NPC ter folha
+        # própria (era por isso que os 4 da vila apareciam invisíveis).
+        self.npc_frames = self._build_npc_frames()
         self.artifact_image = self._load_scaled_image("items/artifact_lab.png", (28, 28))
         self.artifact_library_image = self._load_scaled_image("items/artifact_library.png", (28, 28))
         self.vfx = VFXManager(
@@ -430,10 +496,11 @@ class Game:
                 "parry": ASSET_DIR / "vfx" / "parry_flash.png",
             },
         )
-        self.lab_background = self._load_scaled_background("backgrounds/lab_background.png")
-        self.lab_background_mirror = pygame.transform.flip(self.lab_background, True, False)
-        self.library_background = self._load_scaled_background("backgrounds/library_background.png")
-        self.library_background_mirror = pygame.transform.flip(self.library_background, True, False)
+        # lab_background/library_background passaram pra _load_backgrounds
+        # (agora já saem de lá com a cor de cena composta). Os dois "_mirror"
+        # que existiam aqui eram carregados e NUNCA usados por ninguém —
+        # só a universidade alterna cópias espelhadas ao ladrilhar (ver
+        # draw_university_background) — eram 10,6 MB de superfície morta.
 
     @staticmethod
     def _load_image(relative_path, alpha=True):
@@ -445,37 +512,34 @@ class Game:
 
     @staticmethod
     def _load_optional_object_sprite(filename):
-        """Um único arquivo opcional em images/objects — mesmo padrão de
-        _load_energy_box_sprites (checa .exists() antes, devolve None
-        sem quebrar nada enquanto a arte não chegar). Usado pelos
-        arquivos independentes do elevador secreto/neblina (ver
-        _load_assets)."""
-        path = ASSET_DIR / "objects" / filename
-        if not path.exists():
-            return None
-        return pygame.image.load(path).convert_alpha()
+        """Um único arquivo opcional em images/objects. Delega pro helper
+        único do projeto (sprites.load_optional), que além de devolver None
+        registra o caminho em sprites.missing — antes cada lugar tinha seu
+        próprio jeito de "não achou, tudo bem" e nada ficava anotado."""
+        return load_optional(ASSET_DIR / "objects" / filename)
 
     @staticmethod
     def _load_fog_frame_sequence(subfolder, prefix, count=24):
-        """Carrega images/fog/<subfolder>/<prefix>_00.png .. _23.png (ver
-        Game._load_assets/fog.FogBarrier._draw_animated) e redimensiona
-        cada quadro pra tela (WIDTH x HEIGHT) — os quadros do Raul nascem
-        em 480x270 pensados pra 4x, que bate exatamente com 1920x1080,
-        mas escalar direto pro tamanho da tela deixa isso independente de
-        WIDTH/HEIGHT mudarem no futuro. `pygame.transform.scale` (sem
-        suavizar) mantém a pixel art nítida. Devolve None (não uma lista
-        vazia) se a pasta ainda não existir — mesmo padrão opcional do
-        resto do jogo, FogBarrier cai pro fog_sprite/desenho por código."""
+        """Carrega images/fog/<subfolder>/<prefix>_00.png .. _23.png NO
+        TAMANHO NATIVO (480x270).
+
+        Antes cada quadro era ampliado pra 1920x1080 já aqui: 48 quadros
+        (rostos + corpo) x 8,3 MB = 380 MB residentes — 63% dos 600 MB de
+        RSS do processo, para um efeito que só existe na Fase 1. Nativos são
+        23,7 MB. O redimensionamento passou pra hora de desenhar, onde
+        FogBarrier._scaled_frame cacheia o quadro atual (a animação roda a
+        12 fps, então o mesmo quadro é pedido ~5 vezes seguidas a 60 fps).
+
+        Devolve None (não uma lista vazia) se a pasta ainda não existir —
+        mesmo padrão opcional do resto do jogo, FogBarrier cai pro
+        fog_sprite/desenho por código."""
         folder = ASSET_DIR / "fog" / subfolder
-        if not folder.exists():
-            return None
         frames = []
         for i in range(count):
-            path = folder / f"{prefix}_{i:02d}.png"
-            if not path.exists():
+            frame = load_optional(folder / f"{prefix}_{i:02d}.png")
+            if frame is None:
                 return None
-            raw = pygame.image.load(path).convert_alpha()
-            frames.append(pygame.transform.scale(raw, (WIDTH, HEIGHT)))
+            frames.append(frame)
         return frames
 
     def _load_platform_tiles(self):
@@ -484,19 +548,7 @@ class Game:
             for index in range(1, 5)
         ]
 
-    def _load_university_tiles(self):
-        sheet = self._load_image("tiles/university_sheet.png")
-        return [
-            [self._sheet_crop(sheet, (column * 32, row * 32, 32, 32)) for column in range(4)]
-            for row in range(4)
-        ]
 
-    @staticmethod
-    def _load_university_props():
-        return {
-            name: pygame.image.load(ASSET_DIR / "props" / f"{name}.png").convert_alpha()
-            for name in ("plant_pot", "book_stack", "grad_cap", "banner", "bench", "bush")
-        }
 
     # Fator de velocidade do fundo da caverna em relação à câmera: <1.0 faz o
     # fundo se mover mais devagar que o primeiro plano (efeito parallax).
@@ -511,21 +563,87 @@ class Game:
     # o fundo da escola nem deixar a vila preta.
     VILLAGE_PLACEHOLDER_SKY = (144, 197, 230)
 
+    # Cores de cena. Antes cada uma virava um Surface SRCALPHA de tela cheia
+    # blitado por cima do fundo TODO QUADRO — medido em ~4,7 ms/quadro, a
+    # operação mais cara do jogo inteiro. Agora são só dados: a cor é
+    # composta DENTRO da imagem de fundo, uma vez, ainda na resolução
+    # pequena (256x224 / 512x320), antes do redimensionamento. Como o fundo
+    # é opaco e cobre a tela toda, e nada era desenhado entre ele e o
+    # overlay, o resultado é pixel a pixel idêntico ao de antes.
+    BG_TINT = (38, 53, 76, 72)
+    UNIVERSITY_TINT = (55, 65, 80, 85)
+    UNDERGROUND_TINT = (8, 12, 27, 155)
+
     def _load_backgrounds(self):
-        school_background = self._load_scaled_background("backgrounds/background_school.png")
-        university_background = self._load_scaled_background("backgrounds/university_background.png")
-        cave_background = self._load_scaled_background("backgrounds/cave_background_v2.png")
-        self.backgrounds = [school_background, university_background, cave_background]
-        self.background_mirror = pygame.transform.flip(university_background, True, False)
-        # Opcional: só existe depois que a arte "backgrounds/ceu.png" (céu com
-        # nuvens, pedida pro Raul) for colocada na pasta. Até lá,
-        # _draw_background cai no preenchimento liso (VILLAGE_PLACEHOLDER_SKY).
-        village_path = ASSET_DIR / "backgrounds" / "ceu.png"
-        self.village_background = (
-            self._load_scaled_background("backgrounds/ceu.png")
-            if village_path.exists()
-            else None
-        )
+        """Carrega cada fundo em DUAS variantes já tingidas: "normal" e
+        "underground" (o filtro escuro que entra quando a Lia desce abaixo
+        de UNDERGROUND_Y).
+
+        Qual família de cor cada fundo leva depende de ONDE ele é usado, não
+        de qual arquivo é: o overlay antigo era escolhido por
+        `level.index == 1`, então o fundo da universidade e os das duas salas
+        dela (que também têm index 1) levam o filtro "university", e o resto
+        leva só o básico."""
+        self.backgrounds = {}
+        village_exists = (ASSET_DIR / "backgrounds" / "ceu.png").exists()
+        specs = [
+            ("university", "backgrounds/university_background.png", True),
+            ("cave", "backgrounds/cave_background_v2.png", False),
+            ("lab", "backgrounds/lab_background.png", True),
+            ("library", "backgrounds/library_background.png", True),
+        ]
+        if village_exists:
+            specs.append(("village", "backgrounds/ceu.png", False))
+        else:
+            # Fallback histórico da Fase 1. Só é carregado quando ceu.png não
+            # existe, em vez de sempre: com o céu novo no lugar, eram ~15 MB
+            # de imagem escalada que nunca chegava a ser desenhada.
+            specs.append(("school", "backgrounds/background_school.png", False))
+        for key, path, is_university in specs:
+            if not (ASSET_DIR / path).exists():
+                continue
+            raw = self._load_image(path, alpha=False)
+            self.backgrounds[key] = {
+                variant: self._scale_to_screen(self._tinted(raw, color))
+                for variant, color in self._scene_tints(is_university).items()
+            }
+        self.background_mirror = {
+            variant: pygame.transform.flip(image, True, False)
+            for variant, image in self.backgrounds.get("university", {}).items()
+        }
+
+    def _scene_tints(self, is_university):
+        """As combinações de cor que cada fundo precisa. Reaproveita
+        _combine_overlay_colors, que já compunha as camadas numa cor só —
+        faltava só aplicar o resultado no fundo em vez de num overlay."""
+        if is_university:
+            return {
+                "normal": self._combine_overlay_colors(self.BG_TINT, self.UNIVERSITY_TINT),
+                "underground": self._combine_overlay_colors(
+                    self.BG_TINT, self.UNIVERSITY_TINT, self.UNDERGROUND_TINT
+                ),
+            }
+        return {
+            "normal": self.BG_TINT,
+            "underground": self._combine_overlay_colors(self.BG_TINT, self.UNDERGROUND_TINT),
+        }
+
+    @staticmethod
+    def _tinted(raw, rgba):
+        """Compõe uma cor RGBA sólida sobre uma cópia OPACA da imagem — o
+        mesmo resultado de blitar um overlay SRCALPHA por cima, só que uma
+        vez, na imagem pequena."""
+        base = raw.convert()
+        layer = pygame.Surface(base.get_size(), pygame.SRCALPHA)
+        layer.fill(rgba)
+        base.blit(layer, (0, 0))
+        return base
+
+    def _scale_to_screen(self, image):
+        scale = HEIGHT / image.get_height()
+        return pygame.transform.scale(
+            image, (round(image.get_width() * scale), HEIGHT)
+        ).convert()
 
     def _load_scaled_background(self, relative_path):
         """Várias artes de fundo (universidade, caverna) vêm em baixa
@@ -539,46 +657,17 @@ class Game:
 
     def _load_school_sprites(self):
         sheet = self._load_image("fase_escola_tileset/escola_sheet.png", alpha=False)
-        sprites = {
-            name: self._sheet_crop(sheet, rectangle)
-            for name, rectangle in SCHOOL_SPRITE_RECTS.items()
+        return {
+            name: pygame.transform.scale(self._sheet_crop(sheet, rectangle), size)
+            for name, (rectangle, size) in SCHOOL_PLATFORM_SPRITES.items()
         }
-        sprites.update(
-            {
-                name: pygame.transform.scale(self._sheet_crop(sheet, rectangle), size)
-                for name, (rectangle, size) in SCHOOL_PLATFORM_SPRITES.items()
-            }
-        )
-        return sprites
 
-    def _create_scene_filters(self):
-        # Cores base dos filtros (mantidas apenas como referência/compat).
-        bg_color = (38, 53, 76, 72)
-        university_color = (55, 65, 80, 85)
-        underground_color = (8, 12, 27, 155)
-        self.background_filter = self._solid_overlay(bg_color)
-        self.university_filter = self._solid_overlay(university_color)
-        self.underground_filter = self._solid_overlay(underground_color)
-
-        # Cada nível pode empilhar até 3 filtros translúcidos por cima do
-        # fundo (background + university + underground) todo quadro, e
-        # blitar múltiplas surfaces SRCALPHA de tela cheia é a operação de
-        # desenho mais cara do jogo. Como cada filtro é uma cor sólida
-        # constante (não depende do conteúdo por baixo além da própria
-        # fórmula de mistura "over"), dá pra pré-combinar as camadas numa
-        # única cor equivalente, uma vez, no carregamento — o resultado
-        # pixel a pixel é idêntico a aplicar as camadas em sequência, mas
-        # custa 1 blit em vez de até 3.
-        self._overlay_plain = self.background_filter
-        self._overlay_underground = self._solid_overlay(
-            self._combine_overlay_colors(bg_color, underground_color)
-        )
-        self._overlay_university = self._solid_overlay(
-            self._combine_overlay_colors(bg_color, university_color)
-        )
-        self._overlay_university_underground = self._solid_overlay(
-            self._combine_overlay_colors(bg_color, university_color, underground_color)
-        )
+    # _create_scene_filters foi removido. Ele criava SETE Surfaces SRCALPHA
+    # de tela cheia (55 MB): quatro overlays combinados — agora compostos
+    # direto nos fundos por _load_backgrounds — e três (background_filter,
+    # university_filter, underground_filter) que o próprio comentário
+    # marcava como "mantidos apenas como referência/compat" e que ninguém
+    # nunca leu. As cores viraram BG_TINT/UNIVERSITY_TINT/UNDERGROUND_TINT.
 
     @staticmethod
     def _combine_overlay_colors(*colors):
@@ -602,12 +691,6 @@ class Game:
             round(accum_b / alpha_acc),
             round(alpha_acc * 255),
         )
-
-    @staticmethod
-    def _solid_overlay(color):
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill(color)
-        return overlay
 
     @staticmethod
     def _create_player_light():
@@ -891,6 +974,31 @@ class Game:
             ASSET_DIR / "npcs" / "cientistas_idle.png", 48, 48, [8, 8, 8, 8, 8], scale=self.NPC_SCALE
         )
 
+    # Mesma ampliação das cientistas (ver NPC_SCALE) pros moradores.
+    def _build_npc_frames(self):
+        """name -> lista de quadros. As cientistas vêm das 5 linhas de
+        cientistas_idle.png; cada morador vem da sua própria folha de uma
+        linha só, se o arquivo existir."""
+        frames = {
+            name: self.scientist_sprites[row]
+            for name, row in NPC_SPRITE_ROWS.items()
+            if row < len(self.scientist_sprites)
+        }
+        npcs_dir = ASSET_DIR / "npcs"
+        for name, filename in VILLAGER_SPRITE_FILES.items():
+            path = npcs_dir / filename
+            if not path.exists():
+                continue
+            sheet = pygame.image.load(path).convert_alpha()
+            # Uma linha só; a contagem de quadros vem da largura real do
+            # arquivo, então redesenhar a folha com mais/menos quadros não
+            # exige tocar em código.
+            count = max(1, sheet.get_width() // sheet.get_height())
+            frames[name] = self._load_grid_sheet(
+                path, sheet.get_height(), sheet.get_height(), [count], scale=self.NPC_SCALE
+            )[0]
+        return frames
+
     def _load_item_icons(self):
         """items.png: quadro 16x16, 4 col x N lin, 6fps — usa só o primeiro
         quadro de cada linha como ícone estático do inventário/HUD (ver
@@ -1069,8 +1177,8 @@ class Game:
         self._reset_status_state()
         self.camera_x = 0
         self.camera_y = 0
-        self.message = self.level.data["subtitle"]
-        self.message_timer = 0
+        self._menu_snapshot = None
+        self.show_message(self.level.data["subtitle"], MESSAGE_DURATION_LONG)
         self.state = PLAYING
 
     def enter_room(self, room_key):
@@ -1089,8 +1197,7 @@ class Game:
         # atravessar a porta reaciona a interação do outro lado no mesmo
         # quadro (ex.: entrar e sair de novo instantaneamente).
         self.interact_was_down = True
-        self.message = self.level.data["subtitle"]
-        self.message_timer = 0
+        self.show_message(self.level.data["subtitle"], MESSAGE_DURATION_LONG)
 
     def exit_room(self):
         """Volta da sala pra fase principal, no ponto exato de onde Lia
@@ -1106,6 +1213,76 @@ class Game:
         self.pending_drops = []
         self.camera_x, self.camera_y = camera_x, camera_y
         self.interact_was_down = True
+
+    # Progresso salvo em disco. Mesmo padrão já provado por
+    # audio_settings.json: JSON simples na raiz, gravado em pontos
+    # discretos (checkpoint e fim de fase) e lido uma vez na abertura.
+    # Nada de auto-save por quadro.
+    SAVE_PATH = ROOT_DIR / "save.json"
+    SAVE_VERSION = 1
+
+    def save_progress(self):
+        """Grava fase, checkpoint, inventário e habilidades. Silencioso em
+        caso de erro de escrita — perder o save é chato, travar o jogo no
+        meio de uma partida é pior."""
+        if self.level.room:
+            # Dentro de uma sala não há checkpoint; o ponto de retorno de
+            # verdade é o do corredor, que já foi salvo ao entrar nele.
+            return
+        try:
+            self.SAVE_PATH.write_text(json.dumps({
+                "version": self.SAVE_VERSION,
+                "level": self.level.index,
+                "checkpoint": list(self.checkpoint),
+                "lives": self.lives,
+                "shield": self.shield,
+                "inventory": self.inventory,
+                "ranged_unlocked": self.ranged_unlocked,
+                "collected": sorted(self.collected),
+            }), encoding="utf-8")
+        except Exception:
+            pass
+
+    def load_progress(self):
+        """Retoma o save, se houver. Devolve True se conseguiu. Qualquer
+        inconsistência (arquivo de uma versão antiga, fase que não existe
+        mais, JSON corrompido) simplesmente começa um jogo novo — um save
+        quebrado não pode impedir alguém de jogar."""
+        try:
+            data = json.loads(self.SAVE_PATH.read_text(encoding="utf-8"))
+            if data.get("version") != self.SAVE_VERSION:
+                return False
+            index = data["level"]
+            if index != VILLAGE and not (0 <= index < len(PHASES)):
+                return False
+            self.load_level(index)
+            self.checkpoint = tuple(data["checkpoint"])
+            self.player.reset(*self.checkpoint)
+            self.lives = min(MAX_LIVES, float(data.get("lives", STARTING_LIVES)))
+            self.shield = int(data.get("shield", 0))
+            self.inventory = {k: int(v) for k, v in data.get("inventory", {}).items()
+                              if k in ITEM_DEFS}
+            self.ranged_unlocked = bool(data.get("ranged_unlocked", False))
+            self.collected = {i for i in data.get("collected", [])
+                              if 0 <= i < len(self.level.research)}
+            return True
+        except Exception:
+            return False
+
+    def has_save(self):
+        return self.SAVE_PATH.exists()
+
+    def show_message(self, text, duration=MESSAGE_DURATION):
+        """Único ponto de entrada da caixa de mensagem da HUD.
+
+        Existe porque oito lugares diferentes setavam self.message junto com
+        `message_timer = 0`, e hud.draw_hud só desenha a caixa com
+        `if message_timer:` — a mensagem era escrita e nunca aparecia. O caso
+        mais grave era o de _advance_level_if_ready: o jogador chegava no fim
+        da fase, era empurrado 60px pra trás e não recebia NENHUMA explicação
+        na tela. Concentrar tudo aqui evita que o próximo `= 0` volte."""
+        self.message = text
+        self.message_timer = duration
 
     def _reset_combat_state(self):
         self.attack_timer = 0
@@ -1171,8 +1348,7 @@ class Game:
             self.shield -= 1
             self.invuln_timer = self.INVULN_FRAMES
             self.vfx.spawn("impact", self.player.rect.centerx, self.player.rect.centery)
-            self.message = "O escudo absorveu o dano!"
-            self.message_timer = 90
+            self.show_message("O escudo absorveu o dano!")
             audio.play_sfx("shield_sound")
             return False
         # Na universidade, o "toque que machuca" costuma ser vidro quebrado
@@ -1241,8 +1417,7 @@ class Game:
             self.player.reset(*self.checkpoint)
             self.camera_y = 0
         self.riding_platform = None
-        self.message = MOTIVATION
-        self.message_timer = 0
+        self.show_message(MOTIVATION, MESSAGE_DURATION_LONG)
 
     def update(self, keyboard, dt=1 / FPS):
         self._update_music()
@@ -1254,6 +1429,8 @@ class Game:
             self._update_settings(keyboard)
         elif self.state == INTRO:
             self._update_intro(keyboard, dialogue_advance_pressed)
+        elif self.state == PAUSED:
+            self._update_paused(keyboard)
         elif self.state in (GAME_OVER, COMPLETE):
             self._update_end_state(keyboard)
         elif self.minigame.active:
@@ -1265,6 +1442,15 @@ class Game:
         elif self.hint.active:
             self._update_hint(dialogue_advance_pressed)
         else:
+            if self._escape_pressed(keyboard):
+                # Pausa: o comentário de _settings_return_state já previa
+                # isso ("se um dia existir um menu de pausa, é só apontar
+                # isso pra PLAYING antes de abrir Configurações a partir
+                # dele") — só faltava o estado existir.
+                audio.play_sfx("select_sound")
+                self.state = PAUSED
+                self._menu_snapshot = None
+                return
             self._read_item_use(keyboard)
             self._update_playing(keyboard, dash_pressed, attack_pressed, ranged_pressed, dt)
 
@@ -1318,8 +1504,7 @@ class Game:
         heal = definition["heal"]
         shield = definition["shield"]
         if heal and not shield and self.lives >= MAX_LIVES:
-            self.message = "Vidas já estão cheias."
-            self.message_timer = 90
+            self.show_message("Vidas já estão cheias.")
             return
         self.inventory[item_key] = count - 1
         if self.inventory[item_key] <= 0:
@@ -1328,8 +1513,7 @@ class Game:
             self.lives = min(MAX_LIVES, self.lives + heal)
         if shield:
             self.shield += shield
-        self.message = f"{definition['name']} usado!"
-        self.message_timer = 90
+        self.show_message(f"{definition['name']} usado!")
         self.vfx.spawn("dust", self.player.rect.centerx, self.player.rect.centery)
 
     def _update_title(self, keyboard):
@@ -1345,14 +1529,40 @@ class Game:
         self.state = INTRO
         self.intro.start()
 
+    def _escape_pressed(self, keyboard):
+        """ESC com debounce, compartilhado por pausa e configurações (antes
+        cada um tinha sua própria flag *_was_down espalhada)."""
+        down = bool(getattr(keyboard, "escape", False))
+        pressed = down and not self._escape_was_down
+        self._escape_was_down = down
+        return pressed
+
+    def _update_paused(self, keyboard):
+        """ESC volta pro jogo; os botões do menu de pausa são tratados por
+        handle_menu_click, igual ao título."""
+        if self._escape_pressed(keyboard):
+            audio.play_sfx("select_sound")
+            self.state = PLAYING
+
+    def _pause_buttons(self):
+        button_width, button_height = 360, 74
+        center_x = WIDTH // 2
+        return {
+            "resume": pygame.Rect(0, 0, button_width, button_height).move(
+                center_x - button_width // 2, HEIGHT // 2 - 30
+            ),
+            "settings": pygame.Rect(0, 0, button_width, button_height).move(
+                center_x - button_width // 2, HEIGHT // 2 + 64
+            ),
+        }
+
     def _update_settings(self, keyboard):
         # Interação é toda por mouse (ver handle_menu_click/_drag/
         # _release) — ESC aqui é só um atalho extra pra voltar sem
         # precisar acertar o botão "Voltar" na tela.
-        if getattr(keyboard, "escape", False) and not self._escape_was_down:
+        if self._escape_pressed(keyboard):
             audio.play_sfx("select_sound")
             self.state = self._settings_return_state
-        self._escape_was_down = getattr(keyboard, "escape", False)
 
     def _title_buttons(self):
         """Retângulos dos botões do menu de título, em coordenadas de
@@ -1362,14 +1572,22 @@ class Game:
         nessas mesmas coordenadas, sem precisar converter nada)."""
         button_width, button_height = 360, 74
         center_x = WIDTH // 2
-        return {
-            "play": pygame.Rect(0, 0, button_width, button_height).move(
-                center_x - button_width // 2, HEIGHT // 2 - 10
-            ),
-            "settings": pygame.Rect(0, 0, button_width, button_height).move(
-                center_x - button_width // 2, HEIGHT // 2 + 84
-            ),
-        }
+        top = HEIGHT // 2 - (94 if self.has_save() else 10)
+        buttons = {}
+        if self.has_save():
+            # Só aparece se existir save.json — quem nunca jogou não vê um
+            # botão morto.
+            buttons["continue"] = pygame.Rect(0, 0, button_width, button_height).move(
+                center_x - button_width // 2, top
+            )
+            top += 94
+        buttons["play"] = pygame.Rect(0, 0, button_width, button_height).move(
+            center_x - button_width // 2, top
+        )
+        buttons["settings"] = pygame.Rect(0, 0, button_width, button_height).move(
+            center_x - button_width // 2, top + 94
+        )
+        return buttons
 
     SETTINGS_BAR_WIDTH = 480
     SETTINGS_BAR_HEIGHT = 16
@@ -1378,26 +1596,32 @@ class Game:
     # só pra facilitar acertar com o mouse sem precisar caprichar no pixel.
     SETTINGS_BAR_HIT_HEIGHT = 44
 
+    # Ordem dos sliders na tela: (chave, rótulo, getter, setter).
+    SETTINGS_SLIDERS = (
+        ("music_bar", "Volume da Música", lambda: audio.music_volume, audio.set_music_volume),
+        ("sfx_bar", "Volume dos Efeitos", lambda: audio.sfx_volume, audio.set_sfx_volume),
+        ("shake_bar", "Tremor de Tela", lambda: audio.shake_scale, audio.set_shake_scale),
+        ("text_bar", "Velocidade do Texto", lambda: audio.text_speed / 2.0,
+         lambda ratio: audio.set_text_speed(ratio * 2.0)),
+    )
+    SETTINGS_ROW_SPACING = 88
+
     def _settings_widgets(self):
         center_x = WIDTH // 2
         bar_x = center_x - self.SETTINGS_BAR_WIDTH // 2
-        return {
-            "music_bar": pygame.Rect(
+        top = HEIGHT // 2 - 165
+        widgets = {}
+        for index, (key, _label, _get, _set) in enumerate(self.SETTINGS_SLIDERS):
+            widgets[key] = pygame.Rect(
                 bar_x,
-                HEIGHT // 2 - 60 - self.SETTINGS_BAR_HIT_HEIGHT // 2,
+                top + index * self.SETTINGS_ROW_SPACING - self.SETTINGS_BAR_HIT_HEIGHT // 2,
                 self.SETTINGS_BAR_WIDTH,
                 self.SETTINGS_BAR_HIT_HEIGHT,
-            ),
-            "sfx_bar": pygame.Rect(
-                bar_x,
-                HEIGHT // 2 + 40 - self.SETTINGS_BAR_HIT_HEIGHT // 2,
-                self.SETTINGS_BAR_WIDTH,
-                self.SETTINGS_BAR_HIT_HEIGHT,
-            ),
-            "back": pygame.Rect(0, 0, 260, 64).move(
-                center_x - 130, HEIGHT // 2 + 150
-            ),
-        }
+            )
+        widgets["back"] = pygame.Rect(0, 0, 260, 64).move(
+            center_x - 130, top + len(self.SETTINGS_SLIDERS) * self.SETTINGS_ROW_SPACING + 10
+        )
+        return widgets
 
     @staticmethod
     def _slider_ratio_at(bar_rect, x):
@@ -1411,24 +1635,38 @@ class Game:
         pro ataque (ver request_mouse_attack), não passam por aqui."""
         if self.state == TITLE:
             buttons = self._title_buttons()
-            if buttons["play"].collidepoint(pos):
+            if "continue" in buttons and buttons["continue"].collidepoint(pos):
+                audio.play_sfx("select_sound")
+                if not self.load_progress():
+                    self._start_game()
+            elif buttons["play"].collidepoint(pos):
                 self._start_game()
             elif buttons["settings"].collidepoint(pos):
                 audio.play_sfx("select_sound")
                 self._settings_return_state = TITLE
+                self.state = SETTINGS
+        elif self.state == PAUSED:
+            buttons = self._pause_buttons()
+            if buttons["resume"].collidepoint(pos):
+                audio.play_sfx("select_sound")
+                self.state = PLAYING
+            elif buttons["settings"].collidepoint(pos):
+                audio.play_sfx("select_sound")
+                self._settings_return_state = PAUSED
                 self.state = SETTINGS
         elif self.state == SETTINGS:
             widgets = self._settings_widgets()
             if widgets["back"].collidepoint(pos):
                 audio.play_sfx("select_sound")
                 self.state = self._settings_return_state
-            elif widgets["music_bar"].collidepoint(pos):
-                self._dragging_slider = "music"
-                audio.set_music_volume(self._slider_ratio_at(widgets["music_bar"], pos[0]))
-            elif widgets["sfx_bar"].collidepoint(pos):
-                self._dragging_slider = "sfx"
-                audio.set_sfx_volume(self._slider_ratio_at(widgets["sfx_bar"], pos[0]))
-                audio.play_sfx("select_sound")
+            else:
+                for key, _label, _get, setter in self.SETTINGS_SLIDERS:
+                    if widgets[key].collidepoint(pos):
+                        self._dragging_slider = key
+                        setter(self._slider_ratio_at(widgets[key], pos[0]))
+                        if key == "sfx_bar":
+                            audio.play_sfx("select_sound")
+                        break
 
     def handle_menu_drag(self, pos):
         """Chamado por main.py (on_mouse_move) todo quadro em que o mouse
@@ -1437,12 +1675,12 @@ class Game:
         if self._dragging_slider is None:
             return
         widgets = self._settings_widgets()
-        bar = widgets["music_bar" if self._dragging_slider == "music" else "sfx_bar"]
+        bar = widgets[self._dragging_slider]
         ratio = self._slider_ratio_at(bar, pos[0])
-        if self._dragging_slider == "music":
-            audio.set_music_volume(ratio)
-        else:
-            audio.set_sfx_volume(ratio)
+        for key, _label, _get, setter in self.SETTINGS_SLIDERS:
+            if key == self._dragging_slider:
+                setter(ratio)
+                break
 
     def handle_menu_release(self):
         """Chamado por main.py (on_mouse_up) — grava em disco só ao
@@ -1667,6 +1905,22 @@ class Game:
             if dx * dx + dy * dy <= self.BOSS_WAKE_RADIUS * self.BOSS_WAKE_RADIUS:
                 wake_up()
                 audio.play_sfx("boss_wake_sound")
+                self._boss_wake_impact(enemy)
+
+    def _boss_wake_impact(self, boss):
+        """Tremor de tela + poeira caindo do teto no instante em que o chefe
+        acorda (IDEIAS_FUTURAS.md). A poeira nasce espalhada ao longo do
+        TOPO DA TELA acima da arena, não no chefe: a ideia é a masmorra
+        reagindo, não um efeito de impacto nele."""
+        self._trigger_shake(BOSS_WAKE_SHAKE_DURATION, BOSS_WAKE_SHAKE_MAGNITUDE)
+        left = int(self.camera_x)
+        top = int(self.camera_y)
+        for _ in range(BOSS_WAKE_DUST_COUNT):
+            self.vfx.spawn(
+                "dust",
+                random.randint(left, left + WIDTH),
+                top + random.randint(0, HEIGHT // 4),
+            )
 
     def _face_bosses_at_player(self):
         """Chefes sempre virados pra Lia (pedido do Raul: eles às vezes
@@ -1843,7 +2097,14 @@ class Game:
     def _shake_offset(self):
         if self.shake_timer <= 0 or self.shake_duration <= 0:
             return 0, 0
-        magnitude = self.shake_magnitude * (self.shake_timer / self.shake_duration)
+        # audio.shake_scale é a preferência de acessibilidade (0 desliga).
+        magnitude = (
+            self.shake_magnitude
+            * (self.shake_timer / self.shake_duration)
+            * audio.shake_scale
+        )
+        if magnitude <= 0:
+            return 0, 0
         return random.uniform(-magnitude, magnitude), random.uniform(-magnitude, magnitude)
 
     def _update_camera(self):
@@ -1851,7 +2112,13 @@ class Game:
         if arena_zone:
             self._update_boss_camera(arena_zone)
             return
-        target_x = self.player.x - WIDTH * CAMERA_X_FOCUS
+        # Câmera antecipatória: desloca o alvo na direção pra onde a Lia
+        # olha, então o jogador enxerga o caminho ANTES de chegar nele em
+        # vez de ficar sempre centralizado. Como o alvo passa pela mesma
+        # suavização de sempre (CAMERA_X_SMOOTHING), virar de lado desliza
+        # em vez de dar um salto.
+        look_ahead = CAMERA_LOOK_AHEAD * (1 if self.player.facing_right else -1)
+        target_x = self.player.x + look_ahead - WIDTH * CAMERA_X_FOCUS
         self.camera_x += (target_x - self.camera_x) * CAMERA_X_SMOOTHING
         self.camera_x = max(0, min(self.camera_x, self.level.world_width - WIDTH))
 
@@ -1907,6 +2174,13 @@ class Game:
             self.vfx.spawn("splash", player.rect.centerx, player.rect.centery)
         self.was_swimming = player.swimming
 
+        # Poeira levantada pelo dash: reaproveita a partícula que já existe
+        # em vez de mais retângulos azuis (draw_dash_trail continua, é o
+        # rastro; isto é o pó que fica pra trás). Só no chão — debaixo
+        # d'água o dash nem acontece (ver _update_playing).
+        if player.dashing and self.player_grounded and player.dash_timer % 3 == 0:
+            self.vfx.spawn("dust", player.rect.centerx, player.rect.bottom)
+
     def request_mouse_attack(self):
         """Registra o clique; o ataque será iniciado no próximo update."""
         self.mouse_attack_requested = True
@@ -1936,6 +2210,9 @@ class Game:
             return
 
         landed = self._resolve_vertical_collisions(player, previous_y, previous_bottom)
+        # Pouso: só no quadro em que ela ENCOSTA (não enquanto fica parada).
+        if landed and not self.player_grounded and not player.swimming:
+            player.start_squash("squash")
         self.player_grounded = landed
         # Espelha no próprio Player (pedido do Raul: pulo de 3 fases —
         # subindo/no ar/caindo — ver Player.animate) porque animate() roda
@@ -1948,6 +2225,7 @@ class Game:
         else:
             player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
         if player.try_jump():
+            player.start_squash("stretch")
             audio.play_sfx("jump")
 
     def _player_in_water(self, player):
@@ -1985,6 +2263,16 @@ class Game:
         tiver sido carregada (ver _load_assets). None é um valor válido
         pra tudo isso — sem os quadros animados nem o fog_cloud.png,
         FogBarrier.draw cai pro desenho por código igual antes."""
+        if not level.fog_barriers:
+            # Nenhuma barreira nesta fase: não há por que ter 48 quadros de
+            # neblina residentes. Antes eles eram carregados no Game() e
+            # ficavam na memória o jogo inteiro (ver
+            # _load_fog_frame_sequence).
+            return
+        if not self._fog_frames_tried:
+            self._fog_frames_tried = True
+            self.fog_frames = self._load_fog_frame_sequence("quadros", "quadro")
+            self.fog_frames_corpo = self._load_fog_frame_sequence("quadros_corpo", "corpo")
         for barrier in level.fog_barriers:
             barrier.sprite = self.fog_sprite
             barrier.frames = self.fog_frames
@@ -2106,8 +2394,7 @@ class Game:
             if player.rect.colliderect(pickup):
                 key = drop["item"]
                 self.inventory[key] = self.inventory.get(key, 0) + 1
-                self.message = f"Item obtido: {ITEM_DEFS[key]['name']}"
-                self.message_timer = 0
+                self.show_message(f"Item obtido: {ITEM_DEFS[key]['name']}")
                 audio.play_sfx("item_sound")
                 self.vfx.spawn("dust", drop["x"], drop["y"])
             else:
@@ -2210,8 +2497,7 @@ class Game:
             if index in self.artifacts_collected or not player.rect.colliderect(item):
                 continue
             self.artifacts_collected.add(index)
-            self.message = f"Achado: {name}"
-            self.message_timer = 0
+            self.show_message(f"Achado: {name}")
             audio.play_sfx("item_sound")
             lore = ROOM_LORE.get(name, DEFAULT_ROOM_LORE)
             self.dialogue.start("Lia", lore)
@@ -2229,8 +2515,7 @@ class Game:
                 continue
             self.tools_collected.add(index)
             self.inventory[item_key] = self.inventory.get(item_key, 0) + 1
-            self.message = f"Item obtido: {ITEM_DEFS[item_key]['name']}"
-            self.message_timer = 90
+            self.show_message(f"Item obtido: {ITEM_DEFS[item_key]['name']}")
             audio.play_sfx("item_sound")
 
     def _update_oxygen(self, player):
@@ -2343,9 +2628,10 @@ class Game:
                 new_checkpoint = (checkpoint.x, checkpoint.bottom - PLAYER_HEIGHT)
                 if new_checkpoint != self.checkpoint:
                     audio.play_sfx("checkpoint_sound")
+                    self.checkpoint = new_checkpoint
+                    self.save_progress()
                 self.checkpoint = new_checkpoint
-                self.message = "Checkpoint: Centro de pesquisa alcançado!"
-                self.message_timer = 130
+                self.show_message("Checkpoint: Centro de pesquisa alcançado!")
 
     def _collect_research(self, player):
         for index, (item, name) in enumerate(self.level.research):
@@ -2353,8 +2639,7 @@ class Game:
                 continue
 
             self.collected.add(index)
-            self.message = f"Parte da pesquisa obtida: {name}"
-            self.message_timer = 0
+            self.show_message(f"Parte da pesquisa obtida: {name}")
             audio.play_sfx("item_sound")
             fact = SCIENCE_FACTS.get(name, DEFAULT_SCIENCE_FACT)
             self.dialogue.start("Ciência Delas", fact)
@@ -2440,15 +2725,17 @@ class Game:
             if self.inventory.get(key, 0) <= 0
         ]
         if len(self.collected) < len(self.level.research) or needs_microscope:
-            self.message = "Encontre todas as partes da pesquisa antes de avançar."
-            self.message_timer = 0
+            self.show_message(
+                "Encontre todas as partes da pesquisa antes de avançar.",
+                MESSAGE_DURATION_LONG,
+            )
             player.x = self.level.world_width - 160
         elif missing_items:
             names = ", ".join(ITEM_DEFS[key]["name"] for key in missing_items)
-            self.message = f"Ainda falta: {names}."
-            self.message_timer = 0
+            self.show_message(f"Ainda falta: {names}.", MESSAGE_DURATION_LONG)
             player.x = self.level.world_width - 160
         elif self.level.index == VILLAGE:
+            self.save_progress()
             # Fim da rua da vila = caminho pra floresta → Fase 1 (ver
             # PLANO_VILA.md). Não é "fase+1" porque VILLAGE não é um índice
             # numérico — cai fora de PHASES de propósito.
@@ -2458,13 +2745,16 @@ class Game:
         else:
             finished_index = self.level.index
             self.load_level(finished_index + 1)
+            self.save_progress()
             # load_level já sobrescreveu self.message com o subtítulo da fase
             # nova (message_timer=0, ver load_level) — o aviso de desbloqueio
             # entra DEPOIS de propósito, pra não ser apagado por ele.
             if finished_index == 0 and not self.ranged_unlocked:
                 self.ranged_unlocked = True
-                self.message = "Novo poder: Ataque à Distância [R] desbloqueado!"
-                self.message_timer = 240
+                self.show_message(
+                    "Novo poder: Ataque à Distância [R] desbloqueado!",
+                    MESSAGE_DURATION_LONG,
+                )
 
     def check_enemies(self):
         """Verifica ataque, ataque reforçado durante dash e contato com slimes.
@@ -2475,9 +2765,17 @@ class Game:
         acertar o corpo dele com a espada não causa dano — só o ataque à
         distância funciona — mas ainda dói tocar nele."""
         attack_box = self._attack_box()
+        # O dano de contato era resolvido com um `return` no meio do laço:
+        # ao encostar num inimigo, todos os que vinham DEPOIS dele na lista
+        # não eram testados pro golpe de espada naquele quadro — com vários
+        # mobs juntos, acertar quem estava atrás virava loteria. Agora o
+        # laço vai até o fim e o contato é aplicado uma única vez no final
+        # (o pior contato do quadro; ver `contact_damage`).
+        contact_damage = 0
         for enemy in self.level.enemies:
             if not enemy.alive:
                 continue
+            is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
             melee_hit = (
                 attack_box
                 and attack_box.colliderect(enemy.rect)
@@ -2485,21 +2783,26 @@ class Game:
             )
             if melee_hit:
                 if enemy.take_hit(self.attack_power):
+                    self.hitstop_timer = max(self.hitstop_timer, HIT_STOP_FRAMES)
                     self.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
                         self._on_enemy_defeated(enemy)
                     else:
-                        is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
                         audio.play_sfx("boss_hit_sound" if is_boss else "enemy_hit_sound")
-            elif self.invuln_timer <= 0 and self.player.rect.colliderect(enemy.rect):
-                is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
-                self.take_damage(BOSS_CONTACT_DAMAGE if is_boss else MOB_CONTACT_DAMAGE)
-                return
+            elif self.player.rect.colliderect(enemy.rect):
+                damage = BOSS_CONTACT_DAMAGE if is_boss else MOB_CONTACT_DAMAGE
+                contact_damage = max(contact_damage, damage)
+        if contact_damage and self.invuln_timer <= 0:
+            self.take_damage(contact_damage)
 
     def _attack_box(self):
         if not self.attack_timer:
             return None
-        reach = DASH_ATTACK_REACH if self.attack_power > STANDARD_ATTACK_POWER else STANDARD_ATTACK_REACH
+        # Comparar poderes (`attack_power > STANDARD_ATTACK_POWER`) acoplava
+        # "alcance" a "dano": bastou STANDARD_ATTACK_POWER virar 100 pra o
+        # golpe de dash perder o alcance estendido sem ninguém notar. Agora
+        # o alcance vem do que está acontecendo de fato.
+        reach = DASH_ATTACK_REACH if self.player.dashing else STANDARD_ATTACK_REACH
         offset = (
             PLAYER_HITBOX_WIDTH
             if self.player.facing_right
@@ -2757,12 +3060,33 @@ class Game:
 
     def draw(self, screen):
         real_surface = screen.surface
-        real_surface.fill((6, 14, 29))
+        # Os dois fill((6,14,29)) que ficavam aqui e logo abaixo saíram:
+        # _draw_background sempre cobre a superfície inteira (ladrilha ou
+        # preenche) e _blit_zoomed_world sempre cobre a tela inteira. Eram
+        # ~1,6 ms por quadro pintando pixels sobrescritos no blit seguinte.
+        # Se um dia entrar um estado novo que NÃO cubra a tela toda, ele
+        # precisa preencher o fundo por conta própria.
         if self.state == INTRO:
             self.intro.draw(real_surface, draw_text)
             return
         if self.elevator_cutscene.active:
             self.elevator_cutscene.draw(real_surface, draw_text)
+            return
+        if self.state in (TITLE, SETTINGS, PAUSED):
+            # O mundo inteiro era desenhado (~7 ms/quadro medidos) só pra
+            # ficar embaixo de um _dim_background(alpha=210) quase opaco. Um
+            # instantâneo tirado uma vez dá exatamente o mesmo visual de
+            # graça — nada se move atrás do menu, já que update() nesses dois
+            # estados só roda _update_title/_update_settings.
+            if self._menu_snapshot is None:
+                # Já sai ESCURECIDO: no título e nas configurações o alpha é
+                # sempre o mesmo (MENU_DIM_ALPHA), então compor uma vez evita
+                # também o blit translúcido de tela cheia por quadro.
+                snapshot = self._render_world_snapshot()
+                self._dim_background(snapshot, self.MENU_DIM_ALPHA)
+                self._menu_snapshot = snapshot
+            real_surface.blit(self._menu_snapshot, (0, 0))
+            self._draw_state_overlay(real_surface)
             return
         # Mundo inteiro continua desenhado do jeito de sempre, só que numa
         # surface separada do mesmo tamanho (WIDTH x HEIGHT) em vez de ir
@@ -2773,7 +3097,6 @@ class Game:
         if self._world_surface is None:
             self._world_surface = pygame.Surface((WIDTH, HEIGHT)).convert()
         surface = self._world_surface
-        surface.fill((6, 14, 29))
         # Shake (ver _trigger_shake/_update_shake) só desloca o mundo — a
         # câmera some pro valor de verdade logo antes do HUD, senão a barra
         # de vida do chefe e o resto da interface também tremeriam junto,
@@ -2800,6 +3123,22 @@ class Game:
         self.hint.draw(real_surface, draw_text)
         self.minigame.draw(real_surface, draw_text)
 
+    def _render_world_snapshot(self):
+        """Desenha o mundo uma única vez numa Surface própria, pro menu usar
+        como pano de fundo estático (ver draw). Reaproveita exatamente o
+        mesmo caminho de desenho do jogo, então o visual é idêntico ao que o
+        menu mostrava antes — só que calculado uma vez em vez de 60x/s."""
+        snapshot = pygame.Surface((WIDTH, HEIGHT)).convert()
+        world = pygame.Surface((WIDTH, HEIGHT)).convert()
+        self._draw_background(world)
+        self._draw_world(world)
+        self._draw_player_light(world)
+        self.player.draw(world, self.camera_x, self.camera_y)
+        self._draw_world_foreground(world)
+        self._blit_zoomed_world(snapshot, world)
+        self._draw_interface(snapshot)
+        return snapshot
+
     def _blit_zoomed_world(self, real_surface, world_surface):
         """Recorta uma janela CAMERA_ZOOM vezes menor que a tela, centrada
         na Lia, e amplia de volta pro tamanho cheio — o mesmo truque de
@@ -2823,48 +3162,52 @@ class Game:
         scaled = pygame.transform.scale(cropped, (WIDTH, HEIGHT))
         real_surface.blit(scaled, (0, 0))
 
-    def _draw_background(self, surface):
-        if self.level.room == "laboratorio":
-            self._draw_repeating_background(surface, self.lab_background)
-        elif self.level.room == "biblioteca":
-            self._draw_repeating_background(surface, self.library_background)
-        elif self.level.index == 0:
-            # Fase 1 (pedido do Raul: "vai ficar melhor") também usa o céu
-            # com nuvens novo assim que backgrounds/village_background.png
-            # existir — mesma arte da vila, mesma vibe "dia claro, ao ar
-            # livre". Até lá, cai de volta no fundo antigo da escola pra não
-            # quebrar nada.
-            if self.village_background is not None:
-                self._draw_repeating_background(
-                    surface, self.village_background, parallax=self.SCHOOL_BACKGROUND_PARALLAX
-                )
-            else:
-                self._draw_repeating_background(
-                    surface, self.backgrounds[0], parallax=self.SCHOOL_BACKGROUND_PARALLAX
-                )
-        elif self.level.index == 1:
-            self.draw_university_background(surface)
-        elif self.level.index == 2:
-            self._draw_repeating_background(
-                surface, self.backgrounds[2], parallax=self.CAVE_BACKGROUND_PARALLAX
-            )
-        elif self.level.index == VILLAGE:
-            # Fundo dedicado (ver acima) — mesmo esquema de fallback.
-            if self.village_background is not None:
-                self._draw_repeating_background(
-                    surface, self.village_background, parallax=self.VILLAGE_BACKGROUND_PARALLAX
-                )
-            else:
-                surface.fill(self.VILLAGE_PLACEHOLDER_SKY)
-        else:
-            self._draw_repeating_background(surface, self.backgrounds[self.level.index])
+    # Y a partir do qual o cenário conta como "subterrâneo". Calibrado pro
+    # mapa antigo da Fase 1 — reajustar quando o laboratório novo existir de
+    # verdade no .tmx (ver PLANO_FASE1.md, item 1).
+    UNDERGROUND_Y = 780
 
-        underground = self.player.y > 780
-        if self.level.index == 1:
-            overlay = self._overlay_university_underground if underground else self._overlay_university
+    # Fator de parallax por fundo (<1.0 anda mais devagar que a câmera).
+    PARALLAX = {
+        "school": 0.3, "village": 0.3, "cave": 0.35,
+        "university": 1.0, "lab": 1.0, "library": 1.0,
+    }
+
+    def _draw_background(self, surface):
+        """Um único blit opaco por ladrilho, sem nenhum overlay depois — a
+        cor de cena já veio composta na imagem (ver _load_backgrounds)."""
+        variant = "underground" if self.player.y > self.UNDERGROUND_Y else "normal"
+        images = self.backgrounds.get(self._background_key())
+        if images is None:
+            # Nenhuma arte de fundo disponível pra este contexto (hoje só a
+            # vila sem ceu.png) — céu liso, que também cobre a tela toda.
+            surface.fill(self.VILLAGE_PLACEHOLDER_SKY)
+            return
+        image = images[variant]
+        if self._background_key() == "university":
+            self.draw_university_background(surface, image, variant)
         else:
-            overlay = self._overlay_underground if underground else self._overlay_plain
-        surface.blit(overlay, (0, 0))
+            self._draw_repeating_background(
+                surface, image, parallax=self.PARALLAX.get(self._background_key(), 1.0)
+            )
+
+    def _background_key(self):
+        """Qual fundo este contexto usa. A ordem reproduz exatamente a
+        cascata de ifs que existia em _draw_background."""
+        if self.level.room == "laboratorio":
+            return "lab"
+        if self.level.room == "biblioteca":
+            return "library"
+        if self.level.index == 1:
+            return "university"
+        if self.level.index == 2:
+            return "cave"
+        # Fase 1 e vila compartilham o céu novo (pedido do Raul: "vai ficar
+        # melhor"); sem ceu.png, a Fase 1 cai no fundo antigo da escola e a
+        # vila no preenchimento liso.
+        if "village" in self.backgrounds:
+            return "village"
+        return "school" if self.level.index == 0 else None
 
     def _draw_repeating_background(self, surface, background, parallax=1.0):
         """Ladrilha o fundo horizontalmente. Com parallax<1.0 o fundo anda
@@ -2894,8 +3237,6 @@ class Game:
             self.slime_sprites,
             self.school_sprites,
             draw_text,
-            self.university_tiles,
-            self.university_props,
             self.stag_sprites,
             self.wraith_sprites,
             self.student_sprites,
@@ -2907,8 +3248,7 @@ class Game:
             self.small_slime_sprites,
             self.slime_king_sprites,
             self.dragon_sprites,
-            self.scientist_sprites,
-            NPC_SPRITE_ROWS,
+            self.npc_frames,
             tool_icon=self.item_icons.get("chave_fenda"),
             tools_collected=self.tools_collected,
             energy_box_sprites=self.energy_box_sprites,
@@ -3127,6 +3467,8 @@ class Game:
             self._draw_title_menu(surface)
         elif self.state == SETTINGS:
             self._draw_settings_menu(surface)
+        elif self.state == PAUSED:
+            self._draw_pause_menu(surface)
         elif self.state == GAME_OVER:
             self.draw_game_over_overlay(surface)
         elif self.state == COMPLETE:
@@ -3146,12 +3488,29 @@ class Game:
     BUTTON_BORDER = (101, 184, 228)
     BUTTON_BORDER_HOVER = (150, 216, 255)
 
+    # Camadas escuras já prontas, uma por valor de alpha usado. Antes
+    # _dim_background criava um Surface SRCALPHA de tela cheia A CADA
+    # QUADRO — no título e nas configurações isso rodava eternamente, e na
+    # tela de game over o alpha varia de 0 a 210 durante o fade, então são
+    # (o alpha varia de 0 a 210 durante o fade da tela de game over), então
+    # a camada é criada uma vez e só o set_alpha muda entre quadros.
+    _DIM_LAYER = None
+
     def _dim_background(self, surface, alpha=210):
         """Camada escura translúcida por cima do mundo (que continua
         sendo desenhado atrás — ver draw()), usada por todo overlay de
         estado (título, configurações, game over, vitória)."""
-        layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        layer.fill((5, 12, 28, alpha))
+        if Game._DIM_LAYER is None:
+            # OPACA (convert(), sem SRCALPHA) de propósito: com alpha por
+            # pixel, set_alpha obriga o pygame a combinar os dois alphas e
+            # cai num caminho de blit bem mais lento (medido: 10,6 ms contra
+            # 1,1 ms por quadro). Como a camada é uma cor chapada, alpha
+            # uniforme dá exatamente o mesmo resultado pela via rápida.
+            layer = pygame.Surface((WIDTH, HEIGHT)).convert()
+            layer.fill((5, 12, 28))
+            Game._DIM_LAYER = layer
+        layer = Game._DIM_LAYER
+        layer.set_alpha(alpha)
         surface.blit(layer, (0, 0))
 
     def _draw_menu_button(self, surface, rect, label, sublabel=None):
@@ -3197,29 +3556,43 @@ class Game:
         pygame.draw.circle(surface, "white", (handle_x, track.centery), 14)
         pygame.draw.circle(surface, (95, 201, 255), (handle_x, track.centery), 14, 3)
 
+    # Escurecimento fixo do título/configurações (ver draw: já vem composto
+    # no instantâneo, por isso _draw_title_menu/_draw_settings_menu não
+    # chamam mais _dim_background — se chamassem, escureceria duas vezes).
+    MENU_DIM_ALPHA = 210
+
     def _draw_title_menu(self, surface):
-        self._dim_background(surface)
         draw_text(surface, "Echoes of Life", (WIDTH // 2, HEIGHT // 2 - 140), 54, "#ffe477", True)
         buttons = self._title_buttons()
-        self._draw_menu_button(surface, buttons["play"], "JOGAR", "ou pressione ESPAÇO")
+        if "continue" in buttons:
+            self._draw_menu_button(surface, buttons["continue"], "CONTINUAR", "retoma o último checkpoint")
+        self._draw_menu_button(surface, buttons["play"], "JOGO NOVO" if "continue" in buttons else "JOGAR",
+                               "ou pressione ESPAÇO")
+        self._draw_menu_button(surface, buttons["settings"], "CONFIGURAÇÕES")
+
+    def _draw_pause_menu(self, surface):
+        draw_text(surface, "Pausado", (WIDTH // 2, HEIGHT // 2 - 140), 48, "#ffe477", True)
+        buttons = self._pause_buttons()
+        self._draw_menu_button(surface, buttons["resume"], "CONTINUAR", "ou pressione ESC")
         self._draw_menu_button(surface, buttons["settings"], "CONFIGURAÇÕES")
 
     def _draw_settings_menu(self, surface):
-        self._dim_background(surface)
-        draw_text(surface, "Configurações", (WIDTH // 2, HEIGHT // 2 - 160), 44, "#ffe477", True)
+        draw_text(surface, "Configurações", (WIDTH // 2, HEIGHT // 2 - 260), 44, "#ffe477", True)
         widgets = self._settings_widgets()
-        self._draw_slider(surface, widgets["music_bar"], audio.music_volume, "Volume da Música")
-        self._draw_slider(surface, widgets["sfx_bar"], audio.sfx_volume, "Volume dos Efeitos")
+        for key, label, getter, _set in self.SETTINGS_SLIDERS:
+            self._draw_slider(surface, widgets[key], getter(), label)
         self._draw_menu_button(surface, widgets["back"], "VOLTAR")
 
-    def draw_university_background(self, surface):
-        """Repete o pátio alternando cópias normais e espelhadas."""
-        background = self.backgrounds[1]
+    def draw_university_background(self, surface, background, variant="normal"):
+        """Repete o pátio alternando cópias normais e espelhadas. Recebe a
+        imagem já tingida de fora (ver _draw_background) em vez de buscar em
+        self.backgrounds[1] — o dicionário agora é por nome + variante."""
+        mirror = self.background_mirror[variant]
         image_width = background.get_width()
         x = -int(self.camera_x) % image_width - image_width
         tile_number = (x + int(self.camera_x)) // image_width
         while x < WIDTH:
-            image = self.background_mirror if tile_number % 2 else background
+            image = mirror if tile_number % 2 else background
             surface.blit(image, (x, 0))
             x += image_width
             tile_number += 1

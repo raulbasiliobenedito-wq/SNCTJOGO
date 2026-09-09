@@ -1,5 +1,6 @@
 import pygame
 
+from sprites import flipped
 from settings import (
     ASSET_DIR,
     FPS,
@@ -51,7 +52,7 @@ class Player:
     SHEET_FRAME_WIDTH = 64
     SHEET_FRAME_HEIGHT = 96
     IDLE_FRAME = 0
-    WALK_FRAMES = (1, 2, 3, 4)
+    # (WALK_FRAMES removido: animate() calcula 1 + (animation//7) % 4 direto.)
     JUMP_RISE_FRAME = 5
     JUMP_APEX_FRAME = 6
     JUMP_FALL_FRAME = 7
@@ -67,6 +68,7 @@ class Player:
 
     def __init__(self):
         self.frames = self._load_frames()
+        self.squash_variants = self._build_squash_frames()
         self.facing_right = True
         self.frame = 0
         self.animation = 0
@@ -122,9 +124,13 @@ class Player:
         self.swimming = False
         self.up_held = False
         self.oxygen = self.OXYGEN_MAX_FRAMES
+        # Squash & stretch (ver start_squash): kind é "stretch"/"squash".
+        self.squash_timer = 0
+        self.squash_kind = None
 
     def update_abilities(self):
         """Atualiza recarga e duração do dash a cada quadro."""
+        self.squash_timer = max(0, self.squash_timer - 1)
         self.dash_cooldown = max(0, self.dash_cooldown - 1)
         if self.dash_timer:
             self.dash_timer -= 1
@@ -231,14 +237,50 @@ class Player:
         else:
             self.frame = self.IDLE_FRAME
 
+    # Squash & stretch: alonga no impulso do pulo e achata no pouso. Os
+    # quadros deformados são PRÉ-CALCULADOS no carregamento (ver
+    # _build_squash_frames), então o efeito custa zero por quadro — só um
+    # índice diferente na hora de desenhar.
+    SQUASH_FRAMES = 5          # duração de cada pose, em quadros
+    STRETCH_SCALE = (0.86, 1.18)   # mais fina e mais alta (subindo)
+    SQUASH_SCALE = (1.18, 0.84)    # mais larga e mais baixa (pousando)
+
+    def _build_squash_frames(self):
+        """Uma variante esticada e uma achatada por quadro da folha. São 28
+        Surfaces a mais (~0,3 MB) criadas uma vez, contra deformar em tempo
+        real 60x por segundo."""
+        variants = {}
+        for name, (sx, sy) in (("stretch", self.STRETCH_SCALE), ("squash", self.SQUASH_SCALE)):
+            size = (max(1, round(PLAYER_WIDTH * sx)), max(1, round(PLAYER_HEIGHT * sy)))
+            variants[name] = [pygame.transform.scale(f, size) for f in self.frames]
+        return variants
+
+    def start_squash(self, kind):
+        """Chamado de fora no instante do pulo ("stretch") e do pouso
+        ("squash") — ver Game.move_player."""
+        self.squash_kind = kind
+        self.squash_timer = self.SQUASH_FRAMES
+
+    def _squash_image(self):
+        """Quadro deformado da vez, ou None fora da janela do efeito."""
+        if not self.squash_timer or self.squash_kind is None:
+            return None
+        return self.squash_variants[self.squash_kind][self.frame]
+
     def draw(self, surface, camera_x, camera_y):
         """Sem contorno gerado por máscara (a arte nova já vem com contorno
         desenhado à mão — ver player_sheet.png/LEIA-ME correspondente —,
         dobrar por cima ficaria com uma borda grossa/errada)."""
-        image = self.frames[self.frame]
+        # A pose deformada é ancorada pelo PÉ e pelo CENTRO horizontal:
+        # esticar a partir do canto superior esquerdo faria a Lia parecer
+        # afundar no chão ao pousar.
+        squashed = self._squash_image()
+        image = squashed if squashed is not None else self.frames[self.frame]
         if not self.facing_right:
-            image = pygame.transform.flip(image, True, False)
+            # Espelho cacheado (enemy.flipped): antes era um Surface novo por
+            # quadro só pra virar a Lia pra esquerda.
+            image = flipped(image)
 
-        draw_x = self.x - camera_x
-        draw_y = self.y - camera_y
-        surface.blit(image, (draw_x, draw_y))
+        draw_x = self.x - camera_x + (PLAYER_WIDTH - image.get_width()) / 2
+        draw_y = self.y - camera_y + (PLAYER_HEIGHT - image.get_height())
+        surface.blit(image, (round(draw_x), round(draw_y)))

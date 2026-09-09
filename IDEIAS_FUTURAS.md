@@ -194,3 +194,42 @@ leve variação de x (poeira/entulho, não um efeito de impacto).
 ## Em andamento
 
 - Nada no momento.
+
+
+## Correção factual (2026-09-08)
+
+- `images/vfx/parry_flash.png` JÁ EXISTE no disco; o texto acima que diz
+  o contrário está desatualizado.
+
+
+## Correções factuais aplicadas em 2026-09-08 (revisão técnica)
+
+Fatos que estavam errados nestes documentos, conferidos contra o disco.
+Nada aqui muda prioridade de trabalho — só corrige número/estado:
+
+- `images/vfx/parry_flash.png` **existe** (613 bytes); o texto acima
+  dizia que ainda não tinha sido salvo.
+- **Colisões/dano:** `STARTING_LIVES` e `MAX_LIVES` estavam em 1000 e
+  `STANDARD_ATTACK_POWER` em 100 (valores de depuração). Com eles a Lia
+  era invencível e todo chefe morria em um golpe. Voltaram para 5/5/1, e
+  agora há `assert`s no import que impedem esse tipo de valor de passar
+  despercebido de novo.
+- **Caixa de mensagem da HUD:** oito pontos de `game.py` escreviam
+  `self.message` junto com `message_timer = 0`, e `hud.draw_hud` só
+  desenha com `if message_timer` — o subtítulo de cada fase, todo item
+  coletado e o aviso de "faltam partes da pesquisa" nunca apareciam.
+  Agora tudo passa por `Game.show_message()`.
+- **`elevador_lab_moldura.png`:** o arquivo no disco chamava
+  `elevador_la**v**_moldura.png` (typo), então a moldura do elevador
+  nunca era desenhada. Arquivo renomeado.
+- **`escola_tileset_64x64.tsx`:** declarava `tilecount="480"` numa imagem
+  que comporta 120 tiles, invadindo as faixas de GID dos outros tilesets
+  de `fase1_escola.tmx`. Corrigido para 120, e `TiledMap._load_tileset`
+  ganhou uma trava que avisa e corrige isso em qualquer tileset futuro.
+- **`fase1_escola.tmx`** importava `fase3_pesquisa.tsx` sem usar nenhum
+  tile dele — import removido.
+- **NPCs da vila:** `images/npcs/seu_joaquim_idle.png` (288x48, 6 quadros)
+  existia no disco há tempos e nenhum código o carregava. Agora os NPCs
+  são desenhados por NOME (`Game._build_npc_frames`), então basta criar
+  `dona_marta_idle.png`, `bento_idle.png` e `sra_amelia_idle.png` em
+  `images/npcs/` pra os outros três aparecerem — sem tocar em código.

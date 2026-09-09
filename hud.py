@@ -62,7 +62,12 @@ def draw_hud(
         draw_text(surface, f"Microscópio: {status}", (24, 121), 19, "#9de3bb")
     if oxygen_ratio is not None:
         _draw_oxygen_bar(surface, oxygen_ratio)
-    if message_timer:
+    # `message_timer` é a duração restante; 0 significa "sem mensagem". Se
+    # houver texto mas o timer for 0, é bug de quem chamou (foi o que
+    # aconteceu durante muito tempo: oito pontos de game.py escreviam a
+    # mensagem com timer 0 e ela nunca aparecia) — melhor mostrar por um
+    # quadro do que engolir em silêncio. Ver Game.show_message.
+    if message and message_timer:
         _draw_message(surface, message)
 
 

@@ -31,8 +31,20 @@ _current_track = None
 # sem precisar de um botão de mute separado.
 music_volume = 1.0
 sfx_volume = 1.0
+# --- Acessibilidade (persistidas no mesmo arquivo que os volumes) ---
+#: Multiplicador do tremor de câmera, 0.0-1.0. O Terremoto do Dragão sacode
+#: por 5 segundos seguidos (EARTHQUAKE_SHAKE_DURATION=300); pra parte do
+#: público isso é desconfortável de verdade, não é preferência estética.
+shake_scale = 1.0
+#: Velocidade da revelação de texto do diálogo, em caracteres por quadro
+#: (ver dialogue.DialogueBox.CHARACTERS_PER_FRAME). 0 = instantâneo.
+text_speed = 0.65
 
 _SETTINGS_PATH = ROOT_DIR / "audio_settings.json"
+
+
+# Vira True depois do primeiro aviso, pra não repetir a cada som tocado.
+_warned_no_audio = False
 
 
 def _main():
@@ -47,7 +59,23 @@ def _main():
     lugares diferentes em game.py, é mais simples buscar o módulo
     __main__ (que É o main.py rodando) toda vez, em vez de propagar
     music/sounds por parâmetro em cada função que toca som."""
-    return sys.modules["__main__"]
+    module = sys.modules["__main__"]
+    if not hasattr(module, "music"):
+        # main_web.py (pygbag) NÃO recebe os globais que o Pygame Zero
+        # injeta em main.py, então todas as chamadas abaixo caíam no
+        # `except Exception: pass` — a versão web do jogo rodava 100% muda,
+        # em silêncio, sem nenhum sinal de que algo estava errado. Isto não
+        # conserta o áudio no web (pra isso seria preciso um backend em
+        # pygame.mixer direto), mas tira o problema do escuro.
+        global _warned_no_audio
+        if not _warned_no_audio:
+            _warned_no_audio = True
+            print(
+                "[audio] música e efeitos indisponíveis neste ponto de entrada "
+                f"({getattr(module, '__file__', module)}): os globais `music`/"
+                "`sounds` do Pygame Zero não existem aqui. O jogo roda mudo."
+            )
+    return module
 
 
 def load_settings():
@@ -56,11 +84,13 @@ def load_settings():
     Configurações continua o mesmo na próxima vez que o jogo abrir.
     Silencioso se o arquivo não existir ainda (primeira execução) ou
     estiver corrompido: fica no volume padrão (1.0/1.0) nesse caso."""
-    global music_volume, sfx_volume
+    global music_volume, sfx_volume, shake_scale, text_speed
     try:
         data = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
         music_volume = min(1.0, max(0.0, float(data.get("music_volume", 1.0))))
         sfx_volume = min(1.0, max(0.0, float(data.get("sfx_volume", 1.0))))
+        shake_scale = min(1.0, max(0.0, float(data.get("shake_scale", 1.0))))
+        text_speed = min(3.0, max(0.0, float(data.get("text_speed", 0.65))))
     except Exception:
         pass
 
@@ -71,7 +101,10 @@ def save_settings():
     tempo todo) — ver Game.handle_menu_release em game.py."""
     try:
         _SETTINGS_PATH.write_text(
-            json.dumps({"music_volume": music_volume, "sfx_volume": sfx_volume}),
+            json.dumps({
+                "music_volume": music_volume, "sfx_volume": sfx_volume,
+                "shake_scale": shake_scale, "text_speed": text_speed,
+            }),
             encoding="utf-8",
         )
     except Exception:
@@ -96,6 +129,20 @@ def set_sfx_volume(value):
     sfx_volume = min(1.0, max(0.0, value))
 
 
+def set_shake_scale(value):
+    """0.0-1.0 — multiplica a magnitude de TODO tremor de câmera (ver
+    Game._shake_offset). 0 desliga completamente."""
+    global shake_scale
+    shake_scale = min(1.0, max(0.0, value))
+
+
+def set_text_speed(value):
+    """Caracteres por quadro na revelação de texto do diálogo. 0 mostra a
+    fala inteira de uma vez (ver DialogueBox.update)."""
+    global text_speed
+    text_speed = min(3.0, max(0.0, value))
+
+
 def play_music(name, loop=True):
     """Troca a música de fundo pra `name` (sem extensão — ver
     PLANO_AUDIO.md pros nomes esperados em music/). Não faz nada se `name`
@@ -118,13 +165,7 @@ def play_music(name, loop=True):
         pass
 
 
-def stop_music():
-    global _current_track
-    _current_track = None
-    try:
-        _main().music.stop()
-    except Exception:
-        pass
+
 
 
 def _resolve_sound(name):

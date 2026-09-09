@@ -3,6 +3,8 @@ import random
 
 import pygame
 
+from sprites import flipped
+
 
 class Slime:
     """Inimigo que patrulha somente a plataforma onde nasceu."""
@@ -131,7 +133,7 @@ class Slime:
         frames = sprites["dead" if self.state == self.DYING else self.state]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         draw_y = self.y - camera_y + (14 if self.state == self.DYING else 2) - self.GROUND_LIFT
         surface.blit(frame, (self.x - 6 - camera_x, draw_y))
 
@@ -279,7 +281,7 @@ class CrystalStag:
         frames = sprites[key]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -426,7 +428,7 @@ class PossessedStudent:
         frames = sprites[key]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -572,7 +574,7 @@ class JanitorGuardian:
         frames = sprites[key]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -1071,7 +1073,7 @@ class Librarian:
             else:
                 frame = self._animation_frame(frames)
             if self.direction < 0:
-                frame = pygame.transform.flip(frame, True, False)
+                frame = flipped(frame)
             frame_w, frame_h = frame.get_size()
             offset_x = (frame_w - self.WIDTH) // 2
             offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -1549,7 +1551,7 @@ class Specimen:
             else:
                 frame = self._animation_frame(frames)
             if self.direction < 0:
-                frame = pygame.transform.flip(frame, True, False)
+                frame = flipped(frame)
             frame_w, frame_h = frame.get_size()
             offset_x = (frame_w - self.WIDTH) // 2
             offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -1772,7 +1774,7 @@ class DarkWraith:
         frames = sprites[key]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = (frame_h - self.HEIGHT) // 2
@@ -1915,7 +1917,7 @@ class SmallSlime:
         frames = sprites[key]
         frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -2284,7 +2286,7 @@ class SlimeKing:
         else:
             frame = self._animation_frame(frames)
         if self.direction < 0:
-            frame = pygame.transform.flip(frame, True, False)
+            frame = flipped(frame)
         frame_w, frame_h = frame.get_size()
         offset_x = (frame_w - self.WIDTH) // 2
         offset_y = frame_h - self.HEIGHT - self.GROUND_LIFT
@@ -2810,7 +2812,7 @@ class Dragon:
             # lado só (comum numa luta à distância parada), parecia
             # "travado" sempre olhando pro mesmo lado.
             if self.direction > 0:
-                frame = pygame.transform.flip(frame, True, False)
+                frame = flipped(frame)
             if self.state == self.DYING:
                 # Sem quadros de morte próprios (ver docstring) — esmaece o
                 # quadro parado até sumir de vez.
@@ -2883,6 +2885,6 @@ class Dragon:
             # rodar o jogo que bate certo com a arte crua do dragon_fire.png;
             # avise se a chama sair virada pro lado errado que eu ajusto.
             if self.direction > 0:
-                stretched = pygame.transform.flip(stretched, True, False)
+                stretched = flipped(stretched)
             rect_x = mouth_x if self.direction > 0 else mouth_x - width
             surface.blit(stretched, (rect_x - camera_x, mouth_y - height / 2 - camera_y))

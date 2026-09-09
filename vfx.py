@@ -1,6 +1,6 @@
-from pathlib import Path
-
 import pygame
+
+from sprites import load_optional
 
 
 class VFXManager:
@@ -55,11 +55,11 @@ class VFXManager:
         disco (ex.: parry_flash.png antes do Raul salvá-la) é simplesmente
         ignorada em vez de derrubar o jogo — os DEFs que apontam pra ela só
         ficam de fora de self.frames, e spawn() já sabe pular esses casos."""
-        sheets = {"primary": pygame.image.load(sheet_path).convert_alpha()}
+        sheets = {"primary": load_optional(sheet_path)}
         for name, path in (extra_sheets or {}).items():
-            if not Path(path).exists():
-                continue
-            sheets[name] = pygame.image.load(path).convert_alpha()
+            sheet = load_optional(path)
+            if sheet is not None:
+                sheets[name] = sheet
         self.frames = {}
         for name, info in self.DEFS.items():
             sheet = sheets.get(info.get("sheet", "primary"))

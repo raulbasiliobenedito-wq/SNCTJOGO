@@ -11,10 +11,13 @@ direita da rua leva pra Fase 1 automaticamente (mesmo mecanismo de "fim de
 fase" que as outras já usam).
 
 **Falta só isso pra ficar redondo:**
-- Arte própria das 4 NPCs da vila — hoje elas são invisíveis (sem sprite
-  próprio, só a hitbox/diálogo), porque não existe ainda uma folha de sprite
-  pra elas (as cientistas têm `cientistas_idle.png`; a vila não tem
-  equivalente). Dá pra jogar e conversar com elas normalmente, só não
+- Arte própria das NPCs da vila. **Atualizado em 2026-09-08:** o Seu
+  Joaquim JÁ aparece — `images/npcs/seu_joaquim_idle.png` existia no disco
+  e nenhum código o carregava; agora os NPCs são desenhados por NOME (ver
+  `Game.VILLAGER_SPRITE_FILES`/`_build_npc_frames`). Faltam só
+  `dona_marta_idle.png`, `bento_idle.png` e `sra_amelia_idle.png` em
+  `images/npcs/` — cada um uma folha de uma linha, quadros quadrados; a
+  contagem de quadros é lida da largura do arquivo, sem tocar em código. Dá pra jogar e conversar com elas normalmente, só não
   aparecem desenhadas. Quando quiser, eu peço um prompt de sprite sheet
   pra isso.
 - `music/vila_music.mp3` (prompt já no PLANO_AUDIO.md) — até lá toca
@@ -48,7 +51,9 @@ entre si — mesma régua de alinhamento em todos:
   caminho, transições grama↔caminho, variações (flores/pedrinhas/tufo). Topo
   sólido (colisão) é **y 0** de qualquer tile da linha 0 ou 2 — não ondula, de
   propósito, pra não balançar quem anda em cima.
-- **Casas** (`casas/vila_casas_completo.png`, 256×128, grade **64×64**, linha 0
+- **Casas** (`casas/vila_casas_completo.png`, **512×256, grade 128×128** —
+  o LEIA-ME dizia 256×128/64×64, mas o arquivo foi reexportado em 2x e o
+  `casas_vila.tsx` já reflete o tamanho novo; corrigido em 2026-09-08), linha 0
   = 4 frentes, linha 1 = os mesmos 4 fundos): tijolo, amarela, azul, creme.
   Base útil (onde encosta no chão) é **y 62** do quadro — sem chão embutido de
   propósito. Frente e fundo compartilham essa mesma base e a mesma linha de

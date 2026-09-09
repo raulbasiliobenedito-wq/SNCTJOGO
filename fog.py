@@ -94,6 +94,8 @@ class FogBarrier:
         # Sem nenhum dos dois, cai pro desenho procedural abaixo.
         self.frames = None
         self.frames_corpo = None
+        # Cache de _scaled_frame: no máximo duas entradas (rostos e corpo).
+        self._frame_cache = {}
         self.blocked = True
         self.encountered = False  # já mostrou a fala/gatilho de "esbarrou"?
         self._dissipating = False
@@ -164,19 +166,62 @@ class FogBarrier:
     def draw(self, surface, camera_x, camera_y):
         if not self.blocked:
             return
+        # Recorte de verdade: a barreira cobre do X dela até a borda direita
+        # do mapa, então na maior parte da fase ela está inteiramente fora da
+        # câmera. _draw_animated não tinha essa saída — com a câmera em x=0 e
+        # a névoa começando em x=6800 ela ainda ampliava e blitava DOIS
+        # quadros de tela cheia por quadro de jogo, invisíveis. (_draw_procedural
+        # já recortava sozinho via draw_rect.clip, mas sair aqui é mais barato.)
+        if not self.rect.colliderect(
+            pygame.Rect(camera_x, camera_y, surface.get_width(), surface.get_height())
+        ):
+            return
         if self.frames:
             self._draw_animated(surface, camera_x, camera_y)
         else:
             self._draw_procedural(surface, camera_x, camera_y)
 
+    def _scaled_frame(self, frames, index, size):
+        """Devolve `frames[index]` ampliado pra `size`, com cache.
+
+        Os quadros passaram a ser guardados no tamanho NATIVO (480x270) em
+        vez de já ampliados pra 1920x1080 — eram 380 MB residentes, 63% da
+        memória do processo, para um efeito que só existe na Fase 1 (ver
+        Game._load_fog_frame_sequence). O custo se paga aqui: como a
+        animação roda a FRAME_FPS=12 e o jogo a 60, o mesmo quadro é pedido
+        ~5 vezes seguidas, e são no máximo duas listas em uso ao mesmo tempo
+        (rostos e corpo). Um cache com essas duas entradas transforma "um
+        transform.scale de tela cheia por quadro" em ~24 por segundo.
+
+        A cópia ampliada é nossa, então o set_alpha de _draw_animated não
+        mexe mais no quadro carregado do disco (antes mexia)."""
+        cache = self._frame_cache
+        key = id(frames)
+        entry = cache.get(key)
+        if entry is not None and entry[0] == index and entry[1] == size:
+            return entry[2]
+        dest = entry[2] if entry is not None and entry[1] == size else None
+        if dest is None:
+            dest = pygame.Surface(size, pygame.SRCALPHA).convert_alpha()
+        # `dest` reaproveitado entre trocas de quadro: alocar um Surface de
+        # 1920x1080 a cada upscale custava ~22% a mais do que escrever num
+        # buffer que já existe (medido).
+        pygame.transform.scale(frames[index], size, dest)
+        cache[key] = (index, size, dest)
+        return dest
+
     def _draw_animated(self, surface, camera_x, camera_y):
-        """Desenha a animação de verdade (ver módulo/build_pixel_anim.py) —
-        cada quadro já nasce do tamanho da tela (480x270 nativo, pensado
-        pra 4x = 1920x1080). Ancora o quadro com ROSTOS bem no canto
-        superior da barreira (linha de base da curva em rect.x), e ladrilha
-        o resto (pra cobrir uma barreira maior que uma tela) só com
-        `frames_corpo` (sem rosto) — assim nenhuma cara se repete."""
-        frame_w, frame_h = self.frames[0].get_size()
+        """Desenha a animação de verdade (ver módulo/build_pixel_anim.py).
+        Os quadros vêm em 480x270 nativo e são ampliados pra o tamanho da
+        superfície de mundo (1920x1080) na hora de desenhar, via
+        _scaled_frame — o resultado é o mesmo de quando eles já vinham
+        ampliados do carregamento, e a conta de ladrilho abaixo continua
+        toda em cima do tamanho AMPLIADO, não do nativo. Ancora o quadro
+        com ROSTOS bem no canto superior da barreira (linha de base da
+        curva em rect.x), e ladrilha o resto (pra cobrir uma barreira maior
+        que uma tela) só com `frames_corpo` (sem rosto) — assim nenhuma
+        cara se repete."""
+        frame_w, frame_h = surface.get_size()
         anchor_x = self.rect.x - round(frame_w * self.FRAME_EDGE_ANCHOR_FRACTION)
         # Level._make_fog_barriers estica rect.top bem pra cima do topo
         # real do mapa (SKY_MARGIN, pra não sobrar brecha de céu acima da
@@ -217,7 +262,7 @@ class FogBarrier:
                 # usa a massa lisa pra não repetir a mesma cara em vários
                 # lugares (inclusive na margem de céu lá em cima).
                 source = self.frames if (row == anchor_row and col == 0) else (self.frames_corpo or self.frames)
-                frame_img = source[idx]
+                frame_img = self._scaled_frame(source, idx, (frame_w, frame_h))
                 frame_img.set_alpha(alpha)
                 surface.blit(frame_img, (tile_x - camera_x, tile_y - camera_y))
 

@@ -18,62 +18,34 @@ class _StaticZone:
         self.rect = rect
 
 
+# Dados descritivos de cada fase. As chaves de layout ("layout", "step",
+# "widths", "heights", "moving", "decor_props", "decor_ground",
+# "decor_banners") saíram junto com os percursos gerados por código: o
+# terreno inteiro das três fases vem dos .tmx desde que a Fase 1 ganhou
+# chão pintado, e esses números descreviam plataformas que não existem
+# mais em lugar nenhum. "world"/"world_height"/"world_top" ficam porque
+# _configure_world_dimensions ainda os lê antes de sobrescrever com o
+# tamanho real do mapa; "checkpoints"/"research" ficam como documentação
+# da intenção de cada fase (as posições de verdade vêm do Tiled).
 PHASES = [
     {
         "name": "Fase 1 — Escola", "subtitle": "A primeira pergunta pode mudar o mundo.",
-        "world": 7420, "world_height": 1450, "world_top": -520, "step": 230, "widths": (160, 150, 170, 145),
-        "heights": (650, 575, 505, 560, 470, 540, 600, 515),
-        "checkpoints": (6, 11, 15),
-        "research": ((4, "Curiosidade"), (7, "Observação"), (10, "Hipótese")),
+        "world": 7420, "world_height": 1450, "world_top": -520,
         # Os diálogos automáticos por posição (professores/Lia) saíram —
         # substituídos pela cientista-NPC de cada local (objeto "cientista"
         # no .tmx, ver Level._make_npcs/game.NPC_DIALOGUES), que só fala
         # quando Lia chega perto e aperta [E].
         "dialogues": (),
-        "moving": (),
     },
     {
         "name": "Fase 2 — Universidade", "subtitle": "Conhecimento se constrói em movimento.",
         "world": 6880, "world_height": 900, "world_top": 0,
-        # Layout desenhado à mão (x, y, largura) e verificado com um simulador físico
-        # próprio (mesma gravidade/velocidade/pulo do jogo) para garantir que todo
-        # salto é alcançável. Larguras múltiplas de 32 encaixam perfeitamente nos tiles.
-        "layout": (
-            (0, 650, 224), (280, 624, 160), (537, 573, 160), (752, 613, 128),
-            (979, 506, 192), (1265, 486, 160), (1509, 591, 192), (1797, 617, 160),
-            (2034, 592, 160), (2288, 615, 192), (2579, 585, 160), (2792, 605, 160),
-            (3002, 634, 128), (3198, 652, 192), (3481, 567, 96), (3672, 604, 160),
-            (3924, 479, 96), (4116, 568, 192), (4358, 618, 96), (4547, 586, 192),
-            (4816, 637, 160), (5052, 643, 192), (5294, 548, 160), (5524, 495, 160),
-            (5753, 568, 96), (5931, 483, 96), (6062, 490, 128), (6240, 591, 160),
-            (6478, 477, 128), (6646, 560, 224),
-        ),
-        "checkpoints": (11, 24),
-        "research": ((6, "Método"), (15, "Dados"), (20, "Análise")),
-        # Posições recalibradas pro corredor->biblioteca->laboratório do
-        # Tiled (ver maps/fase2_universidade.tmx, 6912px de largura); a
-        # segunda fala dispara perto da saída, já no fim do laboratório.
         "dialogues": (),
-        "moving": ((4, 90, 110, "x"), (9, 70, 130, "y"), (13, 75, 100, "x"),
-                    (18, 80, 140, "y"), (22, 70, 115, "x"), (26, 70, 125, "y")),
-        # Decoração puramente visual (não sólida): itens sobre plataformas, bancos
-        # e arbustos rentes ao chão do pátio, e flâmulas penduradas do alto.
-        "decor_props": ((1, "plant_pot"), (5, "book_stack"), (10, "grad_cap"), (14, "plant_pot"),
-                         (19, "book_stack"), (23, "grad_cap"), (27, "plant_pot")),
-        "decor_ground": (620, 1950, 3260, 4600, 5950),
-        "decor_banners": (900, 2600, 4200, 5900),
     },
     {
         "name": "Fase 3 — Centro de Pesquisa", "subtitle": "Pesquisa é colaboração, coragem e esperança.",
-        "world": 8200, "world_height": 900, "world_top": 0, "step": 210, "widths": (130, 120, 145, 115, 135),
-        "heights": (650, 570, 485, 550, 440, 525, 410, 500, 585, 475),
-        "checkpoints": (17, 34),
-        "research": ((9, "Testes"), (21, "Resultados"), (32, "Cura"), (37, "Pesquisa completa")),
-        # Posições em x ao longo da descida (mundo agora tem 9600px de largura,
-        # ver maps/fase3_pesquisa.tmx v4): a segunda fala dispara perto do
-        # fim do percurso, já depois da câmara submersa.
+        "world": 8200, "world_height": 900, "world_top": 0,
         "dialogues": (),
-        "moving": ((8, 190, 90, "x"), (16, 140, 110, "y"), (25, 220, 90, "x"), (37, 150, 110, "y")),
     },
 ]
 
@@ -92,7 +64,7 @@ VILLAGE_DATA = {
     # Tiled) — com o mapa presente, _configure_world_dimensions troca os
     # dois pelo tamanho real do .tmx (150x20 tiles de 32px = 4800x640).
     "world": 4800, "world_height": 640, "world_top": 0,
-    "checkpoints": (), "research": (), "dialogues": (), "moving": (),
+    "dialogues": (),
 }
 
 class Level:
@@ -105,11 +77,6 @@ class Level:
     ELEVATOR_SPEED = 3
     DEFAULT_SPAWN = (100, 650 - PLAYER_HEIGHT)
     DEFAULT_SURFACE_RETURN = (4460, 412)
-    ENEMY_PLATFORM_SPAWNS = (
-        (3, 8, 12, 15),
-        (2, 8, 17, 25),
-        (6, 14, 22, 30, 36),
-    )
 
     # Mapa do Tiled por fase (índice em PHASES). Fases sem entrada aqui, ou cujo
     # arquivo ainda não existe em maps/, caem no percurso gerado por código.
@@ -182,7 +149,8 @@ class Level:
         # e a conversa sobre o elevador do laboratório secreto). Genérico
         # por padrão: qualquer passagem do jogo que precise de "bloqueada
         # até X" usa o mesmo objeto, distinguido pela propriedade "chave".
-        self.fog_barriers = self._make_fog_barriers()
+        # self.fog_barriers é montado LÁ EMBAIXO, depois de _make_boss_arenas
+        # — ver o comentário lá.
         # Elevador secreto (objeto "elevador_lab" — ver
         # Game._use_secret_elevator/elevator_cutscene.ElevatorCutscene) e
         # bancada/peças do microscópio do laboratório escondido, do outro
@@ -198,7 +166,7 @@ class Level:
         # no Tiled (Fundo/Perigos/Decoração), igual a água: mover/redimensionar
         # este objeto muda só a jogabilidade, nunca o que aparece na tela.
         self.lava_lakes = self._make_lava_lakes()
-        self.spawn = self._map_spawn() if self.tiled_map else self.DEFAULT_SPAWN
+        self.spawn = self._map_spawn()
         self.surface_return = self.DEFAULT_SURFACE_RETURN
         self.enemies = self._make_enemies()
         # Chefes de arena (Rei Slime na Fase 1, Dragão na Fase 3): não vêm de
@@ -209,6 +177,13 @@ class Level:
         # chefes dela — Espécime/Bibliotecário — já travam a tela pequena o
         # bastante da sala secundária sem precisar de trava de câmera).
         self.boss_arenas = self._make_boss_arenas()
+        # ORDEM IMPORTA: _make_boss_arenas acabou de possivelmente ESTICAR
+        # self.world_width (a arena do Rei Slime soma
+        # SLIME_KING_ARENA_MARGIN à direita), e _make_fog_barriers monta o
+        # retângulo da neblina até world_width. Enquanto a neblina era
+        # criada antes, ela parava 28px antes da nova borda do mundo na
+        # Fase 1 — sobrava uma fresta por onde dava pra ver o outro lado.
+        self.fog_barriers = self._make_fog_barriers()
         # As cientistas-NPC (objeto "cientista" no .tmx de cada local, ver
         # _make_npcs/game.NPC_DIALOGUES) — uma por local (Fase 1, corredor/
         # laboratório/biblioteca da Fase 2, Fase 3). Não são Enemy nem
@@ -219,13 +194,6 @@ class Level:
         self.checkpoints = self._make_checkpoints()
         self.research = self._make_research()
         self._reset_lab_state()
-        # A decoração procedural antiga (bancos/flâmulas/itens sobre
-        # plataforma) só faz sentido pro percurso de plataformas geradas à
-        # mão — com o mapa do Tiled, o cenário inteiro (armários, estantes,
-        # bancadas etc.) já vem pintado nas camadas Fundo/Decoração.
-        self.university_decor = (
-            self._make_university_decor() if self.index == 1 and not self.tiled_map else None
-        )
         if self.is_underground and not self.room:
             # "and not self.room": o laboratório ESCONDIDO (room=
             # "laboratorio_secreto", ver a conversa sobre o elevador
@@ -271,6 +239,8 @@ class Level:
         self.bench = None
         self.return_route_platforms = []
         self.return_route_active = False
+        # Ver _draw_lab: cache das peças do microscópio esmaecidas.
+        self._dimmed_microscope_parts = None
 
     def _load_tiled_map(self):
         if self.room:
@@ -280,9 +250,15 @@ class Level:
         if not filename:
             return None
         path = ASSET_DIR.parent / "maps" / filename
-        # Mantém o jogo abrindo caso o arquivo seja removido por acidente. O pacote
-        # entregue já inclui os TMX, e o fallback preserva o percurso gerado por código.
-        return TiledMap(path) if path.exists() else None
+        if not path.exists():
+            # Antes isto devolvia None e o jogo caía num percurso gerado por
+            # código que não correspondia ao mapa nenhum — um mapa faltando
+            # virava uma fase estranha em vez de um erro. Agora falha alto.
+            raise FileNotFoundError(
+                f"Mapa do Tiled ausente: maps/{filename}. Toda fase e sala do "
+                "jogo depende do .tmx correspondente."
+            )
+        return TiledMap(path)
 
     def _make_doors(self):
         """Portas interativas (objeto tipo "porta", propriedade "destino"):
@@ -495,66 +471,15 @@ class Level:
         return item["x"], item["y"] - PLAYER_HEIGHT
 
     def _build_course(self):
-        if self.index == 0:
-            # Antes caía pro percurso antigo gerado por código
-            # (_build_school_course) sempre que o grupo "Plataformas" do
-            # Tiled estivesse vazio — fazia sentido enquanto ESSE grupo era
-            # o chão inteiro da Fase 1. Agora que ela tem chão de verdade
-            # pintado na camada Colisão (igual Fases 2/3), esvaziar
-            # "Plataformas" de propósito (pedido do Raul, ao apagar os
-            # objetos antigos que sobraram da versão pré-reforma) é
-            # esperado — mesmo padrão do índice 1 logo abaixo: com
-            # tiled_map, usa só os objetos de verdade (mesmo que vazio),
-            # nunca o percurso antigo.
-            if self.tiled_map:
-                return self._build_tiled_object_platforms()
-            return self._build_school_course()
-        if self.index == 1:
-            if self.tiled_map:
-                return self._build_tiled_object_platforms()
-            return self._build_university_course()
-        if self.index == 2 and self.tiled_map:
-            # A caverna da Fase 3 apoia o chão na camada de colisão pintada no
-            # Tiled (self.grounds); esta lista cobre só as plataformas extras
-            # (flutuantes/móveis) desenhadas como objetos.
-            return self._build_tiled_object_platforms()
-        if self.index == VILLAGE:
-            # A vila só existe com mapa do Tiled (chão pintado na camada
-            # Colisão) — sem percurso gerado por código de fallback, já que
-            # VILLAGE_DATA não tem "step"/"widths"/"heights"/"layout"
-            # (_build_generated_course quebraria tentando ler essas chaves).
-            return self._build_tiled_object_platforms() if self.tiled_map else []
-        return self._build_generated_course()
-
-    def _build_generated_course(self):
-        """Monta a Fase 3 a partir de suas sequências de altura e largura."""
-        phase = self.data
-        platforms = [Platform(0, 650, 210)]
-        moving = {number: values for number, *values in phase["moving"]}
-        x, number = 210, 1
-        while x < phase["world"] - 320:
-            width = phase["widths"][number % len(phase["widths"])]
-            height = phase["heights"][number % len(phase["heights"])]
-            platforms.append(
-                self._platform_with_motion(
-                    x,
-                    height,
-                    width,
-                    number % 4,
-                    moving.get(number),
-                )
-            )
-            x += phase["step"]
-            number += 1
-        platforms.append(Platform(phase["world"] - 220, 560, 220, 3))
-        return platforms
-
-    @staticmethod
-    def _platform_with_motion(x, y, width, image_index, movement=None):
-        if movement:
-            travel, period, axis = movement
-            return Platform(x, y, width, image_index, travel, period, axis)
-        return Platform(x, y, width, image_index)
+        """Plataformas-objeto do Tiled. O ramo "sem Tiled" (percursos
+        gerados por código: _build_generated_course/_build_school_course/
+        _build_university_course + as chaves layout/step/widths/heights/
+        moving/decor_* de PHASES) foi removido — os 7 .tmx cobrem todas as
+        fases e salas, então ele era inalcançável há tempos e só existia
+        pra ser mantido junto. Se um mapa sumir, _load_tiled_map agora
+        falha com uma mensagem clara em vez de cair num percurso
+        fantasma que não corresponde a nada."""
+        return self._build_tiled_object_platforms()
 
     def _build_tiled_object_platforms(self):
         """Cria plataformas a partir de objetos retangulares do Tiled (grupos
@@ -568,153 +493,17 @@ class Level:
             if item["width"] > 0 and item["height"] > 0
         ]
 
-    def _draw_automatic_school_platforms(self):
-        """Permite desligar a arte provisória quando o cenário for todo pintado no Tiled."""
-        if not self.tiled_map:
-            return True
-        value = self.tiled_map.properties.get("plataformas_automaticas", "true")
-        return str(value).casefold() not in ("0", "false", "nao", "não")
-
-    def _build_university_course(self):
-        """Percurso com layout desenhado à mão (ver PHASES[1]['layout']), com estilo
-        visual variando por trecho do campus: pátio de pedra -> biblioteca -> laboratório.
-        Plataformas móveis usam sempre a pele "tech" (índice 3), para o jogador
-        identificar de longe quais plataformas se movem."""
-        phase = self.data
-        layout = phase["layout"]
-        moving = {number: values for number, *values in phase["moving"]}
-        third = phase["world"] / 3
-        platforms = []
-        for index, (x, y, width) in enumerate(layout):
-            if index in moving:
-                platforms.append(self._platform_with_motion(x, y, width, 3, moving[index]))
-                continue
-            skin = self._university_platform_skin(index, x, third)
-            platforms.append(Platform(x, y, width, skin))
-        return platforms
-
-    @staticmethod
-    def _university_platform_skin(index, x, third):
-        if index == 0 or x < third:
-            return 0
-        if x < 2 * third:
-            return 1
-        return 2
-
-    def _make_university_decor(self):
-        """Pré-calcula posições de decoração (não sólida) da Fase 2: itens sobre
-        plataformas específicas, bancos/arbustos rentes ao chão e flâmulas no alto."""
-        on_platform = []
-        for platform_number, prop_name in self.data["decor_props"]:
-            platform = self.platforms[platform_number]
-            on_platform.append((platform.rect.right - 40, platform.rect.top, prop_name))
-        ground = [(x, "bench") for x in self.data["decor_ground"]]
-        ground += [(x + 70, "bush") for x in self.data["decor_ground"]]
-        banners = [(x, "banner") for x in self.data["decor_banners"]]
-        return {"on_platform": on_platform, "ground": ground, "banners": banners}
-
-    @staticmethod
-    def _build_school_course():
-        """Percurso longo da escola: vãos de dash e duas torres de pulo na parede."""
-        layout = [
-            # O espaço vazio em x=1750 e x=2670 é ocupado somente pelos elevadores.
-            (0, 650, 256), (360, 600, 160), (640, 515, 160), (950, 590, 160),
-            (1270, 475, 192), (2020, 450, 160), (2330, 525, 160),
-            # As plataformas altas ficam afastadas da parede: Lia ganha espaço para quicar e pousar.
-            # Lia reaparece após o laboratório no começo desta rota final.
-            (4420, 460, 160), (4770, 560, 192), (5250, 650, 192),
-            # A segunda torre consolida a mecânica antes do trecho final com dash.
-            (5280, 405, 160), (5780, 465, 160), (6110, 545, 160), (6450, 620, 192),
-            (6480, 380, 160), (6840, 500, 160), (7200, 520, 224),
-        ]
-        return [Platform(x, y, width, index % 3) for index, (x, y, width) in enumerate(layout)]
 
     def _build_underground_lab(self):
-        if self.tiled_map:
-            self._build_tiled_underground_lab()
-        else:
-            self._build_default_underground_lab()
+        self._build_tiled_underground_lab()
         # Posição de "descanso" de cada elevador (onde ele nasce no mapa) — usada
         # por call_elevator/call_upper_elevator pra só agendar o retorno automático
         # quando o acionamento afasta o elevador dela (ver comentário lá).
         self.elevator_home = self.elevator_target
         self.upper_elevator_home = self.upper_elevator_target
 
-    def _build_default_underground_lab(self):
-        """Mantém o laboratório manual como fallback para a Fase 1."""
-        # O elevador substitui a plataforma inútil que ficava logo abaixo da superfície.
-        self.elevator_top, self.elevator_bottom = 650, 1090
-        self.elevator = Platform(2670, self.elevator_top, 160, 2)
-        self.elevator_target = self.elevator_top
-        # Posição "de casa" do elevador — pra onde ele volta sozinho depois
-        # de dez segundos longe dela (ver call_elevator). Fixa, capturada
-        # uma vez aqui; nunca recalculada a partir do alvo do momento.
-        self.elevator_home = self.elevator_target
-        self.platforms.append(self.elevator)
 
-        # Segundo elevador: leva à área suspensa onde ficam os botões do painel.
-        self.upper_elevator_bottom, self.upper_elevator_top = 575, 100
-        self.upper_elevator = Platform(1750, self.upper_elevator_bottom, 160, 1)
-        self.upper_elevator_target = self.upper_elevator_bottom
-        self.upper_elevator_home = self.upper_elevator_target
-        self.platforms.append(self.upper_elevator)
 
-        upper_platforms = [
-            (1995, 100, 160), (2210, 0, 160), (2410, 90, 145),
-            (2610, 0, 160), (2810, 100, 150),
-        ]
-        self._append_platform_layout(upper_platforms, style_offset=1)
-
-        underground = [
-            (2940, 1090, 160), (3140, 1000, 145), (3340, 1090, 160), (3560, 1000, 145),
-            (3760, 1090, 160), (3980, 1010, 145), (4180, 1110, 165), (4390, 1040, 145),
-            (4580, 1120, 170), (4790, 1040, 145), (4980, 950, 160),
-        ]
-        self._append_platform_layout(underground)
-
-        # Caminho de volta ao percurso principal. Ele aparece somente depois da
-        # montagem, para Lia precisar concluir o laboratório antes de seguir.
-        return_route = [
-            (5100, 820, 140), (4890, 700, 140),
-            (4690, 580, 150), (4470, 460, 180),
-        ]
-        self.return_route_platforms = [
-            Platform(x, y, width, (i + 2) % 4)
-            for i, (x, y, width) in enumerate(return_route)
-        ]
-
-        self._configure_elevator_levers()
-        self.panel_lever = pygame.Rect(3180, 948, 34, 52)
-
-        button_platforms = ((2210, 0, 160), (2410, 90, 145), (2610, 0, 160), (2810, 100, 150))
-        self.buttons = [
-            pygame.Rect(x + width // 2 - 18, y - 20, 36, 20)
-            for x, y, width in button_platforms
-        ]
-
-        self.microscope_parts = [
-            # As imagens das peças ocupam 64x64; a base continua apoiada na plataforma.
-            (pygame.Rect(4423, 976, 64, 64), "Lente"),
-            (pygame.Rect(4633, 1056, 64, 64), "Base"),
-            (pygame.Rect(4823, 976, 64, 64), "Luz"),
-            (pygame.Rect(5023, 886, 64, 64), "Ocular"),
-        ]
-        self.research.extend([
-            # Livros distribuídos pelo laboratório, em vez de agrupados no mesmo trecho.
-            (pygame.Rect(3380, 1052, 28, 34), "Experimento"),
-            (pygame.Rect(4220, 1072, 28, 34), "Registro"),
-        ])
-        self.bench = pygame.Rect(4940, 870, 110, 80)
-
-    def _append_platform_layout(self, layout, style_offset=0):
-        self.platforms.extend(
-            Platform(x, y, width, (index + style_offset) % 4)
-            for index, (x, y, width) in enumerate(layout)
-        )
-
-    # Distância horizontal da alavanca até a borda do poço do elevador —
-    # fica encostada no "andar" (chão fixo), nunca em cima da própria
-    # plataforma do elevador.
     LEVER_SHAFT_MARGIN = 20
 
     def _configure_elevator_levers(self):
@@ -864,8 +653,6 @@ class Level:
         self.elevator_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(lever_name, True)
 
-    def elevator_lever_active(self, lever_name):
-        return self.elevator_lever_timers[lever_name] > 0
 
     def call_upper_elevator(self, direction):
         """Mesma correção de call_elevator, pro segundo elevador."""
@@ -885,8 +672,6 @@ class Level:
         self.upper_lever_timers[lever_name] = self.LEVER_ACTIVATION_TIME
         self.set_lever_active(f"upper_{lever_name}", True)
 
-    def upper_lever_active(self, lever_name):
-        return self.upper_lever_timers[lever_name] > 0
 
     @staticmethod
     def _alternate_target(current, top, bottom):
@@ -920,52 +705,22 @@ class Level:
         elevator.dy = elevator.y - old_y
 
     def _make_checkpoints(self):
-        if self.tiled_map:
-            return [
+        return [
                 self._rect_from_object(item)
                 for item in self.tiled_map.entities("checkpoint")
-            ]
-        return [
-            pygame.Rect(
-                self.platforms[number].rect.x + 20,
-                self.platforms[number].rect.top - 90,
-                35,
-                90,
-            )
-            for number in self.data["checkpoints"]
         ]
 
     def _make_research(self):
-        if self.tiled_map:
-            return [
+        return [
                 (
                     self._rect_from_object(item),
                     item["properties"].get("nome", "Pesquisa"),
                 )
                 for item in self.tiled_map.entities("livro")
-            ]
-        return [
-            (
-                pygame.Rect(
-                    self.platforms[number].rect.centerx - 14,
-                    self.platforms[number].rect.top - 38,
-                    28,
-                    34,
-                ),
-                name,
-            )
-            for number, name in self.data["research"]
         ]
 
     def _make_enemies(self):
-        if self.tiled_map:
-            return self._make_tiled_enemies()
-        spawn_numbers = self.ENEMY_PLATFORM_SPAWNS[self.index]
-        return [
-            Slime(self.platforms[number])
-            for number in spawn_numbers
-            if number < len(self.platforms)
-        ]
+        return self._make_tiled_enemies()
 
     def _make_tiled_enemies(self):
         enemies = []
@@ -1204,9 +959,17 @@ class Level:
         self.npc_animation += 1
         for platform in self.platforms:
             platform.update()
+        # Coleta os spawns e só insere DEPOIS do laço: _drain_pending_spawns
+        # fazia self.enemies.append() enquanto a lista estava sendo
+        # percorrida, então os filhotes da Cisão recebiam update() no mesmo
+        # quadro em que nasciam. Hoje era inofensivo (SmallSlime não gera
+        # spawns), mas vira laço infinito no dia em que qualquer inimigo
+        # novo expuser pending_spawns.
+        spawned = []
         for enemy in self.enemies:
             enemy.update()
-            self._drain_pending_spawns(enemy)
+            self._collect_pending_spawns(enemy, spawned)
+        self.enemies.extend(spawned)
         for barrier in self.fog_barriers:
             barrier.update(dt)
         if self.is_underground and not self.room:
@@ -1224,19 +987,21 @@ class Level:
     # Rei Slime, senão eles patrulhariam a plataforma toda.
     CISAO_SPAWN_ZONE_WIDTH = 150
 
-    def _drain_pending_spawns(self, enemy):
+    def _collect_pending_spawns(self, enemy, destination):
         """SlimeKing.pending_spawns guarda posições (x, y) registradas pelo
         ataque Cisão — um Enemy não tem referência à Level pra se
         auto-inserir em self.enemies, então isso é feito aqui, todo quadro,
         pra qualquer inimigo que exponha essa fila (só o Rei Slime, por
-        enquanto)."""
+        enquanto). Escreve em `destination` em vez de em self.enemies: quem
+        chamou insere na lista depois de terminar de percorrê-la (ver
+        update)."""
         spawns = getattr(enemy, "pending_spawns", None)
         if not spawns:
             return
         half = self.CISAO_SPAWN_ZONE_WIDTH // 2
         for x, y in spawns:
             zone = pygame.Rect(x - half, y, self.CISAO_SPAWN_ZONE_WIDTH, 32)
-            self.enemies.append(SmallSlime(_StaticZone(zone)))
+            destination.append(SmallSlime(_StaticZone(zone)))
         spawns.clear()
 
     def _update_lever_timers(self, timers, name_prefix=""):
@@ -1269,34 +1034,18 @@ class Level:
     def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
              collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
              microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
-             university_tiles=None, university_props=None, stag_sprites=None, wraith_sprites=None,
+             stag_sprites=None, wraith_sprites=None,
              student_sprites=None, janitor_sprites=None, specimen_sprites=None,
              artifact_image=None, artifacts_collected=None, librarian_sprites=None,
              small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None,
-             scientist_sprites=None, scientist_rows=None,
+             npc_frames=None,
              tool_icon=None, tools_collected=None,
              energy_box_sprites=None, energy_box_state=None,
              lab_microscope_sprites=None, lab_microscope_collected=None,
              lab_microscope_assembled=False, secret_elevator_sprite=None):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
-        if self.index == 1 and self.university_decor:
-            self._draw_university_backdrop(surface, camera_x, camera_y, university_props)
-
-        self._draw_platforms(
-            surface,
-            camera_x,
-            camera_y,
-            tiles,
-            school_sprites,
-            university_tiles,
-        )
-        self._draw_university_platform_props(
-            surface,
-            camera_x,
-            camera_y,
-            university_props,
-        )
+        self._draw_platforms(surface, camera_x, camera_y, tiles, school_sprites)
         self._draw_collectibles(
             surface,
             camera_x,
@@ -1321,8 +1070,8 @@ class Level:
                 lab_microscope_collected or set(),
                 lab_microscope_assembled,
             )
-        if scientist_sprites is not None:
-            self._draw_npcs(surface, camera_x, camera_y, scientist_sprites, scientist_rows or {})
+        if npc_frames:
+            self._draw_npcs(surface, camera_x, camera_y, npc_frames)
         if self.is_underground and not self.room:
             # Idem: o laboratório escondido desenha sua própria bancada/
             # peças (ver Game._draw_lab_bench/_draw_lab_microscope_parts),
@@ -1383,51 +1132,40 @@ class Level:
             if not get_hazards or not color:
                 continue
             for rect in get_hazards():
-                overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-                overlay.fill(color)
-                surface.blit(overlay, (rect.x - camera_x, rect.y - camera_y))
+                surface.blit(
+                    self._hazard_overlay(rect.size, color),
+                    (rect.x - camera_x, rect.y - camera_y),
+                )
 
-    def _draw_platforms(
-        self,
-        surface,
-        camera_x,
-        camera_y,
-        tiles,
-        school_sprites,
-        university_tiles,
-    ):
+    # Cache de classe: as cores são constantes por chefe e os tamanhos de
+    # hazard se repetem (o Bibliotecário chega a 11 simultâneos entre tomos e
+    # lâminas, todos do mesmo tamanho). Antes era um pygame.Surface SRCALPHA
+    # novo por hazard, POR QUADRO.
+    _HAZARD_OVERLAYS = {}
+
+    @classmethod
+    def _hazard_overlay(cls, size, color):
+        key = (size, color)
+        overlay = cls._HAZARD_OVERLAYS.get(key)
+        if overlay is None:
+            overlay = pygame.Surface(size, pygame.SRCALPHA)
+            overlay.fill(color)
+            cls._HAZARD_OVERLAYS[key] = overlay
+        return overlay
+
+    def _draw_platforms(self, surface, camera_x, camera_y, tiles, school_sprites):
+        """Só sobram plataformas-objeto do Tiled: os 2 elevadores da Fase 1
+        (pele de piso da escola) e, em qualquer outra fase, a pele genérica.
+        Os ramos "sem Tiled" (sombra procedural, peles da universidade)
+        saíram junto com os percursos gerados por código."""
         for platform in self.platforms:
             if self.index == 0:
-                if self._should_skip_tiled_platform(platform):
-                    continue
                 floor_name = ("grass_tile", "wood_tile", "brick_tile")[platform.image_index % 3]
-                platform_sprite = school_sprites[floor_name]
-                self._draw_school_platform(surface, platform, camera_x, camera_y, platform_sprite)
-            elif self.index == 1:
-                if self.tiled_map:
-                    # O piso e as paredes já vêm pintados no Tiled — objetos
-                    # de plataforma aqui (se houver) usam a mesma pele
-                    # genérica da Fase 3.
-                    platform.draw(surface, camera_x, camera_y, tiles)
-                else:
-                    self._draw_shadow(surface, platform, camera_x, camera_y)
-                    skin = university_tiles[platform.image_index % len(university_tiles)]
-                    platform.draw(surface, camera_x, camera_y, skin)
+                self._draw_school_platform(
+                    surface, platform, camera_x, camera_y, school_sprites[floor_name]
+                )
             else:
                 platform.draw(surface, camera_x, camera_y, tiles)
-
-    def _should_skip_tiled_platform(self, platform):
-        return (
-            self.tiled_map
-            and platform not in self.dynamic_platforms
-            and not self._draw_automatic_school_platforms()
-        )
-
-    def _draw_university_platform_props(self, surface, camera_x, camera_y, university_props):
-        if self.index == 1 and self.university_decor and university_props:
-            for world_x, top_y, prop_name in self.university_decor["on_platform"]:
-                image = university_props[prop_name]
-                surface.blit(image, (world_x - camera_x, top_y - image.get_height() - camera_y))
 
     def _draw_collectibles(
         self,
@@ -1501,7 +1239,14 @@ class Level:
         for elevator in self.secret_elevators:
             rect = elevator["rect"]
             if sprite is not None:
-                image = pygame.transform.scale(sprite, rect.size)
+                # Escalado UMA vez por elevador e guardado no próprio dict —
+                # antes era um pygame.transform.scale por quadro, por
+                # elevador, sempre pro mesmo tamanho (o rect do objeto do
+                # Tiled não muda).
+                image = elevator.get("_scaled")
+                if image is None or image.get_size() != rect.size:
+                    image = pygame.transform.scale(sprite, rect.size)
+                    elevator["_scaled"] = image
                 surface.blit(image, (rect.x - camera_x, rect.y - camera_y))
             else:
                 draw_rect = (rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
@@ -1548,20 +1293,25 @@ class Level:
                 ),
             )
 
-    # 8 quadros a 8fps (cientistas_idle.png) — ver LEIA-ME_cientistas.md.
+    # ~8 fps de animação (cientistas_idle.png) — ver LEIA-ME_cientistas.md.
     NPC_ANIMATION_TICKS_PER_FRAME = 7
-    NPC_FRAME_COUNT = 8
 
-    def _draw_npcs(self, surface, camera_x, camera_y, scientist_sprites, scientist_rows):
+    def _draw_npcs(self, surface, camera_x, camera_y, npc_frames):
         """O quadro desenhado pode ser maior que npc["rect"] (Game.NPC_SCALE
         amplia o sprite cru) — centraliza pelo mesmo formato usado nos
-        inimigos: X centralizado, Y apoiado no chão da hitbox + GROUND_LIFT."""
-        frame_index = (self.npc_animation // self.NPC_ANIMATION_TICKS_PER_FRAME) % self.NPC_FRAME_COUNT
+        inimigos: X centralizado, Y apoiado no chão da hitbox + GROUND_LIFT.
+
+        `npc_frames` é nome -> lista de quadros (ver Game._build_npc_frames),
+        não mais um índice de linha numa folha única: cada morador da vila
+        tem folha própria, e a contagem de quadros varia de um pro outro."""
+        tick = self.npc_animation // self.NPC_ANIMATION_TICKS_PER_FRAME
         for npc in self.npcs:
-            row = scientist_rows.get(npc["name"])
-            if row is None:
+            frames = npc_frames.get(npc["name"])
+            if not frames:
+                # NPC sem arte ainda: continua interagível, só não é
+                # desenhado (mesmo padrão de asset opcional do resto).
                 continue
-            frame = scientist_sprites[row][frame_index]
+            frame = frames[tick % len(frames)]
             rect = npc["rect"]
             frame_w, frame_h = frame.get_size()
             offset_x = (frame_w - rect.width) // 2
@@ -1573,25 +1323,7 @@ class Level:
         for offset in range(0, platform.width, 32):
             surface.blit(platform_sprite, (platform.x + offset - camera_x, platform.y - camera_y))
 
-    @staticmethod
-    def _draw_shadow(surface, platform, camera_x, camera_y):
-        """Sombra suave sob a plataforma, pra ela parecer apoiada no cenário em vez
-        de flutuando desconectada do fundo."""
-        shadow = pygame.Surface((platform.width, 10), pygame.SRCALPHA)
-        pygame.draw.ellipse(shadow, (10, 14, 18, 70), (0, 0, platform.width, 10))
-        surface.blit(shadow, (platform.x - camera_x, platform.y + 30 - camera_y))
 
-    def _draw_university_backdrop(self, surface, camera_x, camera_y, university_props):
-        """Bancos, arbustos e flâmulas do campus — decoração sem colisão, desenhada
-        atrás das plataformas para dar profundidade à Fase 2."""
-        if not university_props:
-            return
-        for world_x, prop_name in self.university_decor["banners"]:
-            image = university_props[prop_name]
-            surface.blit(image, (world_x - camera_x, 0 - camera_y))
-        for world_x, prop_name in self.university_decor["ground"]:
-            image = university_props[prop_name]
-            surface.blit(image, (world_x - camera_x, 784 - image.get_height() - camera_y))
 
     def _draw_lab(self, surface, camera_x, camera_y, lever_on, sequence_progress,
                   sequence_solved, microscope_collected, microscope_assembled, puzzle_sprites, text_fn):
@@ -1621,15 +1353,23 @@ class Level:
                                  (button.x-camera_x, button.y-camera_y, button.width, button.height), 2, border_radius=5)
             text_fn(surface, self.BUTTON_NAMES[index], (button.centerx-camera_x, button.y-20-camera_y), 13, "#ffffff", True)
 
+        # Peças ficam apagadas até a sequência do painel ser concluída. As
+        # versões esmaecidas são cacheadas: antes eram image.copy() + fill()
+        # nas 4 peças TODO QUADRO enquanto a sequência não fosse resolvida
+        # (medido: 1.200 cópias de Surface em 300 quadros).
+        parts = puzzle_sprites["microscope_parts"]
+        if not sequence_solved:
+            if self._dimmed_microscope_parts is None:
+                self._dimmed_microscope_parts = []
+                for image in parts:
+                    dim = image.copy()
+                    dim.fill((105, 105, 105, 145), special_flags=pygame.BLEND_RGBA_MULT)
+                    self._dimmed_microscope_parts.append(dim)
+            parts = self._dimmed_microscope_parts
         for index, (item, _) in enumerate(self.microscope_parts):
             if index in microscope_collected:
                 continue
-            image = puzzle_sprites["microscope_parts"][index]
-            # Peças ficam apagadas até a sequência do painel ser concluída.
-            if not sequence_solved:
-                image = image.copy()
-                image.fill((105, 105, 105, 145), special_flags=pygame.BLEND_RGBA_MULT)
-            surface.blit(image, (item.x-camera_x, item.y-camera_y))
+            surface.blit(parts[index], (item.x-camera_x, item.y-camera_y))
 
         bench_color = (102, 220, 160) if microscope_assembled else (168, 112, 67)
         pygame.draw.rect(surface, bench_color, (self.bench.x-camera_x, self.bench.y-camera_y, self.bench.width, self.bench.height), border_radius=8)

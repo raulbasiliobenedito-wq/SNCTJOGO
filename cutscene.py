@@ -15,6 +15,7 @@ import math
 
 import pygame
 
+from sprites import load_optional
 from settings import ASSET_DIR, HEIGHT, WIDTH
 
 
@@ -90,8 +91,8 @@ class IntroCutscene:
         self.background = None
         self.background_offset = (0, 0)
         self.glow_pos = (WIDTH * self.GLOW_ANCHOR[0], HEIGHT * self.GLOW_ANCHOR[1])
-        if self.BACKGROUND_PATH.exists():
-            raw = pygame.image.load(str(self.BACKGROUND_PATH)).convert_alpha()
+        raw = load_optional(self.BACKGROUND_PATH)
+        if raw is not None:
             self.background, self.background_offset = _scale_cover(raw, (WIDTH, HEIGHT))
             self.glow_pos = (
                 self.background_offset[0] + self.background.get_width() * self.GLOW_ANCHOR[0],

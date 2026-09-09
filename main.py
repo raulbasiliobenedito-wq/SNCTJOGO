@@ -36,7 +36,7 @@ import pgzrun
 # vindo de settings.py logo abaixo) — usados em on_mouse_down/_move/_up pra
 # saber se o clique deve ir pro menu (game.handle_menu_*) ou pro ataque
 # (game.request_mouse_attack), ver docstring de cada handler.
-from game import Game, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
+from game import Game, PAUSED as PAUSED_STATE, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 WIDTH = GAME_WIDTH
@@ -106,7 +106,7 @@ def on_mouse_down(pos, button):
         return
     if game.minigame.active:
         game.handle_minigame_click(pos)
-    elif game.state in (TITLE_STATE, SETTINGS_STATE):
+    elif game.state in (TITLE_STATE, SETTINGS_STATE, PAUSED_STATE):
         game.handle_menu_click(pos)
     else:
         game.request_mouse_attack()
@@ -121,10 +121,16 @@ def on_mouse_up(pos, button):
         game.handle_menu_release()
 
 
+# ATENÇÃO: o pgzero valida o NOME dos parâmetros de cada hook
+# (pgzero/spellcheck.py) e recusa a abrir o jogo se não baterem exatamente
+# com os nomes dele. `rel` não é usado aqui, mas NÃO pode ser renomeado pra
+# `_rel` (a convenção de "argumento ignorado" que o pyflakes espera) — isso
+# derruba o jogo no arranque com InvalidParameter. Se algum linter reclamar
+# de variável não usada, silencie o linter, não mude o nome.
 def on_mouse_move(pos, rel):
     if game.minigame.active:
         game.handle_minigame_drag(pos)
-    elif game.state == SETTINGS_STATE:
+    elif game.state in (SETTINGS_STATE, PAUSED_STATE):
         game.handle_menu_drag(pos)
 
 

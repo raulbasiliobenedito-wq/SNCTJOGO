@@ -1,23 +1,16 @@
-# Bytecode compilado do Python — gerado automaticamente a cada execução,
-# não precisa (e não deve) ir pro repositório.
+# Artefatos de build (pygbag). 20 MB de .apk + .tar.gz estavam versionados
+# junto com o projeto — são regeneráveis com `python -m pygbag main_web.py`.
+build/
+site/jogo_web/
+
+# Preferências salvas em disco pelo próprio jogo (ver audio.py/save_settings
+# e game.save/load) — são de cada máquina, não do projeto.
+audio_settings.json
+save.json
+
+# Backups e fontes de arte
+*.bak_v*
+*.ase
+
 __pycache__/
 *.pyc
-*.pyo
-
-# Ambientes virtuais, caso alguém crie um aqui.
-.venv/
-venv/
-env/
-
-# Build gerado pelo pygbag (main_web.py) — reproduzível a partir do código,
-# não precisa versionar o resultado.
-build/
-
-# Arquivos de sistema/editor comuns.
-.DS_Store
-Thumbs.db
-
-# Preferência de volume salva pelo menu de Configurações (ver audio.py) —
-# é local de cada instalação, gerado sozinho na primeira vez que alguém
-# mexe num slider, não precisa ir pro repositório.
-audio_settings.json
