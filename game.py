@@ -298,6 +298,8 @@ NPC_SPRITE_ROWS = {
 VILLAGER_SPRITE_FILES = {
     "Seu Joaquim": "seu_joaquim_idle.png",
     "Dona Marta": "dona_marta_idle.png",
+    "Cadu": "cadu_idle.png",
+    "Zeca": "zeca_idle.png",
     "Bento": "bento_idle.png",
     "Sra. Amélia": "sra_amelia_idle.png",
 }
@@ -343,6 +345,19 @@ NPC_DIALOGUES = {
     "Bento": (
         "Lia! Depois eu te chamo pra jogar bola, tá? ...Ou você tá com "
         "pressa hoje? Parece que tá indo em algum lugar importante."
+    ),
+    # Os dois abaixo são novos (vila maior, com tutorial espalhado pelo
+    # caminho em vez de tudo de uma vez com o Seu Joaquim) — reforçam uma
+    # mecânica cada, bem no ponto onde ela passa a ser necessária.
+    "Cadu": (
+        "Psiu, Lia! Um bichinho de geleia fugiu do quintal do meu avô — não "
+        "morde forte, mas fica no meio do caminho. Se ele chegar perto, "
+        "aperta o F que ele se afasta rapidinho."
+    ),
+    "Zeca": (
+        "Esse buraco aqui é largo demais pra pular normal, já tentei. Mas "
+        "se você apertar Q bem na hora de correr, sai disparada e passa "
+        "reto por cima. Confia."
     ),
     "Sra. Amélia": (
         "Lia, filha, vem cá um instantinho.",
@@ -585,19 +600,25 @@ class Game:
         dela (que também têm index 1) levam o filtro "university", e o resto
         leva só o básico."""
         self.backgrounds = {}
-        village_exists = (ASSET_DIR / "backgrounds" / "ceu.png").exists()
+        # Pack novo do GrassLand (5 camadas de parallax de verdade) — ver
+        # _load_village_parallax_layers. Só cai no ceu.png liso (uma camada
+        # só) se esse pack não estiver instalado.
+        self.village_layers = self._load_village_parallax_layers()
+        village_flat_exists = (
+            not self.village_layers and (ASSET_DIR / "backgrounds" / "ceu.png").exists()
+        )
         specs = [
             ("university", "backgrounds/university_background.png", True),
             ("cave", "backgrounds/cave_background_v2.png", False),
             ("lab", "backgrounds/lab_background.png", True),
             ("library", "backgrounds/library_background.png", True),
         ]
-        if village_exists:
+        if village_flat_exists:
             specs.append(("village", "backgrounds/ceu.png", False))
-        else:
-            # Fallback histórico da Fase 1. Só é carregado quando ceu.png não
-            # existe, em vez de sempre: com o céu novo no lugar, eram ~15 MB
-            # de imagem escalada que nunca chegava a ser desenhada.
+        elif not self.village_layers:
+            # Fallback histórico da Fase 1. Só é carregado quando nem o pack
+            # novo nem o ceu.png existem — com um dos dois no lugar, eram
+            # ~15 MB de imagem escalada que nunca chegava a ser desenhada.
             specs.append(("school", "backgrounds/background_school.png", False))
         for key, path, is_university in specs:
             if not (ASSET_DIR / path).exists():
@@ -611,6 +632,54 @@ class Game:
             variant: pygame.transform.flip(image, True, False)
             for variant, image in self.backgrounds.get("university", {}).items()
         }
+
+    # Cada item é (arquivo, velocidade de parallax, tem transparência de
+    # verdade) — nessa ordem, do mais distante (céu) pro mais próximo (mato
+    # alto), reproduzindo o guia oficial do pack (GrassLand_Background_
+    # Guide.png). Só a camada 1 é opaca (céu sólido com nuvens já
+    # desenhadas); as outras 4 têm área transparente por cima do relevo
+    # pra deixar a camada de trás aparecer — é isso que dá profundidade.
+    VILLAGE_PARALLAX_LAYERS = (
+        ("GrassLand_Background_1.png", 0.05, False),
+        ("GrassLand_Background_2.png", 0.15, True),
+        ("GrassLand_Background_3.png", 0.30, True),
+        ("GrassLand_Background_4.png", 0.45, True),
+        ("GrassLand_Background_5.png", 0.65, True),
+    )
+    VILLAGE_BACKGROUND_DIR = "new_tilesets/Multi_Platformer_Tileset_Free/GrassLand/Background"
+
+    def _load_village_parallax_layers(self):
+        """Carrega as camadas de parallax novas da vila (ver
+        VILLAGE_PARALLAX_LAYERS). Devolve uma lista vazia se o pack não
+        estiver na pasta — nesse caso _load_backgrounds cai de volta pro
+        ceu.png (uma camada só) ou pro preenchimento liso, sem quebrar.
+
+        Só a camada 1 (opaca) recebe o tingimento BG_TINT de sempre, do
+        mesmo jeito que os outros fundos — nas camadas com transparência,
+        tingir aqui (compondo uma cor translúcida por cima de um destino
+        que também tem alpha) preencheria de cor até as partes vazias, que
+        deviam continuar 100% transparentes pra revelar a camada de trás.
+        Como a camada 1 já cobre a tela inteira antes das outras serem
+        desenhadas (ver _draw_village_parallax), o resultado visual do
+        tingimento aparece do mesmo jeito — só que só no céu, que é a única
+        parte que ficaria à mostra atrás do relevo mesmo com o tingimento
+        certo."""
+        layers = []
+        for filename, parallax, has_alpha in self.VILLAGE_PARALLAX_LAYERS:
+            path = f"{self.VILLAGE_BACKGROUND_DIR}/{filename}"
+            if not (ASSET_DIR / path).exists():
+                return []
+            raw = self._load_image(path, alpha=has_alpha)
+            if has_alpha:
+                scaled = self._scale_to_screen_alpha(raw)
+                variants = {"normal": scaled, "underground": scaled}
+            else:
+                variants = {
+                    variant: self._scale_to_screen(self._tinted(raw, color))
+                    for variant, color in self._scene_tints(False).items()
+                }
+            layers.append({"variants": variants, "parallax": parallax})
+        return layers
 
     def _scene_tints(self, is_university):
         """As combinações de cor que cada fundo precisa. Reaproveita
@@ -644,6 +713,15 @@ class Game:
         return pygame.transform.scale(
             image, (round(image.get_width() * scale), HEIGHT)
         ).convert()
+
+    @staticmethod
+    def _scale_to_screen_alpha(image):
+        """Mesma ideia de _scale_to_screen, mas sem o .convert() final — ele
+        joga fora o canal alpha, virando um retângulo opaco. Usado pelas
+        camadas de parallax da vila que têm transparência de verdade (ver
+        _load_village_parallax_layers)."""
+        scale = HEIGHT / image.get_height()
+        return pygame.transform.scale(image, (round(image.get_width() * scale), HEIGHT))
 
     def _load_scaled_background(self, relative_path):
         """Várias artes de fundo (universidade, caverna) vêm em baixa
@@ -3106,25 +3184,44 @@ class Game:
     def _draw_background(self, surface):
         """Um único blit opaco por ladrilho, sem nenhum overlay depois — a
         cor de cena já veio composta na imagem (ver _load_backgrounds)."""
-        variant = "underground" if self.player.y > self.UNDERGROUND_Y else "normal"
-        images = self.backgrounds.get(self._background_key())
+        variant = self._background_variant()
+        key = self._background_key()
+        if key == "village" and self.village_layers:
+            self._draw_village_parallax(surface, variant)
+            return
+        images = self.backgrounds.get(key)
         if images is None:
             # Nenhuma arte de fundo disponível pra este contexto (hoje só a
-            # vila sem ceu.png) — céu liso, que também cobre a tela toda.
+            # vila sem ceu.png nem o pack GrassLand) — céu liso, que também
+            # cobre a tela toda.
             surface.fill(self.VILLAGE_PLACEHOLDER_SKY)
             return
         image = images[variant]
-        if self._background_key() == "university":
+        if key == "university":
             self.draw_university_background(surface, image, variant)
         else:
             self._draw_repeating_background(
-                surface, image, parallax=self.PARALLAX.get(self._background_key(), 1.0)
+                surface, image, parallax=self.PARALLAX.get(key, 1.0)
             )
+
+    def _draw_village_parallax(self, surface, variant):
+        """5 camadas do GrassLand, cada uma ladrilhada na sua própria
+        velocidade de parallax (ver VILLAGE_PARALLAX_LAYERS) — a 1 (céu,
+        opaca) cobre a tela inteira primeiro, então as de cima já blitam
+        transparência sobre um fundo opaco, sem risco de "vazar" cor onde
+        deveria ficar vazio (ver _load_village_parallax_layers)."""
+        for layer in self.village_layers:
+            image = layer["variants"][variant]
+            self._draw_repeating_background(surface, image, parallax=layer["parallax"])
 
     def _background_key(self):
         """Qual fundo este contexto usa. A ordem reproduz exatamente a
         cascata de ifs que existia em _draw_background."""
-        if self.level.room == "laboratorio":
+        if self.level.room in ("laboratorio", "laboratorio_secreto"):
+            # O laboratório ESCONDIDO da Fase 1 não estava nesta cascata: caía
+            # no `return "village"` lá embaixo e a sala inteira aparecia com o
+            # CÉU AZUL da Fase 1 atrás das paredes. Usa a mesma arte da sala de
+            # laboratório da Fase 2 (lab_background.png), sem arte nova.
             return "lab"
         if self.level.room == "biblioteca":
             return "library"
@@ -3133,11 +3230,23 @@ class Game:
         if self.level.index == 2:
             return "cave"
         # Fase 1 e vila compartilham o céu novo (pedido do Raul: "vai ficar
-        # melhor"); sem ceu.png, a Fase 1 cai no fundo antigo da escola e a
-        # vila no preenchimento liso.
-        if "village" in self.backgrounds:
+        # melhor"); sem as camadas do GrassLand nem ceu.png, a Fase 1 cai no
+        # fundo antigo da escola e a vila no preenchimento liso.
+        if self.village_layers or "village" in self.backgrounds:
             return "village"
         return "school" if self.level.index == 0 else None
+
+    # Salas que são subterrâneas por definição, independente do y da Lia: o
+    # teste de UNDERGROUND_Y foi feito pro corredor da Fase 1 (que é o mesmo
+    # mapa em cima e embaixo), mas o laboratório escondido é um mapa próprio
+    # cujo chão fica em y=544 — pelo teste de altura ele passaria por "de dia"
+    # e levaria a variante clara.
+    ALWAYS_UNDERGROUND_ROOMS = ("laboratorio_secreto",)
+
+    def _background_variant(self):
+        if self.level.room in self.ALWAYS_UNDERGROUND_ROOMS:
+            return "underground"
+        return "underground" if self.player.y > self.UNDERGROUND_Y else "normal"
 
     def _draw_repeating_background(self, surface, background, parallax=1.0):
         """Ladrilha o fundo horizontalmente. Com parallax<1.0 o fundo anda

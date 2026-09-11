@@ -167,7 +167,11 @@ class TiledMap:
         base_dir = tileset_path.parent if tileset_path else self.path.parent
         image = tileset_root.find("image")
         if image is None:
-            return None
+            # Sem <image> direto no tileset: ou não tem imagem nenhuma, ou é
+            # uma "Collection of Images" do Tiled (cada <tile> com a SUA
+            # própria <image>, sem grade compartilhada) — ver
+            # _load_collection_tileset.
+            return self._load_collection_tileset(tileset_root, base_dir, first_gid, source)
 
         image_path = base_dir / image.get("source", "")
         surface = pygame.image.load(image_path).convert_alpha()
@@ -218,6 +222,69 @@ class TiledMap:
                 for frame_id, duration in frames
             ]
             for local_id, frames in tileset["animations"].items()
+        }
+        return tileset
+
+    def _load_collection_tileset(self, tileset_root, base_dir, first_gid, source):
+        """Tileset "Collection of Images" do Tiled: cada tile é o arquivo
+        INTEIRO dele (sem grade/imagem compartilhada) — o jeito certo de
+        importar um monte de props de tamanhos variados (árvore, arbusto,
+        pedra, touceira de grama, tronco...) sem precisar montar um atlas
+        manualmente antes. No Tiled: File > New Tileset > marque "Collection
+        of Images" > "Add Image..." (dá pra selecionar vários arquivos de
+        uma vez) — o próprio Tiled mede cada imagem sozinho ao importar, sem
+        precisar declarar tamanho na mão em lugar nenhum.
+
+        "escala" funciona igual aos tilesets de grade (ver "scale" mais
+        acima): amplia cada prop na hora de carregar, pra props de 16px
+        baterem com o resto do GrassLand (escala=2)."""
+        tile_nodes = tileset_root.findall("tile")
+        if not tile_nodes:
+            return None
+        scale = float(self._properties(tileset_root).get("escala", 1))
+        tiles = {}
+        for tile in tile_nodes:
+            image_node = tile.find("image")
+            if image_node is None:
+                continue
+            local_id = int(tile.get("id", 0))
+            image_path = base_dir / image_node.get("source", "")
+            if not image_path.exists():
+                continue
+            surface = pygame.image.load(image_path).convert_alpha()
+            if scale != 1:
+                surface = pygame.transform.scale(
+                    surface,
+                    (round(surface.get_width() * scale), round(surface.get_height() * scale)),
+                )
+            tiles[local_id] = surface
+        if not tiles:
+            return None
+        tile_count = max(tiles) + 1
+        tileset = {
+            "kind": "collection",
+            "first_gid": first_gid,
+            "last_gid": first_gid + tile_count - 1,
+            "tiles": tiles,
+            "scale": scale,
+            "animations": self._load_animations(tileset_root),
+        }
+        tileset["animation_frames"] = {
+            local_id: [
+                (self._tile_image(tileset, frame_id), duration)
+                for frame_id, duration in frames
+                if frame_id in tiles
+            ]
+            for local_id, frames in tileset["animations"].items()
+        }
+        # Uma animação cujos quadros sumiram todos (tile removido da coleção
+        # depois de configurada) viraria uma lista vazia — _resolve_frame
+        # faz frames[-1] nela e quebra. Mais seguro descartar a animação
+        # inteira do que deixar essa armadilha pra frente.
+        tileset["animation_frames"] = {
+            local_id: frames
+            for local_id, frames in tileset["animation_frames"].items()
+            if frames
         }
         return tileset
 
@@ -286,6 +353,12 @@ class TiledMap:
             tileset, local_id = self._tileset_for_gid(gid)
             if tileset is None:
                 continue
+            if tileset.get("kind") == "collection" and local_id not in tileset["tiles"]:
+                # Gid dentro da faixa do tileset, mas sem esse id na coleção
+                # (ex.: tile apagado no Tiled depois que o mapa já usava um
+                # id maior) — ignora em vez de KeyError, mesmo espírito de
+                # "arte que falta não derruba o jogo" do resto do arquivo.
+                continue
             # Alinhamento igual ao do próprio Tiled: quando a arte do tile é
             # maior que o grid do mapa (ex.: casas_vila, 128x128 num grid de
             # 32x32), o Tiled ancora a imagem embaixo-à-esquerda da célula
@@ -297,7 +370,13 @@ class TiledMap:
             # inteira ficava abaixo da célula clicada. x fica igual ao do
             # Tiled também (alinhado à esquerda, sem centralizar).
             scale = tileset.get("scale", 1)
-            rendered_height = tileset["tile_height"] * scale
+            if tileset.get("kind") == "collection":
+                # Cada prop tem seu próprio tamanho (já com "escala" aplicada
+                # no carregamento, ver _load_collection_tileset) — não tem um
+                # tile_height único de tileset pra multiplicar aqui.
+                rendered_height = tileset["tiles"][local_id].get_height()
+            else:
+                rendered_height = tileset["tile_height"] * scale
             draw_x = x
             draw_y = y + self.tile_height - rendered_height
             if flags and local_id not in tileset["animations"]:
@@ -444,6 +523,10 @@ class TiledMap:
 
     @staticmethod
     def _tile_image(tileset, local_id):
+        if tileset.get("kind") == "collection":
+            # Já vem pronto (recortado é a imagem inteira, "escala" já
+            # aplicada) do carregamento — ver _load_collection_tileset.
+            return tileset["tiles"][local_id]
         source = pygame.Rect(
             (local_id % tileset["columns"]) * tileset["tile_width"],
             (local_id // tileset["columns"]) * tileset["tile_height"],

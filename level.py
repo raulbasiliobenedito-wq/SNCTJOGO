@@ -62,8 +62,16 @@ VILLAGE_DATA = {
     "name": "Vila", "subtitle": "Antes da estrada — a vila onde Lia cresceu.",
     # world/world_height só valem se maps/vila.tmx sumir (fallback sem
     # Tiled) — com o mapa presente, _configure_world_dimensions troca os
-    # dois pelo tamanho real do .tmx (150x20 tiles de 32px = 4800x640).
-    "world": 4800, "world_height": 640, "world_top": 0,
+    # dois pelo tamanho real do .tmx (220x20 tiles de 32px = 7040x640).
+    # world_top NÃO é trocado pelo tamanho do .tmx (_configure_world_dimensions
+    # só mexe em world/world_height) — com a tela em 1080px de altura e o
+    # mapa tendo só 640px, world_top=0 prendia a câmera sempre no topo do
+    # mundo (a conta de camera_y em Game._update_camera resulta numa
+    # constante quando world_height < HEIGHT), sobrando ~440px de "nada"
+    # (só o céu, sem chão) na parte de baixo da tela — parecia um bug visual
+    # de mundo cortado/duplicado. -440 = -(1080 - 640) alinha o fundo do
+    # mapa com o fundo da tela, cobrindo esse vão.
+    "world": 7040, "world_height": 640, "world_top": -440,
     "dialogues": (),
 }
 

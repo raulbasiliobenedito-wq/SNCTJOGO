@@ -199,8 +199,16 @@ def draw_ability_ui(
             surface, x, "DISTÂNCIA", "R", y + 98, ranged_remaining, ranged_total, (95, 201, 255)
         )
     else:
+        # "BLOQUEADO" ficava colado ao lado de "[R] DISTÂNCIA" na mesma
+        # linha (x + ABILITY_PANEL_WIDTH - 82) — nessa fonte/tamanho o
+        # rótulo já ocupa mais largura do que sobrava até ali e as duas
+        # strings se sobrepunham. Empilhado numa segunda linha, centralizado,
+        # não tem como colidir, do jeito que as linhas com barra de recarga
+        # já reservam uma segunda linha abaixo do rótulo.
         draw_text(surface, "[R] DISTÂNCIA", (x + 12, y + 102), 13, "#5a6472")
-        draw_text(surface, "BLOQUEADO", (x + ABILITY_PANEL_WIDTH - 82, y + 102), 11, "#5a6472")
+        draw_text(
+            surface, "BLOQUEADO", (x + ABILITY_PANEL_WIDTH // 2, y + 119), 11, "#5a6472", True
+        )
 
 
 def _draw_cooldown_row(surface, x, label, key, top, remaining, total, color):

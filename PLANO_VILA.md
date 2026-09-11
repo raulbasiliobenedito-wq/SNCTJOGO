@@ -2,24 +2,50 @@
 
 ## ✅ Já implementado (código + mapa)
 
-O `maps/vila.tmx` (150x20 tiles, 4800x640px) já existe, com chão, 2 casas de
-frente + 2 casas de fundo intercaladas, adereços (árvores, poste, banco,
-poço, canteiro, placa, cerca) e as 4 NPCs abaixo posicionadas. O código já
-está ligado: `TÍTULO → INTRO (hospital) → VILA → Fase 1` funciona, o diálogo
-em 3 falas da Sra. Amélia avança sozinho a cada [E], e chegar na ponta
-direita da rua leva pra Fase 1 automaticamente (mesmo mecanismo de "fim de
-fase" que as outras já usam).
+**Atualizado em 2026-09-10:** a vila deixou de ser um corredor curto e virou
+uma fase de verdade — `maps/vila.tmx` agora tem **220x20 tiles (7040x640px)**,
+quase o triplo do tamanho original (era 150x20/4800x640). O chão usa o
+tileset GrassLand novo (`grassland_terrain_47`/`_bgd`/`_extra`, arte reexportada
+em 32px nativos no Aseprite pelo Raul — `escala=1`, sem ampliar em tempo real)
+com relevo de verdade (não é mais uma fileira reta só), além do chão/casas/
+adereços originais da vila continuarem no início do percurso. `Colisão`/
+`Decoração`/`Frente` têm as 220x20=4400 células cada, todas conferidas.
+
+Foram acrescentados **2 NPCs novos de tutorial espalhados pelo percurso**
+(além dos 4 originais): **Cadu**, perto de um slime que bloqueia o caminho,
+ensina o ataque (F); **Zeca**, perto de um buraco largo, ensina o dash (Q).
+Isso substitui o modelo antigo de "Seu Joaquim explica tudo de uma vez" por
+tutorial dosado ao longo da fase — cada NPC ensina a mecânica bem no ponto
+onde ela passa a ser necessária. Há também um `slime` (mob de verdade, não
+só decoração) posicionado entre Cadu e Zeca.
+
+O código já está ligado: `TÍTULO → INTRO (hospital) → VILA → Fase 1`
+funciona, o diálogo em 3 falas da Sra. Amélia avança sozinho a cada [E], e
+chegar na ponta direita da rua leva pra Fase 1 automaticamente (mesmo
+mecanismo de "fim de fase" que as outras já usam).
+
+O fundo também ganhou parallax de verdade (antes era `ceu.png`, uma imagem
+só): 5 camadas do pack GrassLand (`images/new_tilesets/Multi_Platformer_
+Tileset_Free/GrassLand/Background/GrassLand_Background_1..5.png`), do céu
+ao mato alto da frente, cada uma andando numa velocidade diferente (0.05 a
+0.65 — ver `Game.VILLAGE_PARALLAX_LAYERS`/`_draw_village_parallax` em
+`game.py`). `ceu.png` continua no disco só como fallback (se o pack
+GrassLand sumir, um dia). Como a Fase 1 e a vila sempre compartilharam o
+mesmo fundo (`_background_key`), a Fase 1 ganhou o parallax novo de
+brinde, sem precisar mexer em nada lá.
 
 **Falta só isso pra ficar redondo:**
 - Arte própria das NPCs da vila. **Atualizado em 2026-09-08:** o Seu
   Joaquim JÁ aparece — `images/npcs/seu_joaquim_idle.png` existia no disco
   e nenhum código o carregava; agora os NPCs são desenhados por NOME (ver
-  `Game.VILLAGER_SPRITE_FILES`/`_build_npc_frames`). Faltam só
-  `dona_marta_idle.png`, `bento_idle.png` e `sra_amelia_idle.png` em
-  `images/npcs/` — cada um uma folha de uma linha, quadros quadrados; a
-  contagem de quadros é lida da largura do arquivo, sem tocar em código. Dá pra jogar e conversar com elas normalmente, só não
-  aparecem desenhadas. Quando quiser, eu peço um prompt de sprite sheet
-  pra isso.
+  `Game.VILLAGER_SPRITE_FILES`/`_build_npc_frames`). Faltam
+  `dona_marta_idle.png`, `bento_idle.png`, `sra_amelia_idle.png` e agora
+  também `cadu_idle.png`/`zeca_idle.png` (NPCs novos) em `images/npcs/` —
+  cada um uma folha de uma linha, quadros quadrados; a contagem de quadros
+  é lida da largura do arquivo, sem tocar em código. Dá pra jogar e
+  conversar com todos normalmente, só não aparecem desenhados ainda (o
+  carregador ignora sozinho o arquivo que falta). Quando quiser, eu peço um
+  prompt de sprite sheet pra isso.
 - `music/vila_music.mp3` (prompt já no PLANO_AUDIO.md) — até lá toca
   silêncio nessa cena, sem travar nada.
 - O layout do `.tmx` foi montado por mim direto em XML (sem abrir o Tiled) —
@@ -132,11 +158,22 @@ objetos `npc` no Tiled com o `nome` certo — o texto eu já deixo pronto aqui:
 > "Bom dia, flor! Olha o tanto que você cresceu... Sua mãe tem muito orgulho
 > de você, sabia? Ela fala isso toda vez que passo lá em casa."
 
-**3. Casual — "Bento"** (garoto sentado num banco, perto do parquinho)
+**3. Tutorial — "Cadu"** (mais à frente no percurso, perto de um slime que
+bloqueia o caminho — ensina o ataque bem no ponto em que ela precisa dele)
+> "Psiu, Lia! Um bichinho de geleia fugiu do quintal do meu avô — não morde
+> forte, mas fica no meio do caminho. Se ele chegar perto, aperta o F que
+> ele se afasta rapidinho."
+
+**4. Tutorial — "Zeca"** (perto de um buraco largo — ensina o dash)
+> "Esse buraco aqui é largo demais pra pular normal, já tentei. Mas se você
+> apertar Q bem na hora de correr, sai disparada e passa reto por cima.
+> Confia."
+
+**5. Casual — "Bento"** (garoto sentado num banco, perto do parquinho)
 > "Lia! Depois eu te chamo pra jogar bola, tá? ...Ou você tá com pressa hoje?
 > Parece que tá indo em algum lugar importante."
 
-**4. Emocional — "Sra. Amélia"** (perto do fim da rua, antes da saída pra
+**6. Emocional — "Sra. Amélia"** (perto do fim da rua, antes da saída pra
 floresta — a fala-gatilho que você pediu, agora em 3 partes)
 > (1) "Lia, filha, vem cá um instantinho."
 > (2) "É chato de perguntar, mas... me falaram que sua mãe não anda bem. É
