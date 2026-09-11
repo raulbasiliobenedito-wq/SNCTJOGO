@@ -1,10 +1,11 @@
 import pygame
 from enemy import (
-    CrystalStag, DarkWraith, Dragon, JanitorGuardian, Librarian, PossessedStudent,
+    CrystalStag, DarkWraith, JanitorGuardian, Librarian, PossessedStudent,
     Slime, SlimeKing, SmallSlime, Specimen,
 )
 from fog import FogBarrier
 from plataform import Platform
+from ramp import Ramp
 from settings import ASSET_DIR, HEIGHT, PLAYER_HEIGHT
 from tiled_map import TiledMap
 
@@ -141,6 +142,15 @@ class Level:
         # nenhum código novo de parsing (mesmo padrão de spawn/checkpoint/livro).
         self.hazards = self._make_hazards()
         self.water_zones = self._make_water_zones()
+        # Rampas: identificadas pelo PRÓPRIO TILE, não por objeto (ver
+        # TiledMap.tile_ramps/_load_tile_ramps) — um tile marcado com a
+        # propriedade "rampa" no tileset vira um triângulo (ramp.Ramp) do
+        # tamanho de uma célula sempre que for pintado na camada de
+        # Colisão, sem precisar posicionar nada na camada Entidades. Ficam
+        # de fora de self.grounds de propósito — colisão SAT de verdade
+        # contra o triângulo, não um AABB genérico (ver
+        # Game._resolve_ramp_collisions).
+        self.ramps = self._make_ramps()
         # Portas (ver LEIA-ME das salas) e achados opcionais: ambos vêm de
         # objetos tipados na camada Entidades, mesmo padrão de sempre. Achados
         # (self.artifacts) são deliberadamente separados de self.research —
@@ -174,13 +184,15 @@ class Level:
         self.spawn = self._map_spawn()
         self.surface_return = self.DEFAULT_SURFACE_RETURN
         self.enemies = self._make_enemies()
-        # Chefes de arena (Rei Slime na Fase 1, Dragão na Fase 3): não vêm de
-        # objeto do Tiled como os outros inimigos — são posicionados em
-        # código, no fim do percurso de cada fase, cada um com uma zona de
-        # câmera travada (ver Game._active_boss_arena). self.boss_arenas
-        # fica vazio nas salas e na Fase 2 (sem chefe de arena própria; os
-        # chefes dela — Espécime/Bibliotecário — já travam a tela pequena o
-        # bastante da sala secundária sem precisar de trava de câmera).
+        # Chefes de arena (Rei Slime na Fase 1): não vêm de objeto do Tiled
+        # como os outros inimigos — são posicionados em código, no fim do
+        # percurso de cada fase, cada um com uma zona de câmera travada
+        # (ver Game._active_boss_arena). self.boss_arenas fica vazio nas
+        # salas e na Fase 2 (sem chefe de arena própria; os chefes dela —
+        # Espécime/Bibliotecário — já travam a tela pequena o bastante da
+        # sala secundária sem precisar de trava de câmera). Fase 3 também
+        # fica sem arena própria por enquanto (Dragão removido, substituto
+        # ainda não implementado).
         self.boss_arenas = self._make_boss_arenas()
         # ORDEM IMPORTA: _make_boss_arenas acabou de possivelmente ESTICAR
         # self.world_width (a arena do Rei Slime soma
@@ -455,6 +467,75 @@ class Level:
             if item["width"] > 0 and item["height"] > 0
         ]
 
+    def _make_ramps(self):
+        """Rampas vêm do PRÓPRIO TILE (ver TiledMap.tile_ramps/
+        _load_tile_ramps), não de um objeto na camada Entidades: qualquer
+        tile pintado na camada de Colisão que tenha a propriedade "rampa"
+        no tileset (valor "direita" — sobe da esquerda pra direita, tipo
+        "/"; "esquerda" — sobe da direita pra esquerda, tipo "\\") vira um
+        triângulo do tamanho de uma célula, automaticamente, sem precisar
+        posicionar nada à parte.
+
+        _merge_ramp_tiles junta tiles-rampa vizinhos (mesma direção, uma
+        diagonal certinha) numa Ramp SÓ antes de virar objeto — pedido do
+        Raul (ela travava um pouco em cada emenda entre um tile-rampa e o
+        seguinte): sem isso, cada tile é um triângulo com suas PRÓPRIAS
+        arestas verticais/horizontais internas, que deviam ficar
+        escondidas dentro da rampa contínua; testar o SAT contra vários
+        triângulos pequenos em sequência fazia a Lia bater nessas arestas
+        bem na costura. Ver ramp.Ramp pra colisão SAT de verdade contra o
+        triângulo (não o quadrado inteiro)."""
+        if not self.tiled_map:
+            return []
+        return [
+            Ramp(x, y, width, height, str(direction).strip().casefold() not in ("esquerda", "left"))
+            for x, y, width, height, direction in self._merge_ramp_tiles(self.tiled_map.tile_ramps)
+        ]
+
+    @staticmethod
+    def _merge_ramp_tiles(tile_ramps):
+        """Encosta tiles-rampa vizinhos (mesma direção, andando exatamente
+        um tile na diagonal certa — ver _make_ramps) numa única faixa
+        (x, y, width, height, direção), do início ao fim da corrente, sem
+        nenhuma emenda no meio."""
+        by_position = {(x, y): (x, y, w, h, d) for x, y, w, h, d in tile_ramps}
+        used = set()
+        merged = []
+        for key in by_position:
+            if key in used:
+                continue
+            x, y, w, h, direction = by_position[key]
+            rising_right = str(direction).strip().casefold() not in ("esquerda", "left")
+            # "direita" sobe indo pra direita (y diminui a cada tile);
+            # "esquerda" desce indo pra direita (y aumenta a cada tile).
+            step_y = -h if rising_right else h
+            # Volta até o INÍCIO da corrente — sem isso, um merge que
+            # começasse no meio perderia os tiles anteriores dela.
+            start_x, start_y = x, y
+            while (start_x - w, start_y - step_y) in by_position:
+                previous = by_position[(start_x - w, start_y - step_y)]
+                if previous[4] != direction:
+                    break
+                start_x -= w
+                start_y -= step_y
+            chain = []
+            cx, cy = start_x, start_y
+            while (
+                (cx, cy) in by_position
+                and by_position[(cx, cy)][4] == direction
+                and (cx, cy) not in used
+            ):
+                chain.append((cx, cy))
+                used.add((cx, cy))
+                cx += w
+                cy += step_y
+            left = min(px for px, _ in chain)
+            top = min(py for _, py in chain)
+            right = max(px for px, _ in chain) + w
+            bottom = max(py for _, py in chain) + h
+            merged.append((left, top, right - left, bottom - top, direction))
+        return merged
+
     def _map_spawn(self):
         item = self.tiled_map.entity("spawn")
         if not item:
@@ -600,19 +681,6 @@ class Level:
     # fim do mundo colada na arena.
     SLIME_KING_ARENA_MARGIN = 300
 
-    # A arena do Dragão agora é objeto tipo "dragao" na camada Entidades,
-    # igual ao rei_slime (pedido do Raul) — o retângulo do objeto vira o
-    # "chão" que Dragon(_StaticZone(...)) usa pra se posicionar (ele não
-    # anda mais, ver enemy.Dragon, então isso só define onde ele nasce +
-    # o quanto os pedaços de pedra do Terremoto podem se espalhar). Ainda
-    # precisa ter chão de verdade (Colisão) pintado por baixo, mesma
-    # dependência de sempre. DRAGON_ARENA_LEFT/WIDTH abaixo viram só o
-    # FALLBACK (mapa antigo sem o objeto ainda) — ver _make_boss_arenas.
-    # x alinhado a um tile (múltiplo de 32) — precisa bater com uma chave de
-    # self.column_tops, que só guarda o topo real de cada COLUNA de tile.
-    DRAGON_ARENA_LEFT = 8576
-    DRAGON_ARENA_WIDTH = 1200
-
     def _make_boss_arenas(self):
         arenas = []
         # Pedido do Raul: o Rei Slime nascia sempre em código, colado no
@@ -624,7 +692,7 @@ class Level:
         # .rect pra reaproveitar Slime/SlimeKing sem precisar de uma
         # Platform de verdade, ver classe acima). Posição 100% livre no
         # Tiled — só precisa ter chão de verdade (Colisão) pintado por
-        # baixo, mesma dependência que a arena do Dragão já tem hoje.
+        # baixo.
         if self.index == 0 and not self.room and self.tiled_map:
             item = self.tiled_map.entity("rei_slime")
             if item:
@@ -638,23 +706,11 @@ class Level:
                 self.world_width = max(
                     self.world_width, zone_rect.right + self.SLIME_KING_ARENA_MARGIN
                 )
-        if self.index == 2 and not self.room and self.tiled_map:
-            item = self.tiled_map.entity("dragao")
-            if item:
-                span = self._rect_from_object(item)
-            else:
-                # Fallback: mapa antigo sem o objeto "dragao" ainda —
-                # reaproveita o trecho de chão fixo de sempre.
-                floor = self.column_tops.get(self.DRAGON_ARENA_LEFT)
-                span = (
-                    pygame.Rect(self.DRAGON_ARENA_LEFT, floor.top, self.DRAGON_ARENA_WIDTH, floor.height)
-                    if floor is not None else None
-                )
-            if span is not None:
-                boss = Dragon(_StaticZone(span))
-                self.enemies.append(boss)
-                zone = pygame.Rect(span.left - 60, 0, span.width + 120, self.world_height)
-                arenas.append({"zone": zone, "enemy": boss})
+        # Fase 3 (index == 2) fica sem chefe de arena por enquanto — o
+        # Dragão foi removido (será substituído por uma Caveira, ainda não
+        # implementada). O objeto "dragao" pode continuar existindo no
+        # .tmx sem problema: só fica sem leitor, igual a qualquer objeto
+        # órfão do Tiled.
         return arenas
 
     NPC_WIDTH = 48
@@ -847,7 +903,7 @@ class Level:
              stag_sprites=None, wraith_sprites=None,
              student_sprites=None, janitor_sprites=None, specimen_sprites=None,
              artifact_image=None, artifacts_collected=None, librarian_sprites=None,
-             small_slime_sprites=None, slime_king_sprites=None, dragon_sprites=None,
+             small_slime_sprites=None, slime_king_sprites=None,
              npc_frames=None,
              tool_icon=None, tools_collected=None,
              energy_box_sprites=None, energy_box_state=None,
@@ -913,8 +969,6 @@ class Level:
                 enemy.draw(surface, camera_x, camera_y, librarian_sprites)
             elif isinstance(enemy, SlimeKing):
                 enemy.draw(surface, camera_x, camera_y, slime_king_sprites)
-            elif isinstance(enemy, Dragon):
-                enemy.draw(surface, camera_x, camera_y, dragon_sprites)
             elif isinstance(enemy, SmallSlime):
                 enemy.draw(surface, camera_x, camera_y, small_slime_sprites)
             else:
@@ -925,14 +979,12 @@ class Level:
 
     def _draw_enemy_attack_hazards(self, surface, camera_x, camera_y):
         """Pinta um aviso translúcido sobre cada hazard de ataque ativo (o
-        feixe do jato, a onda do Silêncio, os tomos do Errata, as pedras do
-        Dragão) — sem isso o jogador só veria a hitbox por levar dano, não
-        por enxergar a ameaça, o oposto do que os LEIA-ME pedem ("comunicar
-        a mecânica sem tutorial"). overlay_hazards (opcional, ver
-        enemy.Dragon) deixa um chefe excluir daqui hazards que já têm aviso
-        visual próprio (ex.: o jato do Sopro, que agora tem arte de fogo de
-        verdade — ver Dragon._draw_sopro_fire) sem afetar o dano de
-        verdade — quem decide dano é sempre active_hazards, nunca isso
+        feixe do jato, a onda do Silêncio, os tomos do Errata) — sem isso
+        o jogador só veria a hitbox por levar dano, não por enxergar a
+        ameaça, o oposto do que os LEIA-ME pedem ("comunicar a mecânica
+        sem tutorial"). overlay_hazards (opcional) deixa um chefe excluir
+        daqui hazards que já têm aviso visual próprio, sem afetar o dano
+        de verdade — quem decide dano é sempre active_hazards, nunca isso
         aqui."""
         for enemy in self.enemies:
             if not enemy.alive:
@@ -1082,6 +1134,16 @@ class Level:
         if self.lab_bench is None:
             return
         bench = self.lab_bench["rect"]
+
+        # Arte de verdade da bancada (bancada_madeira/bancada_microscopio,
+        # já mostra a mesa com o microscópio em cima quando montado) — cai
+        # pro retângulo de placeholder só se o arquivo ainda não existir em
+        # images/objects (ver Game._load_puzzle_sprites).
+        bench_image = sprites.get("bench_assembled" if assembled else "bench_empty")
+        if bench_image is not None:
+            self._draw_lab_bench_image(surface, camera_x, camera_y, bench, bench_image)
+            return
+
         bench_color = (102, 220, 160) if assembled else (168, 112, 67)
         pygame.draw.rect(
             surface, bench_color,
@@ -1102,6 +1164,24 @@ class Level:
                     bench.bottom - complete.get_height() - camera_y,
                 ),
             )
+
+    @staticmethod
+    def _draw_lab_bench_image(surface, camera_x, camera_y, bench, image):
+        """Escala mantendo a proporção da arte (pra não esticar/achatar o
+        pixel art) pela LARGURA do objeto colocado no Tiled, e apoia a
+        base da imagem no fundo do retângulo — mesmo esquema de "objeto
+        cravado no chão" usado pelos outros props, então funciona
+        independente do tamanho exato que a bancada_*.png tiver."""
+        width, height = image.get_size()
+        if width <= 0:
+            return
+        scale = bench.width / width
+        scaled_size = (round(width * scale), round(height * scale))
+        if scaled_size != (width, height):
+            image = pygame.transform.scale(image, scaled_size)
+        x = bench.centerx - image.get_width() // 2 - camera_x
+        y = bench.bottom - image.get_height() - camera_y
+        surface.blit(image, (x, y))
 
     # ~8 fps de animação (cientistas_idle.png) — ver LEIA-ME_cientistas.md.
     NPC_ANIMATION_TICKS_PER_FRAME = 7

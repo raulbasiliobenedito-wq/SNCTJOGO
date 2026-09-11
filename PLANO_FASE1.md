@@ -76,12 +76,15 @@ verticais curtos: a sala de controle em cima e o laboratório embaixo).
   borda do poço (ver `Level._fixed_lever`), então não é bloqueante —
   só use se quiser ajustar a posição exata em cima de um tile
   específico.
-- `painel` (único)
-- `botao` x4, cada um com propriedade `ordem` (1 a 4 — a sequência certa
-  de aperto)
-- `parte_microscopio` x4, cada um com propriedades `nome` (Lente/Base/
-  Luz/Ocular) e `ordem` (1 a 4)
-- `bancada` (única)
+- ~~`painel`/`botao`/`parte_microscopio`/`bancada`~~ — puzzle antigo do
+  laboratório subterrâneo, REMOVIDO do mapa. O microscópio que conta pra
+  passar de fase agora é o do laboratório escondido
+  (`fase1_laboratorio_secreto.tmx`, objetos `peca_microscopio`/
+  `bancada_microscopio`, já construído), alcançado pelo `elevador_lab`
+  depois de destravar a `neblina` (ver `chave="campo_contencao_lab"` já
+  nos dois objetos do `fase1_escola.tmx`). `painel`/`botao` ainda existem
+  no mapa por enquanto (puzzle isolado, sem efeito real — só apague se
+  quiser limpar de vez).
 - `rei_slime`: um único objeto, retângulo do tamanho da área de patrulha
   do chefe, sobre chão de verdade (Colisão) já pintado
 - Grupo de objetos chamado **"Rota Retorno"**: plataformas que só faria

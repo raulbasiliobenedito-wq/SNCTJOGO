@@ -317,6 +317,53 @@ MICROSCOPE_NOUN = {
     "ocular": "a ocular",
 }
 
+#: Deslocamento (em pixels NATIVOS, antes de qualquer escala) de cada
+#: peça em relação ao canto superior-esquerdo do microscópio montado —
+#: veio direto de quem gerou microscope_body.png + microscope_{lens,
+#: ocular,light,base}.png recortando as MESMAS coordenadas do microscópio
+#: já desenhado em bancada_microscopio.png (ver conversa no chat: 0px de
+#: diferença por construção). Usado só pra recompor visualmente o
+#: "montado" do minigame a partir das peças de verdade — ver
+#: _compose_microscope — em vez de uma imagem solta desenhada à parte,
+#: que podia ficar "parecida" mas não igual se algum dia uma peça mudar.
+MICROSCOPE_PART_OFFSETS = {
+    "objetiva": (21, 15),
+    "ocular": (21, -1),
+    "iluminador": (13, 36),
+    "base": (0, 47),
+}
+MICROSCOPE_BODY_OFFSET = (3, 8)
+
+#: Fator de ampliação aplicado ao conjunto JÁ composto (não peça por
+#: peça) — pygame.transform.scale (nearest-neighbor, sem suavizar) pra
+#: manter o pixel art nítido. Composto nativo fica pequeno (a objetiva
+#: sozinha tem só 14x17), então precisa desse fator pra não sumir no
+#: painel de 1080x680 do minigame.
+MICROSCOPE_COMPOSE_SCALE = 4
+
+
+def _compose_microscope(sprites_by_identity, body_sprite):
+    """Recompõe o microscópio "montado" a partir de microscope_body.png +
+    as 4 peças (as MESMAS imagens usadas nos encaixes/peças arrastáveis),
+    cada uma no deslocamento nativo de MICROSCOPE_PART_OFFSETS/
+    MICROSCOPE_BODY_OFFSET, e só então amplia o conjunto inteiro de uma
+    vez (MICROSCOPE_COMPOSE_SCALE) — nunca peça por peça, senão
+    arredondamentos diferentes por peça podem desalinhar 1px entre elas."""
+    parts = [(body_sprite, MICROSCOPE_BODY_OFFSET)]
+    parts += [
+        (sprites_by_identity[identity], offset)
+        for identity, offset in MICROSCOPE_PART_OFFSETS.items()
+    ]
+    min_x = min(x for _, (x, y) in parts)
+    min_y = min(y for _, (x, y) in parts)
+    max_x = max(x + img.get_width() for img, (x, y) in parts)
+    max_y = max(y + img.get_height() for img, (x, y) in parts)
+    native = pygame.Surface((max_x - min_x, max_y - min_y), pygame.SRCALPHA)
+    for img, (x, y) in parts:
+        native.blit(img, (x - min_x, y - min_y))
+    size = (native.get_width() * MICROSCOPE_COMPOSE_SCALE, native.get_height() * MICROSCOPE_COMPOSE_SCALE)
+    return pygame.transform.scale(native, size)
+
 
 class MicroscopeMinigame(_BaseMinigame):
     """Painel central: à esquerda 4 encaixes empilhados (base embaixo,
@@ -336,7 +383,7 @@ class MicroscopeMinigame(_BaseMinigame):
     PANEL_SIZE = (1080, 680)
     COMPLETE_HOLD_FRAMES = 120  # 2s a 60fps
 
-    def __init__(self, width, height, sprites_by_identity, complete_sprite, slots_state, key=None):
+    def __init__(self, width, height, sprites_by_identity, complete_sprite, slots_state, key=None, body_sprite=None):
         super().__init__()
         # `key` opcional: o laboratório escondido (ver a conversa sobre o
         # elevador) reaproveita esta MESMA classe pra uma segunda bancada,
@@ -348,7 +395,16 @@ class MicroscopeMinigame(_BaseMinigame):
         self.width = width
         self.height = height
         self.sprites = sprites_by_identity
-        self.complete_sprite = complete_sprite
+        if body_sprite is not None:
+            # Recompõe do corpo + as 4 peças de verdade (ver
+            # _compose_microscope) em vez da imagem solta
+            # microscope_complete.png — o "montado" do minigame passa a
+            # ser literalmente as mesmas peças que o jogador arrastou, não
+            # uma arte parecida à parte. Sem microscope_body.png salvo
+            # ainda em images/objects, cai pro complete_sprite de sempre.
+            self.complete_sprite = _compose_microscope(sprites_by_identity, body_sprite)
+        else:
+            self.complete_sprite = complete_sprite
         self.slots_state = slots_state  # {"base": bool, ...} — persistido em Game
 
         panel_w, panel_h = self.PANEL_SIZE

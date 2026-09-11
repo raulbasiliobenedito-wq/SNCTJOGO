@@ -75,8 +75,11 @@ class FogBarrier:
 
     #: Fração (0..1) da largura NATIVA (480px, ver build_pixel_anim.py) em
     #: que fica a "linha de base" da curva ondulada da borda (constante 89
-    #: em edge_x()) — usada pra ancorar o quadro animado de verdade no X
-    #: real da barreira, não importa em que resolução ele foi carregado.
+    #: em edge_x()). NÃO é mais usada por _draw_animated (que passou a
+    #: desenhar uma cópia só alinhada com a câmera, sem ladrilhar numa
+    #: grade fixa a partir de rect.x — ver docstring de _draw_animated) —
+    #: mantida só de referência caso a arte volte a precisar de um
+    #: alinhamento fino num X específico do mundo.
     FRAME_EDGE_ANCHOR_FRACTION = 89 / 480
 
     #: Quadros por segundo do loop de verdade (ver animacao.json/"fps").
@@ -212,25 +215,29 @@ class FogBarrier:
 
     def _draw_animated(self, surface, camera_x, camera_y):
         """Desenha a animação de verdade (ver módulo/build_pixel_anim.py).
-        Os quadros vêm em 480x270 nativo e são ampliados pra o tamanho da
-        superfície de mundo (1920x1080) na hora de desenhar, via
-        _scaled_frame — o resultado é o mesmo de quando eles já vinham
-        ampliados do carregamento, e a conta de ladrilho abaixo continua
-        toda em cima do tamanho AMPLIADO, não do nativo. Ancora o quadro
-        com ROSTOS bem no canto superior da barreira (linha de base da
-        curva em rect.x), e ladrilha o resto (pra cobrir uma barreira maior
-        que uma tela) só com `frames_corpo` (sem rosto) — assim nenhuma
-        cara se repete."""
+
+        Pedido do Raul (repetição visível lá em cima, na margem de céu
+        acima do topo real do mapa — ver SKY_MARGIN em
+        Level._make_fog_barriers): a versão antiga ladrilhava várias
+        cópias do quadro numa grade fixa a partir de rect.top pra cobrir a
+        barreira inteira (que é bem mais alta que uma tela só), e como a
+        câmera raramente cai exatamente numa borda de ladrilho, dava pra
+        ver a costura entre duas cópias na tela. Agora é sempre UMA cópia
+        só por quadro de jogo: o frame já vem ampliado pro tamanho exato
+        da tela (ver _scaled_frame) e é blitado alinhado com a câmera, não
+        com uma grade fixa — cobre exatamente a parte visível, sem
+        precisar de nenhuma outra cópia acima/abaixo/do lado pra completar
+        nada. Só mostra os ROSTOS quando a câmera está mesmo olhando pra
+        perto da entrada de verdade (y=0, o topo real do mapa); fora
+        dessa faixa usa `frames_corpo` (a mesma massa sem rosto, pensada
+        pra não repetir cara nenhuma)."""
         frame_w, frame_h = surface.get_size()
-        anchor_x = self.rect.x - round(frame_w * self.FRAME_EDGE_ANCHOR_FRACTION)
-        # Level._make_fog_barriers estica rect.top bem pra cima do topo
-        # real do mapa (SKY_MARGIN, pra não sobrar brecha de céu acima da
-        # parede) — "linha 0" nem sempre é onde o jogador realmente
-        # encontra a névoa. `anchor_row` acha a linha que cai o mais perto
-        # possível de y=0 (o topo de verdade do mapa) pra mostrar os
-        # rostos ali, não lá em cima na margem de céu que quase nunca
-        # aparece na câmera.
-        anchor_row = round(-self.rect.top / frame_h)
+        screen_w, screen_h = surface.get_size()
+        view = pygame.Rect(camera_x, camera_y, screen_w, screen_h)
+
+        visible = self.rect.clip(view)
+        if visible.width <= 0 or visible.height <= 0:
+            return
 
         idx = int(self._time * self.FRAME_FPS) % len(self.frames)
         progress = (self._dissipate_elapsed / self.DISSIPATE_FRAMES) if self._dissipating else 0.0
@@ -238,33 +245,20 @@ class FogBarrier:
         if alpha <= 0:
             return
 
-        screen_w, screen_h = surface.get_size()
-        view = pygame.Rect(camera_x, camera_y, screen_w, screen_h)
+        # Faixa (em coordenadas de mundo) onde a arte da cara faz sentido:
+        # perto do topo real do mapa. Se a câmera não estiver olhando pra
+        # ali agora, usa a massa sem rosto.
+        face_band = pygame.Rect(self.rect.x, 0, self.rect.width, frame_h)
+        source = self.frames if view.colliderect(face_band) else (self.frames_corpo or self.frames)
+        frame_img = self._scaled_frame(source, idx, (frame_w, frame_h))
+        frame_img.set_alpha(alpha)
 
-        # Colunas/linhas de ladrilho que realmente cruzam a tela — nunca
-        # menos que zero (não tem nada pra desenhar à esquerda da borda de
-        # verdade, essa área já é o lado livre).
-        col_start = max(0, (view.left - anchor_x) // frame_w)
-        col_end = min(5, max(0, (min(view.right, self.rect.right) - anchor_x) // frame_w))
-        row_start = max(0, (view.top - self.rect.top) // frame_h)
-        row_end = min(5, max(0, (min(view.bottom, self.rect.bottom) - self.rect.top) // frame_h))
-
-        for row in range(int(row_start), int(row_end) + 1):
-            tile_y = self.rect.top + row * frame_h
-            if tile_y >= self.rect.bottom:
-                continue
-            for col in range(int(col_start), int(col_end) + 1):
-                tile_x = anchor_x + col * frame_w
-                if tile_x >= self.rect.right:
-                    continue
-                # Só o ladrilho da linha-âncora (perto de y=0, a entrada
-                # de verdade) na primeira coluna mostra os rostos; o resto
-                # usa a massa lisa pra não repetir a mesma cara em vários
-                # lugares (inclusive na margem de céu lá em cima).
-                source = self.frames if (row == anchor_row and col == 0) else (self.frames_corpo or self.frames)
-                frame_img = self._scaled_frame(source, idx, (frame_w, frame_h))
-                frame_img.set_alpha(alpha)
-                surface.blit(frame_img, (tile_x - camera_x, tile_y - camera_y))
+        # Só a parte do quadro (já do tamanho da tela) que cai dentro do
+        # pedaço realmente visível da barreira — evita pintar fog além do
+        # rect de verdade quando ele é mais estreito que a tela (perto da
+        # borda direita do mapa, por exemplo).
+        area = pygame.Rect(visible.x - view.x, visible.y - view.y, visible.width, visible.height)
+        surface.blit(frame_img, (area.x, area.y), area=area)
 
     def _draw_procedural(self, surface, camera_x, camera_y):
         # Só monta/desenha o pedaço que cabe na tela — o retângulo real

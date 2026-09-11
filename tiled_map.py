@@ -67,6 +67,13 @@ class TiledMap:
         self.foreground_tiles = []
         self.foreground_animated_tiles = []
         self.tile_collisions = []
+        # Tiles marcados com a propriedade "rampa" (ver _load_tile_ramps)
+        # pintados na camada de Colisão saem daqui em vez de virar um
+        # retângulo cheio em tile_collisions — ver _read_tile_layer.
+        # Cada item é (x, y, width, height, direção), lido por
+        # Level._make_ramps pra montar um ramp.Ramp (triângulo, colisão
+        # SAT) por tile.
+        self.tile_ramps = []
         self.object_groups = {}
         self.elapsed_ms = 0.0
         # Cache de tiles espelhados/girados (ver _oriented_image).
@@ -202,6 +209,9 @@ class TiledMap:
             "tile_width": tile_w,
             "tile_height": tile_h,
             "animations": self._load_animations(tileset_root),
+            # Ver _load_tile_ramps: tile individual marcado como rampa no
+            # tileset, lido de volta em _read_tile_layer.
+            "tile_ramps": self._load_tile_ramps(tileset_root),
             # "escala" (propriedade opcional do tileset no Tiled): amplia o
             # recorte de cada tile desse tileset na hora de desenhar, sem
             # mexer no tamanho real da arte nem no grid do mapa — usado pra
@@ -268,6 +278,7 @@ class TiledMap:
             "tiles": tiles,
             "scale": scale,
             "animations": self._load_animations(tileset_root),
+            "tile_ramps": self._load_tile_ramps(tileset_root),
         }
         tileset["animation_frames"] = {
             local_id: [
@@ -310,6 +321,24 @@ class TiledMap:
                 animations[local_id] = frames
         return animations
 
+    @staticmethod
+    def _load_tile_ramps(tileset_root):
+        """Lê a propriedade "rampa" de tiles individuais (Tiled: clique
+        com o botão direito no tile dentro do tileset > Tile Properties >
+        adicione uma propriedade de texto chamada "rampa", valor
+        "direita" ou "esquerda"). Um tile marcado assim vira um triângulo
+        do tamanho de UMA célula (ver ramp.Ramp) sempre que for pintado na
+        camada de Colisão, em vez do quadrado cheio de sempre — sem
+        precisar de nenhum objeto na camada Entidades (ver
+        Level._make_ramps/_read_tile_layer). Uma fileira de tiles-rampa
+        encostados forma uma rampa contínua sozinha."""
+        ramps = {}
+        for tile in tileset_root.findall("tile"):
+            direction = TiledMap._properties(tile).get("rampa")
+            if direction:
+                ramps[int(tile.get("id", 0))] = direction
+        return ramps
+
     def _read_layers(self, root):
         """Percorre camadas e grupos de objetos RECURSIVAMENTE.
 
@@ -346,11 +375,22 @@ class TiledMap:
             row = index // layer_width + layer_y
             x = column * self.tile_width
             y = row * self.tile_height
-            if creates_collision:
-                self.tile_collisions.append(
-                    pygame.Rect(x, y, self.tile_width, self.tile_height)
-                )
             tileset, local_id = self._tileset_for_gid(gid)
+            if creates_collision:
+                ramp_direction = (
+                    tileset.get("tile_ramps", {}).get(local_id) if tileset else None
+                )
+                if ramp_direction:
+                    # Tile marcado como rampa (ver _load_tile_ramps): vira
+                    # um triângulo em tile_ramps, NÃO um quadrado cheio em
+                    # tile_collisions — Level._make_ramps lê essa lista.
+                    self.tile_ramps.append(
+                        (x, y, self.tile_width, self.tile_height, ramp_direction)
+                    )
+                else:
+                    self.tile_collisions.append(
+                        pygame.Rect(x, y, self.tile_width, self.tile_height)
+                    )
             if tileset is None:
                 continue
             if tileset.get("kind") == "collection" and local_id not in tileset["tiles"]:

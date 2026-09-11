@@ -66,7 +66,6 @@ ITEM_DEFS = {
     "livro_magico": {"row": 3, "name": "Livro Mágico", "kind": "quest", "phase": 1},
     "amostra_especime": {"row": 4, "name": "Amostra de Espécime", "kind": "quest", "phase": 1},
     "dark_crystal": {"row": 5, "name": "Dark Crystal", "kind": "consumable", "heal": 1, "shield": 1, "key": "k_3"},
-    "sangue_dragao": {"row": 6, "name": "Sangue do Dragão", "kind": "quest", "phase": 2},
     # Ferramenta da caixa de energia (Fase 2, laboratório — ver
     # PLANO_MINIGAMES.md §3). "tool": nem "consumable" nem "quest" — não
     # ganha tecla de uso (ITEM_USE_KEYS só pega "consumable", abaixo) nem
@@ -82,15 +81,19 @@ ITEM_DEFS = {
 }
 ITEM_ORDER = (
     "gororoba", "essencia_slime", "carcaca_robo", "livro_magico",
-    "amostra_especime", "dark_crystal", "sangue_dragao", "chave_fenda",
+    "amostra_especime", "dark_crystal", "chave_fenda",
 )
 # Itens de pesquisa exigidos por fase pra liberar o avanço (ver
 # _advance_level_if_ready) — Fase 2 depende dos dois chefes de sala
 # (biblioteca e laboratório), então os dois deixam de ser opcionais.
+# Fase 3 (índice 2) ficou sem exigência por enquanto: o Dragão saiu do
+# jogo (vai virar a Caveira, refeita do zero — pedido do Raul) e não tem
+# chefe nenhum ainda pra soltar um item de pesquisa novo. Sem isso a fase
+# ficaria travada pra sempre esperando um drop que não existe mais.
 PHASE_REQUIRED_ITEMS = {
     0: ("essencia_slime",),
     1: ("livro_magico", "amostra_especime"),
-    2: ("sangue_dragao",),
+    2: (),
 }
 # Tecla pgzero -> item consumível (derivado de ITEM_DEFS, só pros 3 que têm
 # uso ativo; os 4 de pesquisa nunca são "usados").
@@ -104,23 +107,20 @@ BOSS_DROP_TABLE = {
     "SlimeKing": "essencia_slime",
     "Librarian": "livro_magico",
     "Specimen": "amostra_especime",
-    "Dragon": "sangue_dragao",
 }
 # Nome de exibição de cada chefe, usado só pela barra de vida (ver
-# Game._draw_boss_health_bar) — mesmas 4 chaves de BOSS_DROP_TABLE.
+# Game._draw_boss_health_bar) — mesmas chaves de BOSS_DROP_TABLE.
 BOSS_NAMES = {
     "SlimeKing": "Rei Slime",
     "Librarian": "Bibliotecário",
     "Specimen": "Espécime",
-    "Dragon": "Dragão",
 }
 # Nome da faixa em music/ (ver PLANO_AUDIO.md) tocada enquanto cada chefe
-# está acordado — mesmas 4 chaves de BOSS_DROP_TABLE/BOSS_NAMES.
+# está acordado — mesmas chaves de BOSS_DROP_TABLE/BOSS_NAMES.
 BOSS_MUSIC = {
     "SlimeKing": "rei_slime_music",
     "Librarian": "bibliotecario_music",
     "Specimen": "especime_music",
-    "Dragon": "dragao_music",
 }
 # Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
 ENEMY_DROP_TABLE = {
@@ -135,7 +135,7 @@ ATTACK_DURATION = 11
 ATTACK_COOLDOWN = 20
 # Dano base do golpe corpo a corpo. Calibrado contra enemy.HEALTH:
 # Slime(2)=2 golpes, CrystalStag(3)=3, JanitorGuardian(4)=4, chefes(12)=12
-# golpes normais ou 6 finalizadores de combo, Dragon(16)=16 tiros de longe.
+# golpes normais ou 6 finalizadores de combo.
 # Esteve em 100 (valor de depuração): TODO chefe morria em um único golpe,
 # e o combo/dash/parry — que dão 2 e 3 — eram PUNIÇÕES, não recompensas.
 STANDARD_ATTACK_POWER = 1
@@ -190,21 +190,12 @@ HIT_STOP_FRAMES = 2
 PARRY_SHAKE_DURATION = 14
 PARRY_SHAKE_MAGNITUDE = 6
 
-# Tremor do impacto do Terremoto do Dragão (ver enemy.Dragon._start_
-# terremoto_slam/consume_shake_event e Game._check_boss_shake_events) —
-# pedido do Raul: uns 5 segundos tremendo (300 quadros a 60fps) enquanto
-# MUITOS pedaços da caverna caem (ver Dragon.TERREMOTO_ROCK_TOTAL). A
-# magnitude decai sozinha ao longo da duração (ver _shake_offset), então
-# começa forte e vai assentando — não fica 5s inteiros no talo.
 # Acordar de chefe (pedido antigo do Raul, IDEIAS_FUTURAS.md): a mesma
 # infra de shake do parry, mais uma chuva de poeira caindo do teto da
 # arena. Curto e forte — é uma pontuação, não um terremoto.
 BOSS_WAKE_SHAKE_DURATION = 20
 BOSS_WAKE_SHAKE_MAGNITUDE = 9
 BOSS_WAKE_DUST_COUNT = 14
-
-EARTHQUAKE_SHAKE_DURATION = 300
-EARTHQUAKE_SHAKE_MAGNITUDE = 14
 
 # Ataque à distância: desbloqueado ao concluir a Fase 1 (ver
 # _advance_level_if_ready). Cooldown baixo de propósito (quase semi-
@@ -470,7 +461,6 @@ class Game:
         self.librarian_sprites = self._load_librarian_sprites()
         self.small_slime_sprites = self._load_small_slime_sprites()
         self.slime_king_sprites = self._load_slime_king_sprites()
-        self.dragon_sprites = self._load_dragon_sprites()
         self.item_icons = self._load_item_icons()
         self.energy_box_sprites = self._load_energy_box_sprites()
         # Elevador secreto do laboratório escondido (ver
@@ -532,6 +522,29 @@ class Game:
         registra o caminho em sprites.missing — antes cada lugar tinha seu
         próprio jeito de "não achou, tudo bem" e nada ficava anotado."""
         return load_optional(ASSET_DIR / "objects" / filename)
+
+    @staticmethod
+    def _load_microscope_asset(filename, optional=False):
+        """As 5 peças do microscópio (lens/base/light/ocular/complete/body)
+        moraram soltas direto em images/objects, mas o Raul organizou numa
+        subpasta própria (images/objects/microscope/). Tenta a subpasta
+        primeiro e cai pro caminho antigo e achatado se não achar — assim
+        funciona tanto antes quanto depois da mudança, sem depender de
+        quando cada arquivo foi movido. `optional=True` devolve None se não
+        achar em nenhum dos dois lugares (mesmo padrão de
+        sprites.load_optional); do contrário, estoura — as 4 peças e o
+        "montado" sempre existiram, então sumir é bug de verdade, não
+        arte-que-ainda-não-chegou."""
+        objects_dir = ASSET_DIR / "objects"
+        for candidate in (objects_dir / "microscope" / filename, objects_dir / filename):
+            if candidate.exists():
+                return pygame.image.load(candidate).convert_alpha()
+        if optional:
+            return None
+        raise FileNotFoundError(
+            f"Peça de microscópio não encontrada em images/objects/microscope/ nem em "
+            f"images/objects/: {filename}"
+        )
 
     @staticmethod
     def _load_fog_frame_sequence(subfolder, prefix, count=24):
@@ -792,12 +805,23 @@ class Game:
                 for frame in range(1, 6)
             ],
             "microscope_parts": [
-                pygame.image.load(objects_dir / f"microscope_{name}.png").convert_alpha()
+                self._load_microscope_asset(f"microscope_{name}.png")
                 for name in ("lens", "base", "light", "ocular")
             ],
-            "microscope_complete": pygame.image.load(
-                objects_dir / "microscope_complete.png"
-            ).convert_alpha(),
+            "microscope_complete": self._load_microscope_asset("microscope_complete.png"),
+            # Peça "de fundo" (coluna/braço em C/platina/botões) pra
+            # recompor o microscópio montado a partir das 4 peças de
+            # verdade em vez de uma imagem solta (ver
+            # minigame._compose_microscope). Opcional: sem o arquivo
+            # ainda, MicroscopeMinigame cai pro microscope_complete.png.
+            "microscope_body": self._load_microscope_asset("microscope_body.png", optional=True),
+            # Bancada de verdade do laboratório escondido (ver
+            # Level._draw_lab_microscope) — arte nova do Raul, já mostra a
+            # mesa com/sem o microscópio montado em cima, então substitui o
+            # retângulo colorido de placeholder. Opcional: sem os arquivos
+            # ainda em images/objects/, cai pro retângulo de sempre.
+            "lab_bench_empty": self._load_microscope_asset("bancada_madeira.png", optional=True),
+            "lab_bench_assembled": self._load_microscope_asset("bancada_microscopio.png", optional=True),
             "buttons": [
                 pygame.transform.scale(
                     pygame.image.load(objects_dir / f"button_{color}.png").convert_alpha(),
@@ -953,26 +977,9 @@ class Game:
         )
         return {"walk": rows[1], "hurt": rows[2], "dead": rows[3]}
 
-    # slime_king.png/dragon.png já nascem grandes (64x64/324x265); esta
-    # escala é só o empurrão extra pedido no LEIA-ME pra eles lerem como os
-    # maiores do jogo, o topo da hierarquia de tamanho.
+    # slime_king.png já nasce grande (64x64); esta escala é só o empurrão
+    # extra pedido no LEIA-ME pra ele ler como um dos maiores do jogo.
     SLIME_KING_SCALE = 1.3
-    # Folha nova do Dragão (2026-08, 9 quadros de 324x265 desenhados pelo
-    # Raul) já nasce bem maior em pixels crus que a antiga (112x96) — daí a
-    # escala em si ser menor que antes (era 2.4), mas o resultado final
-    # ainda é BEM maior (324*2.0=648 x 265*2.0=530, quase 1/3 da largura da
-    # tela de 1920 — pedido explícito: "ele será BEM maior do que o atual
-    # já é... enorme"). Ver Dragon.WIDTH/HEIGHT em enemy.py pro ajuste
-    # equivalente da hitbox (menor que o visual, mesmo padrão já usado nos
-    # outros inimigos).
-    DRAGON_SCALE = 2.0
-    # Pedido do Raul: pedaços de pedra do Terremoto maiores (dragon_rock.png
-    # nasce só 24x24, pequeno demais perto do Dragão enorme). A hitbox
-    # (Dragon.ROCK_SIZE, em enemy.py) foi atualizada pra bater com o
-    # mesmo tamanho final (24 * 2.2 arredondado = 53) — pedido do Raul:
-    # "aumente a hitbox dos meteoros para ficarem iguais ao tamanho deles".
-    # Mudar este número aqui exige atualizar ROCK_SIZE lá também.
-    ROCK_SPRITE_SCALE = 2.2
 
     def _load_slime_king_sprites(self):
         """slime_king.png: quadro 64x64, grade 12x6 — repouso(8)/pulo(8)/
@@ -985,59 +992,6 @@ class Game:
             "attack_a": rows[2], "attack_b": rows[3],
             "hurt": rows[4], "dead": rows[5],
         }
-
-    def _load_dragon_sprites(self):
-        """dragon.png: folha nova do Raul (2026-08), UMA fileira só de 9
-        quadros de 324x265 — 1 idle, 2 sopro (jato de fogo), 3 voo
-        (decolagem/pairando) e 3 terremoto (batendo no chão), ver
-        enemy.Dragon._sprite_key pro mapeamento exato de cada estado pra
-        cada fatia. As pedras da queda do Terremoto (reaproveitadas da
-        antiga Brasas) usam dragon_rock.png (24x24, 8 quadros: queda/
-        impacto/explosão), desenhadas à parte pelo próprio Dragon.draw.
-
-        Sem mais meteor/danger_marker aqui — o antigo ataque Voo da Fúria
-        (meteoros mirados no chão) saiu de cena, ver docstring de
-        enemy.Dragon."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "dragon.png", 324, 265, [9], scale=self.DRAGON_SCALE
-        )
-        frames = rows[0]
-        rock_rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "dragon_rock.png", 24, 24, [8], scale=self.ROCK_SPRITE_SCALE
-        )
-        sopro_ember, sopro_flame = self._load_dragon_fire_sprites()
-        return {
-            "idle": frames[0:1],
-            "sopro": frames[1:3],
-            "voo": frames[3:6],
-            "terremoto": frames[6:9],
-            "rock": rock_rows[0],
-            "sopro_flame": sopro_flame,
-            "sopro_ember": sopro_ember,
-        }
-
-    def _load_dragon_fire_sprites(self):
-        """dragon_fire.png (imagem do Raul): uma faísca pequena e uma chama
-        grande lado a lado no mesmo arquivo, tamanhos bem diferentes, sem
-        grade fixa — em vez de recortar por coordenada fixa (frágil, ia
-        quebrar se o Raul reexportar com proporções um pouco diferentes),
-        corta a folha ao meio por proporção (a faísca sempre nasceu bem
-        menor e à esquerda) e deixa get_bounding_rect achar o conteúdo real
-        de cada metade, mesma técnica que _load_enemy_sheet já usa pros
-        slimes. Devolve (faísca, chama) crus, sem escala — Dragon.draw (ver
-        enemy.py) redimensiona a chama pra caber no retângulo de verdade
-        do jato (SOPRO_RANGE x SOPRO_HEIGHT) a cada quadro."""
-        sheet = pygame.image.load(ASSET_DIR / "enemies" / "dragon_fire.png").convert_alpha()
-        split_x = round(sheet.get_width() * 0.32)
-        ember_half = sheet.subsurface(pygame.Rect(0, 0, split_x, sheet.get_height()))
-        flame_half = sheet.subsurface(
-            pygame.Rect(split_x, 0, sheet.get_width() - split_x, sheet.get_height())
-        )
-        ember_content = ember_half.get_bounding_rect()
-        flame_content = flame_half.get_bounding_rect()
-        ember = ember_half.subsurface(ember_content).copy() if ember_content.width else None
-        flame = flame_half.subsurface(flame_content).copy() if flame_content.width else None
-        return ember, flame
 
     # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
     # destacarem melhor perto dela sem deixar de ler como "gente", mesma
@@ -1805,6 +1759,11 @@ class Game:
             libera = (self.level.lab_bench or {}).get("libera")
             if libera:
                 self._release_fog_barrier(libera)
+            # O laboratório escondido virou O microscópio da Fase 1 (ver
+            # _advance_level_if_ready/needs_microscope) — o antigo puzzle
+            # subterrâneo (parte_microscopio/bancada) saiu do .tmx, então
+            # é aqui, e não mais lá, que a Rota Retorno é liberada.
+            self.level.activate_return_route()
             self.dialogue.start(
                 "Lia",
                 "Microscópio montado! Acho que isso acabou de abrir alguma coisa lá fora.",
@@ -1908,7 +1867,6 @@ class Game:
         self._face_bosses_at_player()
         self.level.update(dt)
         self._check_fog_barriers()
-        self._check_boss_shake_events()
         if self.level.tiled_map:
             # Avança a animação dos tiles do Tiled (ex.: água da Fase 3) em ms.
             self.level.tiled_map.update(dt * 1000)
@@ -1933,10 +1891,8 @@ class Game:
         if dialogue_advance_pressed:
             self.hint.close()
 
-    
-
     # Raio (px, medido centro-a-centro) em que um chefe dormente acorda ao
-    # se aproximar a Lia (ver enemy.py: SlimeKing/Librarian/Specimen/Dragon
+    # se aproximar a Lia (ver enemy.py: SlimeKing/Librarian/Specimen
     # nascem em DORMANT e só saem desse estado via wake_up()). Generoso o
     # bastante pra acordar antes da Lia encostar nele, cedo o suficiente pra
     # não ficar sendo golpeado "de graça" enquanto ainda dorme, mas sem
@@ -1991,20 +1947,6 @@ class Game:
             face_player = getattr(enemy, "face_player", None)
             if face_player:
                 face_player(player_x)
-
-    def _check_boss_shake_events(self):
-        """Genérico de propósito (getattr, só o Dragão define isso hoje —
-        ver enemy.Dragon.consume_shake_event/_slam_impact): dá o "peso" do
-        tranco do Terremoto sacudindo a câmera + tocando earthquake_dragon_
-        sound, igual ao hit-stop/shake que o parry já usa (ver
-        _trigger_shake)."""
-        for enemy in self.level.enemies:
-            consume = getattr(enemy, "consume_shake_event", None)
-            if consume and consume():
-                self._trigger_shake(EARTHQUAKE_SHAKE_DURATION, EARTHQUAKE_SHAKE_MAGNITUDE)
-                audio.play_sfx("earthquake_dragon_sound")
-
-    
 
     def _update_attack(self, attack_pressed):
         self.attack_cooldown = max(0, self.attack_cooldown - 1)
@@ -2243,6 +2185,7 @@ class Game:
             return
 
         landed = self._resolve_vertical_collisions(player, previous_y, previous_bottom)
+        landed = self._resolve_ramp_collisions(player, landed)
         # Pouso: só no quadro em que ela ENCOSTA (não enquanto fica parada).
         if landed and not self.player_grounded and not player.swimming:
             player.start_squash("squash")
@@ -2370,7 +2313,7 @@ class Game:
 
     def _stomp_enemy_if_possible(self, player, previous_bottom):
         for enemy in self.level.enemies:
-            # Chefes (BOSS_DROP_TABLE = SlimeKing/Librarian/Specimen/Dragon)
+            # Chefes (BOSS_DROP_TABLE = SlimeKing/Librarian/Specimen)
             # ficam de fora do pulo-que-mata: pousar na cabeça deles não pode
             # ser um jeito de matar em um golpe só uma luta pensada pra durar
             # vários acertos — pisar neles agora não faz nada de especial,
@@ -2485,6 +2428,42 @@ class Game:
             ):
                 player.y = solid.bottom
                 player.vy = 0
+        return landed
+
+    def _resolve_ramp_collisions(self, player, landed):
+        """Colisão SAT de verdade pras rampas (pedido do Raul), separada
+        da lista de sólidos genérica em AABB (_all_solid_rectangles):
+        toda rampa (ver ramp.Ramp) tem um canto vazio dentro do próprio
+        retângulo delimitador (a ponta baixa dela) que NÃO pode bloquear
+        nada — só o triângulo de verdade bloqueia. Por isso cada rampa
+        roda seu próprio teste (Ramp.resolve, Separating Axis Theorem
+        entre a hitbox retangular da Lia e o triângulo), em vez de entrar
+        na lista tratada como bloco cheio.
+
+        O broad-phase (`colliderect` contra o retângulo delimitador, bem
+        mais barato que o SAT) evita rodar o teste de verdade pra rampas
+        longe dela. Quando há colisão de fato, o vetor devolvido (dx, dy)
+        já é o suficiente pra reposicionar — dy negativo (empurrada pra
+        cima) conta como pouso igual a uma plataforma normal (zera vy,
+        libera pulo/coyote time do jeito de sempre); dx dominante (bateu
+        de lado, ex.: a perna vertical no topo de uma rampa "\\" andando
+        da direita) cancela o dash, mesmo tratamento de uma parede."""
+        for ramp in self.level.ramps:
+            if not player.rect.colliderect(ramp.rect):
+                continue
+            mtv = ramp.resolve(player.rect)
+            if mtv is None:
+                continue
+            dx, dy = mtv
+            player.x += dx
+            player.y += dy
+            if dy < 0 and player.vy >= 0:
+                player.vy = 0
+                landed = True
+            elif dy > 0 and player.vy < 0:
+                player.vy = 0
+            if abs(dx) > abs(dy):
+                player.cancel_dash()
         return landed
 
     def check_events(self):
@@ -2716,12 +2695,19 @@ class Game:
         return True
 
     def _open_lab_microscope_minigame(self):
+        # "Montado" do minigame = a MESMA bancada_microscopio.png que
+        # aparece no mundo depois de resolvido (ver
+        # Level._draw_lab_microscope/lab_bench_assembled) — mais simples
+        # que recompor de body+4 peças (ver _compose_microscope, mantido
+        # como reserva) e ainda reforça visualmente "é essa bancada aqui".
+        # Sem o arquivo ainda, cai pro microscope_complete.png de sempre.
+        complete_sprite = self.puzzle_sprites.get("lab_bench_assembled") or self.puzzle_sprites["microscope_complete"]
         self.minigame.open(
             MicroscopeMinigame(
                 WIDTH,
                 HEIGHT,
                 self._microscope_sprites_by_identity(),
-                self.puzzle_sprites["microscope_complete"],
+                complete_sprite,
                 self.lab_microscope_slots,
                 key="lab_microscope",
             )
@@ -2736,6 +2722,8 @@ class Game:
         return {
             "parts": self.puzzle_sprites["microscope_parts"],
             "complete": self.puzzle_sprites["microscope_complete"],
+            "bench_empty": self.puzzle_sprites.get("lab_bench_empty"),
+            "bench_assembled": self.puzzle_sprites.get("lab_bench_assembled"),
         }
 
     def _start_pending_dialogue(self, player):
@@ -2751,7 +2739,7 @@ class Game:
             return
 
         needs_microscope = (
-            self.level.is_underground and not self.level.room and not self.microscope_assembled
+            self.level.is_underground and not self.level.room and not self.lab_microscope_assembled
         )
         missing_items = [
             key for key in PHASE_REQUIRED_ITEMS.get(self.level.index, ())
@@ -2791,7 +2779,7 @@ class Game:
 
     def check_enemies(self):
         """Verifica ataque, ataque reforçado durante dash e contato com slimes.
-        `melee_vulnerable` (Dragon/Librarian/Specimen em enemy.py — os
+        `melee_vulnerable` (Librarian/Specimen em enemy.py — os
         inimigos comuns e o Rei Slime não definem isso, então getattr cai em
         True) deixa um chefe imune a corpo a corpo em certas fases (ex.:
         voando, escudo levantado, dentro do casulo); nesses momentos,
@@ -3037,6 +3025,13 @@ class Game:
         return False
 
     def _use_microscope_bench(self, player):
+        # Puzzle antigo (área subterrânea) — objetos "parte_microscopio"/
+        # "bancada" saíram do fase1_escola.tmx, então sem peça nenhuma
+        # cadastrada não tem bancada de verdade pra usar (sem essa guarda,
+        # "0 peças coletadas < 0 peças no mapa" dá False e abriria o
+        # minigame à toa perto do retângulo de fallback de Level.bench).
+        if not self.level.microscope_parts:
+            return
         if not player.rect.colliderect(self.level.bench.inflate(70, 60)):
             return
         if len(self.microscope_collected) < len(self.level.microscope_parts):
@@ -3063,6 +3058,7 @@ class Game:
                 self._microscope_sprites_by_identity(),
                 self.puzzle_sprites["microscope_complete"],
                 self.microscope_slots,
+                body_sprite=self.puzzle_sprites.get("microscope_body"),
             )
         )
 
@@ -3286,7 +3282,6 @@ class Game:
             self.librarian_sprites,
             self.small_slime_sprites,
             self.slime_king_sprites,
-            self.dragon_sprites,
             self.npc_frames,
             tool_icon=self.item_icons.get("chave_fenda"),
             tools_collected=self.tools_collected,

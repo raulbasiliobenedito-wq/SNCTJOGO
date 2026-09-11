@@ -8,8 +8,8 @@
  <tileset firstgid="133" source="chao_vila.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-eNrt2zFOwzAUgOFcAc6CgIEdVhDs3XOFAqISoKYTN8ZDhi4UN4lT5/X7pCcQEsEy/nEWmgYAAGCc15Hfv7aFAAAAAAAAAABQtc80P2m+/phvW0SlugNzbg1v/9mPnZazvfUfN3tf+7AtRzU4tt8l9HxVoOGcjrV8nM0Jfub6BM0NbWlof1Ou4ZTuCjSc23Gklv2/wLwddyPv0m7iNczhOc1tmos0l/3nOft66HnXaW72nrUd2LF7WccRppSXCfYy+u+1lZOOF3I3l1hXlH1vA7wT13D23nVcrOOS64rW8bnea+7jejueY106Xn7H3qvr7bjTsY51rGMd61jH4TpudazjArY6Pqid4Zy3Ooaihja2s3Ww+PcsHQMAAAAwt1U/QNM8pnlaYL86hnz3aR4q7FfHRH7PjHS+VxkDTfDzvrQmhwxEvqdyzvqQNlaVDZxDw9EHdKxj0LGOQcc6RscGdKxjqL/jkn8TpnzemGcBAETxC9N/e84=
-</data>
+   eJzt20FOAkEQheG+gp7FhQv3utXovvZcQTSSqAFW3tg2gYQgM/TMVE11Nf+XvGgM9BQ9/dBETQkAAAAApllOfP6ryhQAAAAAAAAAAAAAAAAArHzm/OR8deTbbzSg16Ynl+Svw+vUvx/bRJdLve0+rg6+9uExSABT+td3XiP0+UZxrX2HS3pMl4dZnX+IOsu/nR7Sm5Iuje2f5gye7pTWOexwaY9b6jL/LzDM1B5vRq6lef25u/ycc5tzlXO9+/zY1BnXaVyPW+oyymn1qJZYeSl4TE3vNR57v5jlleEU795F6nIymst7v7R7HPln4hrO3vuI53jfe4tYsJzLe7+00sL349rOXSnve28RTXPM5b1fWrnkHnvzvvcWqXVv5rqOV+ixH+97b5Fa92au63iFHvvxvvcWqXVvus65935Zv75IvM/cGOd+Lxk1WhbKc50659rX8EwLPUZ7xnZs6zEsgE70GAAAAAAAABHILgBSesx58h5iADkKgPPucx68h0j/+7sP0BJJ7Z1vKQjQCulITcQoQFQyMEPX0by2dYCIhNBjhCeEHiM8IfQY4QmhxwhPCD1GeELoMcKTAdFcq2Rtj7UAAABa8QtjlnrV
+  </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
   <data encoding="base64" compression="zlib">
@@ -18,13 +18,13 @@ eNrt2zFOwzAUgOFcAc6CgIEdVhDs3XOFAqISoKYTN8ZDhi4UN4lT5/X7pCcQEsEy/nEWmgYAAGCc15Hf
  </layer>
  <layer id="8" name="Colisão" width="242" height="46">
   <data encoding="base64" compression="zlib">
-eNrt3NFOwjAYgFHeFF6GNVujEn1hMZkJGgLd2o5uOyf54xUw5z5bBDwcAAAAyjlf5+0670/m4zrB6YImmu3+zTBxugmjeyivn9FtzkSnHLLW26BjsB7rGHSsYwBIer4MANDivsXr39hDt9FgmHjbR/QMz9e8nPeGnWf2l9Kvnql9rYdKj1fzOu0L3EdIbPjRbbqCx7CFPQllz+PPfUx5bTYUON7U90+HRjo+3BxT7du0vjafn3xfceFjSfmsTckJFc7lo88UhAoN57S85GPV6LgltXt+tD97JlZ4btPS3wJjwXNcooG5Xc35/FFX4LGCjquveyX2/3HjP4O4cMO/8zX+bD7Hr18ZXeWacl+l1mYdL9PvnjrO3V8ML55XyFmbzy887rWsC90Cx7W1jvsGWlxbx/d6Tr2Gex0vvlfZQ8eDjrNdJuyxdaxjHbfX8eWm45iwXxx0vHjLOtbxlD12TFiHdazjVs87lNQ7BaBjyOT/FQB7cRwHWG/Dp3GAda7BJx3j+fLqutUve73mj40fW8qc7gzs4fni7Rwz2qrd49SBra+7967125bntFWrR/1C+vV+amyAv33Waj/ldwAAAAAAAAAAANCub0OQ+xc=
-</data>
+   eJzt241ugyAUhmHutN5Mt3TLtma74WlaIiH0yM9REN4nOVm6VEXlK1KrMQAAAACg5zrX11zfG/Uz13ulNgJYLZl98+ojsfzlpSL3gL6bSc9tSX0es1tAV9zxNjQWkmPg/MgxcH7kGACA423NlwEAAFoRuq/ONQxqGPUaOpTB2P23y0pGO56A5NWYV/LbsKuwPSl/MflNWR/giu3rWv3J396e/fSmsA63fVKGpWVS8yutrxUl1yRYaRzHZR0p92ZLzpNtb+zvpzX6hEaOF7ZNey+ztb7aOXH7XMiR9+5jn7XRLM3jL+XBZiJme6kZLsnykdtyaeW4JXvnWbo+2xLKcencpqXvArU+p1LyIO1rbq6k8VOq0m3lnrcec7zYY9zTuP4Ptaunc6Bx3HOy92ce5+b3+de+zslTqZR1aY3NPfUhl2aONfJrjZDj0uuLkjFNo2ooGZvt516PtMYFzfn7YoQcH/28QA85ttx2xPZhe7x7pJHjPfI1Qo5r5/DMObbu5tGWmDGZHMvIcTpyXO5u1hxL/dj/Pr9HWvNj7YyR4/arFVs59ucvPSLHdfBsO1rUU8aAUZFj1Dbqs1YAxnN5FoBzWvI7PQvAudgxeDLkGOcy8nz54tVkyC/65vf5luaOobbF1BQooFev+ryU5a0M5SyTksfUAnoi5cRl/5ebrb3ymFpAj6YXFfu+WgVgNWUuE6rU9+dsGwAAAAAAAAAAAAAAAMBx/gFDkPsX
+  </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
   <data encoding="base64" compression="zlib">
-eNrt1rEJgDAQBVAXcAh3sLTUEbJMUAR1cCOkSCHaWAR5D44kl+5zxTUNAAAAAAAAAAAAAADUqxcBVK9N1aWK+T2mmnL/MoiIn8w5APCtVQRUIL78z8V9e5jjPZ+HSAGAG8tNLxT7hd0YAAAAAAAAAAAAAAAA4J+CCAAAAAAAAAAAAAAA4FMnvZoHYQ==
-</data>
+   eJzt1kEKgzAQBdBcwEP0Di5d2iN4GWkpqAc3QqRdCFpQovIeDEkmWfxFFhMCAAAAAAAAAAAAAACcV5k7ALCqiPWI1aZzHeuZ+pMqRyjYWbH+BAD40yd3ANjg9bPvFu7nf9yndTg2DgBwUe+FXhO+84XZGAAAAAAAAAAAAAAAAOCemtwBAAAAAAAAAAAAAADgZkYRjgbn
+  </data>
  </layer>
  <layer id="10" name="Frente" width="242" height="46">
   <data encoding="base64" compression="zlib">
@@ -91,31 +91,6 @@ eNrt1rEJgDAQBVAXcAh3sLTUEbJMUAR1cCOkSCHaWAR5D44kl+5zxTUNAAAAAAAAAAAAAADUqxcBVK9N
     <property name="ordem" value="4"/>
    </properties>
   </object>
-  <object id="60" type="parte_microscopio" x="4511.93" y="959.5" width="34.178" height="34.178">
-   <properties>
-    <property name="nome" value="Lente"/>
-    <property name="ordem" value="1"/>
-   </properties>
-  </object>
-  <object id="61" type="parte_microscopio" x="3999" y="986.82" width="34.178" height="34.178">
-   <properties>
-    <property name="nome" value="Base"/>
-    <property name="ordem" value="2"/>
-   </properties>
-  </object>
-  <object id="62" type="parte_microscopio" x="4285.89" y="989.25" width="34.178" height="34.178">
-   <properties>
-    <property name="nome" value="Luz"/>
-    <property name="ordem" value="3"/>
-   </properties>
-  </object>
-  <object id="63" type="parte_microscopio" x="3807.5" y="1021" width="34" height="32.5">
-   <properties>
-    <property name="nome" value="Ocular"/>
-    <property name="ordem" value="4"/>
-   </properties>
-  </object>
-  <object id="64" type="bancada" x="4672" y="951" width="85" height="56.5"/>
   <object id="65" type="cientista" x="171.333" y="592.667" width="48" height="48">
    <properties>
     <property name="nome" value="Rosalind Franklin"/>
@@ -123,13 +98,13 @@ eNrt1rEJgDAQBVAXcAh3sLTUEbJMUAR1cCOkSCHaWAR5D44kl+5zxTUNAAAAAAAAAAAAAADUqxcBVK9N
   </object>
   <object id="67" type="slime" x="2312.83" y="52.5" width="52" height="34"/>
   <object id="69" type="rei_slime" x="6891.33" y="514" width="581.333" height="28.6667"/>
-  <object id="78" type="elevador_lab" x="6450" y="454" width="110" height="90">
+  <object id="78" type="elevador_lab" x="4501.67" y="938" width="110" height="90">
    <properties>
     <property name="chave" value="campo_contencao_lab"/>
     <property name="destino" value="laboratorio_secreto"/>
    </properties>
   </object>
-  <object id="79" type="neblina" x="6800" y="400" width="20" height="20">
+  <object id="79" type="neblina" x="6585" y="416" width="20" height="20">
    <properties>
     <property name="chave" value="campo_contencao_lab"/>
     <property name="mensagem" value="Tem um campo de contenção aqui, não dá pra passar assim... preciso achar outro caminho."/>
