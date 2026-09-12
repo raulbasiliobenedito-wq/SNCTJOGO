@@ -8,7 +8,20 @@ percorrer RANGED_PROJECTILE_RANGE (ver game.py), sem gravidade nem curva —
 mesmo estilo direto do ataque corpo a corpo, só que à distância.
 """
 
+from functools import lru_cache
+
 import pygame
+
+
+@lru_cache(maxsize=4)
+def _glow_surface(radius, color):
+    """Brilho imutável, reutilizado por todos os projéteis da mesma aparência."""
+    size = radius * 4
+    glow = pygame.Surface((size, size), pygame.SRCALPHA)
+    center = (size // 2, size // 2)
+    pygame.draw.circle(glow, (*color, 80), center, radius * 2)
+    pygame.draw.circle(glow, (*color, 150), center, int(radius * 1.3))
+    return glow
 
 
 class Projectile:
@@ -51,9 +64,6 @@ class Projectile:
         # Lia" mesmo sem sprite. Trocar por um sprite de verdade depois é só
         # substituir este método.
         size = self.RADIUS * 4
-        glow = pygame.Surface((size, size), pygame.SRCALPHA)
-        center = (size // 2, size // 2)
-        pygame.draw.circle(glow, (*self.GLOW_COLOR, 80), center, self.RADIUS * 2)
-        pygame.draw.circle(glow, (*self.GLOW_COLOR, 150), center, int(self.RADIUS * 1.3))
+        glow = _glow_surface(self.RADIUS, self.GLOW_COLOR)
         surface.blit(glow, (draw_x - size // 2, draw_y - size // 2))
         pygame.draw.circle(surface, self.CORE_COLOR, (draw_x, draw_y), self.RADIUS)

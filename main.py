@@ -32,22 +32,12 @@ tela cheia) — trocar pra um modo exclusivo de tela cheia numa resolução
 import pygame
 import pgzrun
 
-# TITLE_STATE/SETTINGS_STATE (não "TITLE" puro, que já é o título da janela
-# vindo de settings.py logo abaixo) — usados em on_mouse_down/_move/_up pra
-# saber se o clique deve ir pro menu (game.handle_menu_*) ou pro ataque
-# (game.request_mouse_attack), ver docstring de cada handler.
-from game import Game, PAUSED as PAUSED_STATE, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
+from game import Game
+from input_adapter import LogicalScreen, mouse_down, mouse_move, mouse_up
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 WIDTH = GAME_WIDTH
 HEIGHT = GAME_HEIGHT
-
-
-class LogicalScreen:
-    """Adaptador para o Game desenhar em uma superfície interna fixa."""
-
-    def __init__(self):
-        self.surface = pygame.Surface((GAME_WIDTH, GAME_HEIGHT)).convert()
 
 
 game = Game()
@@ -102,23 +92,13 @@ def draw():
 
 
 def on_mouse_down(pos, button):
-    if button != mouse.LEFT:
-        return
-    if game.minigame.active:
-        game.handle_minigame_click(pos)
-    elif game.state in (TITLE_STATE, SETTINGS_STATE, PAUSED_STATE):
-        game.handle_menu_click(pos)
-    else:
-        game.request_mouse_attack()
+    if button == mouse.LEFT:
+        mouse_down(game, pos)
 
 
 def on_mouse_up(pos, button):
-    if button != mouse.LEFT:
-        return
-    if game.minigame.active:
-        game.handle_minigame_release(pos)
-    else:
-        game.handle_menu_release()
+    if button == mouse.LEFT:
+        mouse_up(game, pos)
 
 
 # ATENÇÃO: o pgzero valida o NOME dos parâmetros de cada hook
@@ -128,10 +108,7 @@ def on_mouse_up(pos, button):
 # derruba o jogo no arranque com InvalidParameter. Se algum linter reclamar
 # de variável não usada, silencie o linter, não mude o nome.
 def on_mouse_move(pos, rel):
-    if game.minigame.active:
-        game.handle_minigame_drag(pos)
-    elif game.state in (SETTINGS_STATE, PAUSED_STATE):
-        game.handle_menu_drag(pos)
+    mouse_move(game, pos)
 
 
 def on_key_down(key):

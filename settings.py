@@ -1,5 +1,6 @@
 """Constantes compartilhadas e caminhos do projeto."""
 
+import os
 from pathlib import Path
 
 
@@ -36,6 +37,8 @@ PLAYER_HITBOX_WIDTH = 24
 CAMERA_ZOOM = 1
 
 ROOT_DIR = Path(__file__).resolve().parent
+# Testes podem isolar os dados. Sem a variável, mantém os caminhos existentes.
+DATA_DIR = Path(os.environ.get("ECHOES_DATA_DIR", ROOT_DIR))
 ASSET_DIR = ROOT_DIR / "images"
 FONT_PATH = ROOT_DIR / "fonts" / "minha_fonte.ttf"
 # Multiplicador aplicado a TODO tamanho de fonte pedido no jogo (ver

@@ -37,45 +37,13 @@ import asyncio
 
 import pygame
 
-from game import Game, PAUSED as PAUSED_STATE, SETTINGS as SETTINGS_STATE, TITLE as TITLE_STATE
+from game import Game
+from input_adapter import LogicalScreen, mouse_down, mouse_move, mouse_up, KeyboardState
 from settings import HEIGHT as GAME_HEIGHT, TITLE, WIDTH as GAME_WIDTH
 
 
 WIDTH = GAME_WIDTH
 HEIGHT = GAME_HEIGHT
-
-
-class LogicalScreen:
-    """Mesmo adaptador do main.py: o Game desenha numa superfície interna
-    fixa, independente do tamanho real da janela/tela do navegador."""
-
-    def __init__(self):
-        self.surface = pygame.Surface((GAME_WIDTH, GAME_HEIGHT)).convert()
-
-
-class KeyboardState:
-    """Substitui o objeto `keyboard` que o pgzero injeta automaticamente.
-    Mesmos nomes de atributo que game.py/player.py já esperam (e.RETURN,
-    space, f, q, r, left/right/up/down, a/d/w, k_1/k_2/k_3 — ver
-    game._read_input, game._read_item_use, player._read_horizontal/
-    _read_jump)."""
-
-    _KEYS = {
-        "left": pygame.K_LEFT, "right": pygame.K_RIGHT, "up": pygame.K_UP,
-        "down": pygame.K_DOWN, "space": pygame.K_SPACE,
-        "a": pygame.K_a, "d": pygame.K_d, "w": pygame.K_w,
-        "e": pygame.K_e, "f": pygame.K_f, "q": pygame.K_q, "r": pygame.K_r,
-        "RETURN": pygame.K_RETURN, "escape": pygame.K_ESCAPE,
-        "k_1": pygame.K_1, "k_2": pygame.K_2, "k_3": pygame.K_3,
-    }
-
-    def __init__(self):
-        for name in self._KEYS:
-            setattr(self, name, False)
-
-    def refresh(self, pressed):
-        for name, code in self._KEYS.items():
-            setattr(self, name, bool(pressed[code]))
 
 
 async def main():
@@ -96,22 +64,11 @@ async def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if game.minigame.active:
-                    game.handle_minigame_click(event.pos)
-                elif game.state in (TITLE_STATE, SETTINGS_STATE, PAUSED_STATE):
-                    game.handle_menu_click(event.pos)
-                else:
-                    game.request_mouse_attack()
+                mouse_down(game, event.pos)
             elif event.type == pygame.MOUSEMOTION:
-                if game.minigame.active:
-                    game.handle_minigame_drag(event.pos)
-                elif game.state in (SETTINGS_STATE, PAUSED_STATE):
-                    game.handle_menu_drag(event.pos)
+                mouse_move(game, event.pos)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                if game.minigame.active:
-                    game.handle_minigame_release(event.pos)
-                else:
-                    game.handle_menu_release()
+                mouse_up(game, event.pos)
 
         keyboard.refresh(pygame.key.get_pressed())
         game.update(keyboard, dt)

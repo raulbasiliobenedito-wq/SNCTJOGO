@@ -1,6 +1,6 @@
 """Orquestra o ciclo de jogo, as interações e a renderização."""
 
-import json
+import logging
 import random
 
 import pygame
@@ -20,12 +20,14 @@ from minigame import (
     MinigameManager,
 )
 from player import Player
+from render_state import WorldDrawState
 from projectile import Projectile
-from sprites import load_optional
+from progress import SAVE_VERSION as PROGRESS_VERSION, read_progress, write_progress
+from assets import Assets
 from vfx import VFXManager
 from settings import (
     ASSET_DIR,
-    ROOT_DIR,
+    DATA_DIR,
     CAMERA_ZOOM,
     FPS,
     HEIGHT,
@@ -35,343 +37,65 @@ from settings import (
     PLAYER_HITBOX_WIDTH,
     WIDTH,
 )
-
-
-TITLE = "title"
-SETTINGS = "settings"
-INTRO = "intro"
-PLAYING = "playing"
-GAME_OVER = "game_over"
-COMPLETE = "complete"
-PAUSED = "paused"
-
-# Vida em corações fracionários (mob = 0.5, chefe = 1.0 — ver
-# MOB_CONTACT_DAMAGE/BOSS_CONTACT_DAMAGE). 5 corações dá ~10 toques de mob
-# antes do game over: margem confortável pra uma primeira jogada sem tornar
-# a luta de chefe irrelevante. ATENÇÃO: estes dois valores estiveram em 1000
-# (valor de depuração) por várias sessões — com eles a Lia era matematicamente
-# invencível e todo o fluxo de derrota (pose de morte, death_sound, tela de
-# game over, MOTIVATION) era inalcançável. Ver o assert no fim deste bloco.
-STARTING_LIVES = 5
-MAX_LIVES = 5
-
-# Itens (LEIA-ME_bosses_e_itens.md, items.png 16x16, 4 quadros/6fps, 7
-# linhas). "consumable" tem efeito imediato ao usar (tecla própria);
-# "quest" é drop garantido de chefe e só destrava o avanço da fase em que
-# nasceu — nunca é "usado" pelo jogador.
-ITEM_DEFS = {
-    "gororoba": {"row": 0, "name": "Gororoba", "kind": "consumable", "heal": 1, "shield": 0, "key": "k_1"},
-    "essencia_slime": {"row": 1, "name": "Essência de Slime", "kind": "quest", "phase": 0},
-    "carcaca_robo": {"row": 2, "name": "Carcaça de Robô", "kind": "consumable", "heal": 0, "shield": 1, "key": "k_2"},
-    "livro_magico": {"row": 3, "name": "Livro Mágico", "kind": "quest", "phase": 1},
-    "amostra_especime": {"row": 4, "name": "Amostra de Espécime", "kind": "quest", "phase": 1},
-    "dark_crystal": {"row": 5, "name": "Dark Crystal", "kind": "consumable", "heal": 1, "shield": 1, "key": "k_3"},
-    # Ferramenta da caixa de energia (Fase 2, laboratório — ver
-    # PLANO_MINIGAMES.md §3). "tool": nem "consumable" nem "quest" — não
-    # ganha tecla de uso (ITEM_USE_KEYS só pega "consumable", abaixo) nem
-    # bloqueia avanço de fase (PHASE_REQUIRED_ITEMS não a lista). Fica na
-    # barra de itens sozinha, sem código novo em hud.draw_inventory (mostra
-    # qualquer item com contagem > 0). "row": 7 ainda não existe em
-    # items/items.png — ver _load_item_icons, que já tolera isso sem ícone
-    # até a arte chegar. SÓ o item está pronto por enquanto: a passagem
-    # secreta, a própria caixa de energia e o minigame de parafuso/fios
-    # (modo "esperar a arte pronta", ver PLANO_MINIGAMES.md §4/§6) ainda
-    # não existem — este item não é coletável em lugar nenhum do jogo hoje.
-    "chave_fenda": {"row": 7, "name": "Chave de Fenda", "kind": "tool"},
-}
-ITEM_ORDER = (
-    "gororoba", "essencia_slime", "carcaca_robo", "livro_magico",
-    "amostra_especime", "dark_crystal", "chave_fenda",
+from game_data import (
+    TITLE,
+    SETTINGS,
+    INTRO,
+    PLAYING,
+    GAME_OVER,
+    COMPLETE,
+    PAUSED,
+    STARTING_LIVES,
+    MAX_LIVES,
+    ITEM_DEFS,
+    ITEM_ORDER,
+    PHASE_REQUIRED_ITEMS,
+    ITEM_USE_KEYS,
+    BOSS_DROP_TABLE,
+    BOSS_NAMES,
+    BOSS_MUSIC,
+    ENEMY_DROP_TABLE,
+    DROP_PICKUP_RADIUS,
+    ATTACK_DURATION,
+    ATTACK_COOLDOWN,
+    STANDARD_ATTACK_POWER,
+    DASH_ATTACK_POWER,
+    STANDARD_ATTACK_REACH,
+    DASH_ATTACK_REACH,
+    MOB_CONTACT_DAMAGE,
+    BOSS_CONTACT_DAMAGE,
+    COMBO_HIT_COUNT,
+    COMBO_RESET_WINDOW,
+    COMBO_FINISHER_POWER,
+    PARRY_DAMAGE,
+    PARRY_INVULN_FRAMES,
+    PARRY_HITSTOP_FRAMES,
+    HIT_STOP_FRAMES,
+    PARRY_SHAKE_DURATION,
+    PARRY_SHAKE_MAGNITUDE,
+    BOSS_WAKE_SHAKE_DURATION,
+    BOSS_WAKE_SHAKE_MAGNITUDE,
+    BOSS_WAKE_DUST_COUNT,
+    RANGED_ATTACK_POWER,
+    RANGED_ATTACK_COOLDOWN,
+    RANGED_PROJECTILE_SPEED,
+    RANGED_PROJECTILE_RANGE,
+    MESSAGE_DURATION,
+    MESSAGE_DURATION_LONG,
+    CAMERA_X_FOCUS,
+    CAMERA_LOOK_AHEAD,
+    CAMERA_X_SMOOTHING,
+    CAMERA_Y_FOCUS,
+    CAMERA_Y_SMOOTHING,
+    SCIENCE_FACTS,
+    DEFAULT_SCIENCE_FACT,
+    ROOM_LORE,
+    DEFAULT_ROOM_LORE,
+    NPC_SPRITE_ROWS,
+    VILLAGER_SPRITE_FILES,
+    NPC_DIALOGUES,
+    SCHOOL_PLATFORM_SPRITES,
 )
-# Itens de pesquisa exigidos por fase pra liberar o avanço (ver
-# _advance_level_if_ready) — Fase 2 depende dos dois chefes de sala
-# (biblioteca e laboratório), então os dois deixam de ser opcionais.
-# Fase 3 (índice 2) ficou sem exigência por enquanto: o Dragão saiu do
-# jogo (vai virar a Caveira, refeita do zero — pedido do Raul) e não tem
-# chefe nenhum ainda pra soltar um item de pesquisa novo. Sem isso a fase
-# ficaria travada pra sempre esperando um drop que não existe mais.
-PHASE_REQUIRED_ITEMS = {
-    0: ("essencia_slime",),
-    1: ("livro_magico", "amostra_especime"),
-    2: (),
-}
-# Tecla pgzero -> item consumível (derivado de ITEM_DEFS, só pros 3 que têm
-# uso ativo; os 4 de pesquisa nunca são "usados").
-ITEM_USE_KEYS = {
-    definition["key"]: key for key, definition in ITEM_DEFS.items() if definition["kind"] == "consumable"
-}
-
-# Drop garantido (100%) de cada chefe — LEIA-ME_bosses_e_itens.md §4: os 4
-# itens de pesquisa nunca são sorteados, sempre caem.
-BOSS_DROP_TABLE = {
-    "SlimeKing": "essencia_slime",
-    "Librarian": "livro_magico",
-    "Specimen": "amostra_especime",
-}
-# Nome de exibição de cada chefe, usado só pela barra de vida (ver
-# Game._draw_boss_health_bar) — mesmas chaves de BOSS_DROP_TABLE.
-BOSS_NAMES = {
-    "SlimeKing": "Rei Slime",
-    "Librarian": "Bibliotecário",
-    "Specimen": "Espécime",
-}
-# Nome da faixa em music/ (ver PLANO_AUDIO.md) tocada enquanto cada chefe
-# está acordado — mesmas chaves de BOSS_DROP_TABLE/BOSS_NAMES.
-BOSS_MUSIC = {
-    "SlimeKing": "rei_slime_music",
-    "Librarian": "bibliotecario_music",
-    "Specimen": "especime_music",
-}
-# Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
-ENEMY_DROP_TABLE = {
-    "Slime": ("gororoba", 0.40),
-    "PossessedStudent": ("carcaca_robo", 0.40),
-    "JanitorGuardian": ("carcaca_robo", 0.40),
-    "CrystalStag": ("dark_crystal", 0.30),
-    "DarkWraith": ("dark_crystal", 0.30),
-}
-DROP_PICKUP_RADIUS = 22
-ATTACK_DURATION = 11
-ATTACK_COOLDOWN = 20
-# Dano base do golpe corpo a corpo. Calibrado contra enemy.HEALTH:
-# Slime(2)=2 golpes, CrystalStag(3)=3, JanitorGuardian(4)=4, chefes(12)=12
-# golpes normais ou 6 finalizadores de combo.
-# Esteve em 100 (valor de depuração): TODO chefe morria em um único golpe,
-# e o combo/dash/parry — que dão 2 e 3 — eram PUNIÇÕES, não recompensas.
-STANDARD_ATTACK_POWER = 1
-DASH_ATTACK_POWER = 2
-STANDARD_ATTACK_REACH = 22
-DASH_ATTACK_REACH = 36
-
-# Dano que a Lia sofre por contato (pedido do Raul, deixar o jogo mais
-# frenético): mob comum tira só meio coração, chefe tira 1 coração
-# inteiro — ver take_damage/_lose_life, que agora trabalham com
-# self.lives fracionário. BOSS_DROP_TABLE (abaixo) já é o jeito que o
-# resto do código distingue chefe de mob comum, reaproveitado aqui em vez
-# de criar outra lista. Hazards ambientais (espinho/lava) e afogamento
-# também usam MOB_CONTACT_DAMAGE — não são "chefe", então caem no mesmo
-# balde dos mobs comuns.
-MOB_CONTACT_DAMAGE = 0.5
-BOSS_CONTACT_DAMAGE = 1
-
-# Combo de 4 hits corpo a corpo (pedido do Raul, ver frames 8-11 de
-# player_sheet.png): cada ataque dentro da janela de COMBO_RESET_WINDOW
-# quadros depois do anterior avança o combo; parar de atacar por mais que
-# isso volta pro hit 1 (ver _update_attack). Maior que ATTACK_COOLDOWN de
-# propósito — se fosse igual, cliques no ritmo mais rápido permitido ainda
-# perderiam a janela por pouco.
-COMBO_HIT_COUNT = 4
-COMBO_RESET_WINDOW = 40
-COMBO_FINISHER_POWER = 2
-
-# Parry: acertar o ataque corpo a corpo [F] num hazard "aparável" de chefe
-# (ver <Boss>.parryable_hazards em enemy.py) destrói o hazard e devolve esse
-# dano nele mesmo — mais que o ataque padrão e mais que o de dash, prêmio
-# por acertar o timing curto em vez de só tocar a espada nele.
-PARRY_DAMAGE = 3
-# 1s de invencibilidade após um parry bem-sucedido (pedido do Raul): o
-# Bibliotecário solta várias lâminas em sequência (ver BLADE_FIRE_INTERVAL
-# em enemy.py) — sem isso, aparar uma ainda deixava a Lia tomar dano da
-# próxima poucos quadros depois. Reaproveita o mesmo self.invuln_timer que
-# já bloqueia hazard/contato normal (ver _check_hazards etc.), só que
-# escrito de fora do fluxo de dano de verdade.
-PARRY_INVULN_FRAMES = FPS
-# Hit-stop + screen shake no parry (linguagem de Cuphead/Hollow Knight,
-# pedido do Raul) — congela a simulação por alguns quadros e depois sacode
-# a câmera, decaindo até 0 (ver Game._update_shake/_shake_offset). A mesma
-# infra de shake fica pronta pra ser reaproveitada depois pela ideia
-# guardada do tremor ao acordar o chefe (ver IDEIAS_FUTURAS.md).
-PARRY_HITSTOP_FRAMES = 3
-# Hit-stop curto em QUALQUER acerto de espada, não só no parry: dois
-# quadros de congelamento é o que separa "a espada encostou" de "a espada
-# acertou". Menor que o do parry de propósito — o parry continua sendo o
-# impacto mais pesado do jogo.
-HIT_STOP_FRAMES = 2
-PARRY_SHAKE_DURATION = 14
-PARRY_SHAKE_MAGNITUDE = 6
-
-# Acordar de chefe (pedido antigo do Raul, IDEIAS_FUTURAS.md): a mesma
-# infra de shake do parry, mais uma chuva de poeira caindo do teto da
-# arena. Curto e forte — é uma pontuação, não um terremoto.
-BOSS_WAKE_SHAKE_DURATION = 20
-BOSS_WAKE_SHAKE_MAGNITUDE = 9
-BOSS_WAKE_DUST_COUNT = 14
-
-# Ataque à distância: desbloqueado ao concluir a Fase 1 (ver
-# _advance_level_if_ready). Cooldown baixo de propósito (quase semi-
-# automático, não um "especial" raro) e alcance quase de tela inteira
-# (WIDTH=1600) — pensado pras lutas de chefe estilo Cuphead que vêm a
-# seguir (Fase 2 e Dragão): arena grande, chefe longe/no alto boa parte da
-# luta, Lia precisa sustentar fogo de qualquer ponto do cenário.
-RANGED_ATTACK_POWER = 1
-RANGED_ATTACK_COOLDOWN = 70
-RANGED_PROJECTILE_SPEED = 14.0
-RANGED_PROJECTILE_RANGE = 500
-
-# Travas de sanidade: os valores acima já foram parar em números de
-# depuração (STARTING_LIVES=1000, STANDARD_ATTACK_POWER=100) e ficaram
-# assim por sessões sem ninguém notar, porque nada no jogo reclama — ele
-# só vira um sandbox silenciosamente. Falhar no import é barulhento o
-# bastante pra isso não acontecer de novo.
-assert STANDARD_ATTACK_POWER < DASH_ATTACK_POWER <= PARRY_DAMAGE, (
-    "O golpe de dash e o parry precisam causar MAIS dano que o golpe padrão"
-)
-assert STANDARD_ATTACK_POWER < COMBO_FINISHER_POWER, (
-    "O 4º hit do combo precisa causar MAIS dano que os anteriores"
-)
-assert MAX_LIVES <= 12, "Vidas acima disso estouram a barra de corações do HUD"
-assert STARTING_LIVES <= MAX_LIVES, "Não dá pra começar com mais vida que o máximo"
-
-# Duração (em quadros) da caixa de mensagem da HUD. Existem como constantes
-# nomeadas porque oito pontos diferentes de Game setavam self.message junto
-# com `message_timer = 0`, e hud.draw_hud só desenha com `if message_timer`
-# — ou seja, a mensagem era escrita e NUNCA aparecia. Ver Game.show_message.
-MESSAGE_DURATION = 150          # 2,5 s — avisos comuns (item, pesquisa, achado)
-MESSAGE_DURATION_LONG = 240     # 4 s   — desbloqueios e bloqueios de progresso
-
-CAMERA_X_FOCUS = 0.42
-# Quanto a câmera se adianta na direção em que a Lia olha (px).
-CAMERA_LOOK_AHEAD = 80
-CAMERA_X_SMOOTHING = 0.12
-CAMERA_Y_FOCUS = 0.55
-CAMERA_Y_SMOOTHING = 0.10
-
-SCIENCE_FACTS = {
-    "Curiosidade": "Marie Curie foi a primeira pessoa a receber dois Prêmios Nobel, em áreas científicas diferentes.",
-    "Observação": "Bertha Lutz foi uma cientista brasileira e uma das grandes vozes pela participação das mulheres na sociedade.",
-    "Hipótese": "Enedina Alves Marques foi a primeira mulher negra a se formar engenheira no Brasil.",
-    "Experimento": "Jaqueline Goes de Jesus participou do sequenciamento do genoma do coronavírus no Brasil, em 2020.",
-    "Registro": "Nise da Silveira transformou a psiquiatria brasileira com cuidado, arte e respeito às pessoas.",
-    "Método": "Ada Lovelace é reconhecida por escrever um dos primeiros algoritmos para uma máquina.",
-    "Dados": "Katherine Johnson calculou trajetórias essenciais para missões espaciais da NASA.",
-    "Análise": "Sônia Guimarães foi a primeira mulher negra brasileira doutora em Física.",
-    "Testes": "Rosalind Franklin produziu imagens de raios X que foram fundamentais para compreender a estrutura do DNA.",
-    "Resultados": "Mayana Zatz é referência brasileira em genética humana e no estudo de doenças neuromusculares.",
-    "Cura": "Johanna Döbereiner contribuiu para o estudo da fixação de nitrogênio, importante para a agricultura brasileira.",
-    "Pesquisa completa": "A ciência avança quando muitas pessoas fazem perguntas, compartilham dados e persistem juntas.",
-}
-DEFAULT_SCIENCE_FACT = "Toda descoberta começa com uma pergunta e cresce com persistência."
-
-# Lore dos achados opcionais nas salas secundárias (portas) — ao contrário
-# de SCIENCE_FACTS, não é sobre cientistas reais: é a história da própria
-# universidade amaldiçoada, contada em pedaços pra quem explora fora do
-# caminho principal.
-ROOM_LORE = {
-    "Amostra do Espécime 07": (
-        "Um frasco rachado, ainda quente. A etiqueta diz \"ESPÉCIME 07 — NÃO "
-        "REMOVER DO TANQUE\", mas alguém removeu mesmo assim."
-    ),
-    "Página Arrancada": (
-        "Uma página solta, arrancada na pressa. A letra muda no meio da "
-        "frase — como se quem escrevia tivesse parado de ser humano."
-    ),
-}
-DEFAULT_ROOM_LORE = "Um resquício de algo que este lugar preferia esquecer."
-
-# As 5 cientistas-NPC (LEIA-ME_cientistas.md) — uma por local (ver
-# Level.NPC_PLACEMENT). NPC_SPRITE_ROWS bate com a ordem de linhas de
-# cientistas_idle.png; NPC_DIALOGUES é o texto fixo mostrado ao apertar [E]
-# perto delas, substituindo os antigos diálogos automáticos dos professores.
-NPC_SPRITE_ROWS = {
-    "Marie Curie": 0,
-    "Ada Lovelace": 1,
-    "Katherine Johnson": 2,
-    "Jaqueline Goes de Jesus": 3,
-    "Rosalind Franklin": 4,
-}
-# Moradores da vila (ver PLANO_VILA.md). Cada um é uma FOLHA PRÓPRIA em
-# images/npcs/, não uma linha de cientistas_idle.png — por isso o mapa é
-# nome -> arquivo em vez de nome -> linha. Só o Seu Joaquim tem arte
-# desenhada até agora (288x48 = 6 quadros de 48x48, que estava no disco
-# há tempos sem nenhum código carregando); os outros três continuam
-# interagíveis e invisíveis até a folha deles existir, mesmo padrão de
-# asset opcional do resto do jogo.
-VILLAGER_SPRITE_FILES = {
-    "Seu Joaquim": "seu_joaquim_idle.png",
-    "Dona Marta": "dona_marta_idle.png",
-    "Cadu": "cadu_idle.png",
-    "Zeca": "zeca_idle.png",
-    "Bento": "bento_idle.png",
-    "Sra. Amélia": "sra_amelia_idle.png",
-}
-NPC_DIALOGUES = {
-    "Rosalind Franklin": (
-        "Minha Foto 51 revelou a estrutura do DNA. Olhe com atenção para o "
-        "que os outros ignoram, Lia."
-    ),
-    "Katherine Johnson": (
-        "Calculei à mão as trajetórias que levaram naves ao espaço. Confie "
-        "na sua própria conta."
-    ),
-    "Marie Curie": (
-        "Passei anos isolando o rádio, grama por grama. A ciência exige "
-        "coragem tanto quanto método."
-    ),
-    "Ada Lovelace": (
-        "Escrevi o primeiro algoritmo antes mesmo de existir a máquina "
-        "para executá-lo. Os livros aqui guardam mais do que respostas."
-    ),
-    "Jaqueline Goes de Jesus": (
-        "Sequenciei o genoma do coronavírus com uma equipe inteira ao meu "
-        "lado. Compartilhe o que aprendeu, Lia."
-    ),
-    # NPCs da vila (prólogo antes da Fase 1, ver PLANO_VILA.md/maps/vila.tmx)
-    # — mesmo dicionário, mesma tecla [E], sem sprite próprio ainda (ver
-    # Level._draw_npcs: NPC sem entrada em NPC_SPRITE_ROWS só não desenha
-    # corpo, mas continua interagível normalmente). Sra. Amélia usa uma
-    # TUPLA (múltiplas falas em sequência, ver _talk_to_npc/_update_dialogue)
-    # em vez de uma string só — as outras têm uma fala fixa, como sempre.
-    "Seu Joaquim": (
-        "Ei, Lia! Cedo pra andar por aí, hein? Vai com calma: as setas te "
-        "movem, o espaço faz pular. Se precisar bater em alguma coisa — ou "
-        "em alguém —, é só apertar o F. Segurou fôlego demais parada? "
-        "Aperta Q e sai correndo no susto. E qualquer um por aqui que "
-        "quiser conversar, é só chegar perto e apertar E."
-    ),
-    "Dona Marta": (
-        "Bom dia, flor! Olha o tanto que você cresceu... Sua mãe tem muito "
-        "orgulho de você, sabia? Ela fala isso toda vez que passo lá em "
-        "casa."
-    ),
-    "Bento": (
-        "Lia! Depois eu te chamo pra jogar bola, tá? ...Ou você tá com "
-        "pressa hoje? Parece que tá indo em algum lugar importante."
-    ),
-    # Os dois abaixo são novos (vila maior, com tutorial espalhado pelo
-    # caminho em vez de tudo de uma vez com o Seu Joaquim) — reforçam uma
-    # mecânica cada, bem no ponto onde ela passa a ser necessária.
-    "Cadu": (
-        "Psiu, Lia! Um bichinho de geleia fugiu do quintal do meu avô — não "
-        "morde forte, mas fica no meio do caminho. Se ele chegar perto, "
-        "aperta o F que ele se afasta rapidinho."
-    ),
-    "Zeca": (
-        "Esse buraco aqui é largo demais pra pular normal, já tentei. Mas "
-        "se você apertar Q bem na hora de correr, sai disparada e passa "
-        "reto por cima. Confia."
-    ),
-    "Sra. Amélia": (
-        "Lia, filha, vem cá um instantinho.",
-        "É chato de perguntar, mas... me falaram que sua mãe não anda bem. "
-        "É verdade, isso? Que ela tá com câncer?",
-        "Eu sinto muito. Mas você tem uma cara decidida hoje — vai atrás "
-        "de alguma coisa, não vai? Então vai. E volta pra contar pra "
-        "gente.",
-    ),
-}
-
-# SCHOOL_SPRITE_RECTS (chalkboard, whiteboard, clock, bulletin, exit,
-# plant, desk_row, locker, bookshelf, door, lab_table) foi removido: os 11
-# recortes eram fatiados de escola_sheet.png no carregamento e NENHUM era
-# usado em lugar nenhum — o único uso de school_sprites no projeto inteiro
-# é school_sprites[floor_name], que vem de SCHOOL_PLATFORM_SPRITES abaixo.
-# Eram sobras do draw_school_background procedural, removido faz tempo.
-SCHOOL_PLATFORM_SPRITES = {
-    "grass_tile": ((448, 756, 32, 64), (32, 32)),
-    "wood_tile": ((768, 850, 32, 60), (32, 32)),
-    "brick_tile": ((80, 286, 32, 64), (32, 32)),
-    "cream_tile": ((80, 456, 32, 64), (32, 32)),
-}
 
 
 class Game:
@@ -445,49 +169,7 @@ class Game:
         self.state = TITLE
 
     def _load_assets(self):
-        self.tiles = self._load_platform_tiles()
-        self._load_backgrounds()
-        self.school_sprites = self._load_school_sprites()
-        self.player_light = self._create_player_light()
-        self.book = self._load_scaled_image("items/book.png", (30, 38))
-        self.checkpoint_flag = self._load_image("objects/checkpoint_flag.png")
-        self.puzzle_sprites = self._load_puzzle_sprites()
-        self.slime_sprites = self._load_slime_sprites()
-        self.stag_sprites = self._load_stag_sprites()
-        self.wraith_sprites = self._load_wraith_sprites()
-        self.student_sprites = self._load_student_sprites()
-        self.janitor_sprites = self._load_janitor_sprites()
-        self.specimen_sprites = self._load_specimen_sprites()
-        self.librarian_sprites = self._load_librarian_sprites()
-        self.small_slime_sprites = self._load_small_slime_sprites()
-        self.slime_king_sprites = self._load_slime_king_sprites()
-        self.item_icons = self._load_item_icons()
-        self.energy_box_sprites = self._load_energy_box_sprites()
-        # Elevador secreto do laboratório escondido (ver
-        # elevator_cutscene.ElevatorCutscene/fog.FogBarrier) — três
-        # arquivos totalmente independentes entre si, cada um opcional na
-        # veia do resto do jogo: falta um, cai pro desenho por código
-        # correspondente, sem travar nada.
-        self.secret_elevator_sprite = self._load_optional_object_sprite("elevador_lab.png")
-        self.fog_sprite = self._load_optional_object_sprite("fog_cloud.png")
-        # Animação de verdade da névoa (ver fog.py/build_pixel_anim.py do
-        # Raul) — 24 quadros em loop, "quadros" com rostos e
-        # "quadros_corpo" só a massa (pra ladrilhar sem repetir cara).
-        # Cai pro fog_sprite/desenho por código se as pastas não existirem
-        # ainda (mesmo padrão opcional de tudo isso).
-        # Carregados sob demanda por _apply_fog_sprite, só quando uma fase
-        # realmente tem barreira de neblina (hoje só a Fase 1) — ver lá.
-        self.fog_frames = None
-        self.fog_frames_corpo = None
-        self._fog_frames_tried = False
-        self.scientist_sprites = self._load_scientist_sprites()
-        # Um dicionário só, por NOME, com os quadros de qualquer NPC —
-        # cientista ou morador. Level._draw_npcs consultava um índice de
-        # LINHA numa folha única, o que tornava impossível um NPC ter folha
-        # própria (era por isso que os 4 da vila apareciam invisíveis).
-        self.npc_frames = self._build_npc_frames()
-        self.artifact_image = self._load_scaled_image("items/artifact_lab.png", (28, 28))
-        self.artifact_library_image = self._load_scaled_image("items/artifact_library.png", (28, 28))
+        self.assets = Assets()
         self.vfx = VFXManager(
             ASSET_DIR / "vfx" / "vfx.png",
             {
@@ -501,664 +183,15 @@ class Game:
                 "parry": ASSET_DIR / "vfx" / "parry_flash.png",
             },
         )
-        # lab_background/library_background passaram pra _load_backgrounds
-        # (agora já saem de lá com a cor de cena composta). Os dois "_mirror"
-        # que existiam aqui eram carregados e NUNCA usados por ninguém —
-        # só a universidade alterna cópias espelhadas ao ladrilhar (ver
-        # draw_university_background) — eram 10,6 MB de superfície morta.
-
-    @staticmethod
-    def _load_image(relative_path, alpha=True):
-        image = pygame.image.load(ASSET_DIR / relative_path)
-        return image.convert_alpha() if alpha else image.convert()
-
-    def _load_scaled_image(self, relative_path, size):
-        return pygame.transform.smoothscale(self._load_image(relative_path), size)
-
-    @staticmethod
-    def _load_optional_object_sprite(filename):
-        """Um único arquivo opcional em images/objects. Delega pro helper
-        único do projeto (sprites.load_optional), que além de devolver None
-        registra o caminho em sprites.missing — antes cada lugar tinha seu
-        próprio jeito de "não achou, tudo bem" e nada ficava anotado."""
-        return load_optional(ASSET_DIR / "objects" / filename)
-
-    @staticmethod
-    def _load_microscope_asset(filename, optional=False):
-        """As 5 peças do microscópio (lens/base/light/ocular/complete/body)
-        moraram soltas direto em images/objects, mas o Raul organizou numa
-        subpasta própria (images/objects/microscope/). Tenta a subpasta
-        primeiro e cai pro caminho antigo e achatado se não achar — assim
-        funciona tanto antes quanto depois da mudança, sem depender de
-        quando cada arquivo foi movido. `optional=True` devolve None se não
-        achar em nenhum dos dois lugares (mesmo padrão de
-        sprites.load_optional); do contrário, estoura — as 4 peças e o
-        "montado" sempre existiram, então sumir é bug de verdade, não
-        arte-que-ainda-não-chegou."""
-        objects_dir = ASSET_DIR / "objects"
-        for candidate in (objects_dir / "microscope" / filename, objects_dir / filename):
-            if candidate.exists():
-                return pygame.image.load(candidate).convert_alpha()
-        if optional:
-            return None
-        raise FileNotFoundError(
-            f"Peça de microscópio não encontrada em images/objects/microscope/ nem em "
-            f"images/objects/: {filename}"
-        )
-
-    @staticmethod
-    def _load_fog_frame_sequence(subfolder, prefix, count=24):
-        """Carrega images/fog/<subfolder>/<prefix>_00.png .. _23.png NO
-        TAMANHO NATIVO (480x270).
-
-        Antes cada quadro era ampliado pra 1920x1080 já aqui: 48 quadros
-        (rostos + corpo) x 8,3 MB = 380 MB residentes — 63% dos 600 MB de
-        RSS do processo, para um efeito que só existe na Fase 1. Nativos são
-        23,7 MB. O redimensionamento passou pra hora de desenhar, onde
-        FogBarrier._scaled_frame cacheia o quadro atual (a animação roda a
-        12 fps, então o mesmo quadro é pedido ~5 vezes seguidas a 60 fps).
-
-        Devolve None (não uma lista vazia) se a pasta ainda não existir —
-        mesmo padrão opcional do resto do jogo, FogBarrier cai pro
-        fog_sprite/desenho por código."""
-        folder = ASSET_DIR / "fog" / subfolder
-        frames = []
-        for i in range(count):
-            frame = load_optional(folder / f"{prefix}_{i:02d}.png")
-            if frame is None:
-                return None
-            frames.append(frame)
-        return frames
-
-    def _load_platform_tiles(self):
-        return [
-            self._load_image(f"tiles/platform{index}.png")
-            for index in range(1, 5)
-        ]
-
-
-
-    # Fator de velocidade do fundo da caverna em relação à câmera: <1.0 faz o
-    # fundo se mover mais devagar que o primeiro plano (efeito parallax).
-    CAVE_BACKGROUND_PARALLAX = 0.35
-    # Mesma ideia pro fundo da escola (céu/montanhas ao longe, visto pelas
-    # janelas dos corredores) — anda bem mais devagar que a câmera.
-    SCHOOL_BACKGROUND_PARALLAX = 0.3
-    # Fundo dedicado da vila (céu com nuvens) — mesma ideia de parallax.
-    VILLAGE_BACKGROUND_PARALLAX = 0.3
-    # Cor lisa usada enquanto não existe backgrounds/village_background.png
-    # (ver _draw_background) — um azul de céu simples, só pra não reaproveitar
-    # o fundo da escola nem deixar a vila preta.
-    VILLAGE_PLACEHOLDER_SKY = (144, 197, 230)
-
-    # Cores de cena. Antes cada uma virava um Surface SRCALPHA de tela cheia
-    # blitado por cima do fundo TODO QUADRO — medido em ~4,7 ms/quadro, a
-    # operação mais cara do jogo inteiro. Agora são só dados: a cor é
-    # composta DENTRO da imagem de fundo, uma vez, ainda na resolução
-    # pequena (256x224 / 512x320), antes do redimensionamento. Como o fundo
-    # é opaco e cobre a tela toda, e nada era desenhado entre ele e o
-    # overlay, o resultado é pixel a pixel idêntico ao de antes.
-    BG_TINT = (38, 53, 76, 72)
-    UNIVERSITY_TINT = (55, 65, 80, 85)
-    UNDERGROUND_TINT = (8, 12, 27, 155)
-
-    def _load_backgrounds(self):
-        """Carrega cada fundo em DUAS variantes já tingidas: "normal" e
-        "underground" (o filtro escuro que entra quando a Lia desce abaixo
-        de UNDERGROUND_Y).
-
-        Qual família de cor cada fundo leva depende de ONDE ele é usado, não
-        de qual arquivo é: o overlay antigo era escolhido por
-        `level.index == 1`, então o fundo da universidade e os das duas salas
-        dela (que também têm index 1) levam o filtro "university", e o resto
-        leva só o básico."""
-        self.backgrounds = {}
-        # Pack novo do GrassLand (5 camadas de parallax de verdade) — ver
-        # _load_village_parallax_layers. Só cai no ceu.png liso (uma camada
-        # só) se esse pack não estiver instalado.
-        self.village_layers = self._load_village_parallax_layers()
-        village_flat_exists = (
-            not self.village_layers and (ASSET_DIR / "backgrounds" / "ceu.png").exists()
-        )
-        specs = [
-            ("university", "backgrounds/university_background.png", True),
-            ("cave", "backgrounds/cave_background_v2.png", False),
-            ("lab", "backgrounds/lab_background.png", True),
-            ("library", "backgrounds/library_background.png", True),
-        ]
-        if village_flat_exists:
-            specs.append(("village", "backgrounds/ceu.png", False))
-        elif not self.village_layers:
-            # Fallback histórico da Fase 1. Só é carregado quando nem o pack
-            # novo nem o ceu.png existem — com um dos dois no lugar, eram
-            # ~15 MB de imagem escalada que nunca chegava a ser desenhada.
-            specs.append(("school", "backgrounds/background_school.png", False))
-        for key, path, is_university in specs:
-            if not (ASSET_DIR / path).exists():
-                continue
-            raw = self._load_image(path, alpha=False)
-            self.backgrounds[key] = {
-                variant: self._scale_to_screen(self._tinted(raw, color))
-                for variant, color in self._scene_tints(is_university).items()
-            }
-        self.background_mirror = {
-            variant: pygame.transform.flip(image, True, False)
-            for variant, image in self.backgrounds.get("university", {}).items()
-        }
-
-    # Cada item é (arquivo, velocidade de parallax, tem transparência de
-    # verdade) — nessa ordem, do mais distante (céu) pro mais próximo (mato
-    # alto), reproduzindo o guia oficial do pack (GrassLand_Background_
-    # Guide.png). Só a camada 1 é opaca (céu sólido com nuvens já
-    # desenhadas); as outras 4 têm área transparente por cima do relevo
-    # pra deixar a camada de trás aparecer — é isso que dá profundidade.
-    VILLAGE_PARALLAX_LAYERS = (
-        ("GrassLand_Background_1.png", 0.05, False),
-        ("GrassLand_Background_2.png", 0.15, True),
-        ("GrassLand_Background_3.png", 0.30, True),
-        ("GrassLand_Background_4.png", 0.45, True),
-        ("GrassLand_Background_5.png", 0.65, True),
-    )
-    VILLAGE_BACKGROUND_DIR = "new_tilesets/Multi_Platformer_Tileset_Free/GrassLand/Background"
-
-    def _load_village_parallax_layers(self):
-        """Carrega as camadas de parallax novas da vila (ver
-        VILLAGE_PARALLAX_LAYERS). Devolve uma lista vazia se o pack não
-        estiver na pasta — nesse caso _load_backgrounds cai de volta pro
-        ceu.png (uma camada só) ou pro preenchimento liso, sem quebrar.
-
-        Só a camada 1 (opaca) recebe o tingimento BG_TINT de sempre, do
-        mesmo jeito que os outros fundos — nas camadas com transparência,
-        tingir aqui (compondo uma cor translúcida por cima de um destino
-        que também tem alpha) preencheria de cor até as partes vazias, que
-        deviam continuar 100% transparentes pra revelar a camada de trás.
-        Como a camada 1 já cobre a tela inteira antes das outras serem
-        desenhadas (ver _draw_village_parallax), o resultado visual do
-        tingimento aparece do mesmo jeito — só que só no céu, que é a única
-        parte que ficaria à mostra atrás do relevo mesmo com o tingimento
-        certo."""
-        layers = []
-        for filename, parallax, has_alpha in self.VILLAGE_PARALLAX_LAYERS:
-            path = f"{self.VILLAGE_BACKGROUND_DIR}/{filename}"
-            if not (ASSET_DIR / path).exists():
-                return []
-            raw = self._load_image(path, alpha=has_alpha)
-            if has_alpha:
-                scaled = self._scale_to_screen_alpha(raw)
-                variants = {"normal": scaled, "underground": scaled}
-            else:
-                variants = {
-                    variant: self._scale_to_screen(self._tinted(raw, color))
-                    for variant, color in self._scene_tints(False).items()
-                }
-            layers.append({"variants": variants, "parallax": parallax})
-        return layers
-
-    def _scene_tints(self, is_university):
-        """As combinações de cor que cada fundo precisa. Reaproveita
-        _combine_overlay_colors, que já compunha as camadas numa cor só —
-        faltava só aplicar o resultado no fundo em vez de num overlay."""
-        if is_university:
-            return {
-                "normal": self._combine_overlay_colors(self.BG_TINT, self.UNIVERSITY_TINT),
-                "underground": self._combine_overlay_colors(
-                    self.BG_TINT, self.UNIVERSITY_TINT, self.UNDERGROUND_TINT
-                ),
-            }
-        return {
-            "normal": self.BG_TINT,
-            "underground": self._combine_overlay_colors(self.BG_TINT, self.UNDERGROUND_TINT),
-        }
-
-    @staticmethod
-    def _tinted(raw, rgba):
-        """Compõe uma cor RGBA sólida sobre uma cópia OPACA da imagem — o
-        mesmo resultado de blitar um overlay SRCALPHA por cima, só que uma
-        vez, na imagem pequena."""
-        base = raw.convert()
-        layer = pygame.Surface(base.get_size(), pygame.SRCALPHA)
-        layer.fill(rgba)
-        base.blit(layer, (0, 0))
-        return base
-
-    def _scale_to_screen(self, image):
-        scale = HEIGHT / image.get_height()
-        return pygame.transform.scale(
-            image, (round(image.get_width() * scale), HEIGHT)
-        ).convert()
-
-    @staticmethod
-    def _scale_to_screen_alpha(image):
-        """Mesma ideia de _scale_to_screen, mas sem o .convert() final — ele
-        joga fora o canal alpha, virando um retângulo opaco. Usado pelas
-        camadas de parallax da vila que têm transparência de verdade (ver
-        _load_village_parallax_layers)."""
-        scale = HEIGHT / image.get_height()
-        return pygame.transform.scale(image, (round(image.get_width() * scale), HEIGHT))
-
-    def _load_scaled_background(self, relative_path):
-        """Várias artes de fundo (universidade, caverna) vêm em baixa
-        resolução (pensadas pra ladrilhar); aqui elas são ampliadas até
-        cobrir a altura do canvas, preservando a proporção, pra servir de
-        camada de fundo com parallax."""
-        raw = self._load_image(relative_path, alpha=False)
-        scale = HEIGHT / raw.get_height()
-        size = (round(raw.get_width() * scale), HEIGHT)
-        return pygame.transform.scale(raw, size)
-
-    def _load_school_sprites(self):
-        sheet = self._load_image("fase_escola_tileset/escola_sheet.png", alpha=False)
-        return {
-            name: pygame.transform.scale(self._sheet_crop(sheet, rectangle), size)
-            for name, (rectangle, size) in SCHOOL_PLATFORM_SPRITES.items()
-        }
-
-    # _create_scene_filters foi removido. Ele criava SETE Surfaces SRCALPHA
-    # de tela cheia (55 MB): quatro overlays combinados — agora compostos
-    # direto nos fundos por _load_backgrounds — e três (background_filter,
-    # university_filter, underground_filter) que o próprio comentário
-    # marcava como "mantidos apenas como referência/compat" e que ninguém
-    # nunca leu. As cores viraram BG_TINT/UNIVERSITY_TINT/UNDERGROUND_TINT.
-
-    @staticmethod
-    def _combine_overlay_colors(*colors):
-        """Compõe cores RGBA sólidas (alpha compositing 'over', em sequência)
-        numa única cor equivalente. Aplicar essa cor combinada uma vez
-        produz o mesmo resultado, pixel a pixel, que aplicar cada cor em
-        sequência."""
-        accum_r = accum_g = accum_b = 0.0
-        alpha_acc = 0.0
-        for cr, cg, cb, ca in colors:
-            a = ca / 255
-            accum_r = cr * a + accum_r * (1 - a)
-            accum_g = cg * a + accum_g * (1 - a)
-            accum_b = cb * a + accum_b * (1 - a)
-            alpha_acc = 1 - (1 - alpha_acc) * (1 - a)
-        if alpha_acc <= 0:
-            return (0, 0, 0, 0)
-        return (
-            round(accum_r / alpha_acc),
-            round(accum_g / alpha_acc),
-            round(accum_b / alpha_acc),
-            round(alpha_acc * 255),
-        )
-
-    @staticmethod
-    def _create_player_light():
-        light_size = 280
-        light = pygame.Surface((light_size, light_size), pygame.SRCALPHA)
-        center = light_size // 2
-        for radius in range(center, 0, -4):
-            intensity = 1 - radius / center
-            alpha = int(3 + 52 * intensity * intensity)
-            pygame.draw.circle(light, (255, 239, 192, alpha), (center, center), radius)
-        return light
-
-    def _load_puzzle_sprites(self):
-        objects_dir = ASSET_DIR / "objects"
-        return {
-            "lever_animation": [
-                pygame.transform.scale(
-                    pygame.image.load(objects_dir / f"alavanca_animation{frame}.png").convert_alpha(),
-                    (86, 64),
-                )
-                for frame in range(1, 6)
-            ],
-            "microscope_parts": [
-                self._load_microscope_asset(f"microscope_{name}.png")
-                for name in ("lens", "base", "light", "ocular")
-            ],
-            "microscope_complete": self._load_microscope_asset("microscope_complete.png"),
-            # Peça "de fundo" (coluna/braço em C/platina/botões) pra
-            # recompor o microscópio montado a partir das 4 peças de
-            # verdade em vez de uma imagem solta (ver
-            # minigame._compose_microscope). Opcional: sem o arquivo
-            # ainda, MicroscopeMinigame cai pro microscope_complete.png.
-            "microscope_body": self._load_microscope_asset("microscope_body.png", optional=True),
-            # Bancada de verdade do laboratório escondido (ver
-            # Level._draw_lab_microscope) — arte nova do Raul, já mostra a
-            # mesa com/sem o microscópio montado em cima, então substitui o
-            # retângulo colorido de placeholder. Opcional: sem os arquivos
-            # ainda em images/objects/, cai pro retângulo de sempre.
-            "lab_bench_empty": self._load_microscope_asset("bancada_madeira.png", optional=True),
-            "lab_bench_assembled": self._load_microscope_asset("bancada_microscopio.png", optional=True),
-            "buttons": [
-                pygame.transform.scale(
-                    pygame.image.load(objects_dir / f"button_{color}.png").convert_alpha(),
-                    (36, 20),
-                )
-                for color in ("blue", "green", "yellow", "red")
-            ],
-        }
-
-    def _load_slime_sprites(self):
-        enemies_dir = ASSET_DIR / "enemies"
-        return {
-            state: self._load_enemy_sheet(enemies_dir / f"slime_{state}.png")
-            for state in ("walk", "jump", "dead", "hurt")
-        }
-
-    @staticmethod
-    def _load_enemy_sheet(path):
-        """Extrai e amplia os quadros retangulares das folhas de slime."""
-        sheet = pygame.image.load(path).convert_alpha()
-        frame_width = sheet.get_height() * 2
-        frames = []
-        for x in range(0, sheet.get_width(), frame_width):
-            frame = sheet.subsurface(pygame.Rect(x, 0, frame_width, sheet.get_height()))
-            content = frame.get_bounding_rect()
-            if content.width and content.height:
-                frame = frame.subsurface(content)
-            frames.append(pygame.transform.scale(frame, (64, 32)))
-        return frames
-
-    @staticmethod
-    def _sheet_crop(sheet, rectangle):
-        """Copia um elemento do sprite sheet."""
-        return sheet.subsurface(pygame.Rect(rectangle)).copy()
-
-    @staticmethod
-    def _load_grid_sheet(path, frame_width, frame_height, rows_frame_counts, scale=1.0):
-        """Recorta uma spritesheet em grade (várias linhas de animação, uma
-        contagem de quadros por linha) numa lista de listas de superfícies,
-        uma lista por linha. Usado pelo cervo de cristal e pela sombra.
-        `scale` amplia cada quadro depois de recortado (os quadros originais
-        de crystal_stag/dark_wraith são pequenos perto do sprite da Lia)."""
-        sheet = pygame.image.load(path).convert_alpha()
-        size = (round(frame_width * scale), round(frame_height * scale))
-        rows = []
-        for row, count in enumerate(rows_frame_counts):
-            frames = []
-            for column in range(count):
-                frame = sheet.subsurface(
-                    pygame.Rect(column * frame_width, row * frame_height, frame_width, frame_height)
-                ).copy()
-                if scale != 1.0:
-                    frame = pygame.transform.scale(frame, size)
-                frames.append(frame)
-            rows.append(frames)
-        return rows
-
-    # Fatores de ampliação dos inimigos novos — os quadros crus (40x34 e
-    # 48x48) ficam pequenos demais perto do sprite da Lia e do slime.
-    STAG_SCALE = 1.8
-    WRAITH_SCALE = 1.6
-
-    def _load_stag_sprites(self):
-        """crystal_stag.png: quadro 40x34, grade 14x4 — repouso(8)/marcha(8)
-        /dano(4)/mineralização(14)."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "crystal_stag.png", 40, 34, [8, 8, 4, 14], scale=self.STAG_SCALE
-        )
-        return {"idle": rows[0], "walk": rows[1], "hurt": rows[2], "dead": rows[3]}
-
-    def _load_wraith_sprites(self):
-        """dark_wraith.png: quadro 48x48, grade 14x4 — repouso(8)/investida(7)
-        /dano(4)/dissolução(14)."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "dark_wraith.png", 48, 48, [8, 7, 4, 14], scale=self.WRAITH_SCALE
-        )
-        return {"idle": rows[0], "lunge": rows[1], "hurt": rows[2], "dead": rows[3]}
-
-    def _load_student_sprites(self):
-        """possessed_student.png: quadro 48x48, grade 12x5 — repouso(8)/
-        marcha(8)/ataque(6, não usado)/dano(4)/morte(12). Já nasce no mesmo
-        tamanho da Lia (48px), sem precisar ampliar."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "possessed_student.png", 48, 48, [8, 8, 6, 4, 12]
-        )
-        return {"idle": rows[0], "walk": rows[1], "hurt": rows[3], "dead": rows[4]}
-
-    def _load_janitor_sprites(self):
-        """janitor_guardian.png: quadro 64x64, grade 12x6 — repouso(8)/
-        marcha(8)/varrida(8, não usada)/pancada(8, não usada)/dano(4)/
-        morte(12). 64px já lê como "maior" que a Lia/o estudante sem precisar
-        ampliar (ver LEIA-ME_fase2.md — a escala é o que dá peso de chefe)."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "janitor_guardian.png", 64, 64, [8, 8, 8, 8, 4, 12]
-        )
-        return {"idle": rows[0], "walk": rows[1], "hurt": rows[4], "dead": rows[5]}
-
-    # Os dois chefes de sala também cresceram nesta leva (LEIA-ME_bosses_e_
-    # itens.md pede "aumentar o tamanho dos bosses" — não só os dois novos):
-    # mesma técnica de ampliação pós-recorte usada em STAG_SCALE/WRAITH_SCALE.
-    SPECIMEN_SCALE = 1.3
-    LIBRARIAN_SCALE = 1.25
-
-    def _load_specimen_sprites(self):
-        """lab_specimen.png: quadro 56x48, grade 12x6 — repouso(8)/rastejo(8)
-        /ataque 1 jato(7)/ataque 2 investida(8)/dano(4)/morte(12).
-
-        casulo_acido.png/esporo_e_poca.png (vfx/boss_attacks) são o ataque C
-        novo (Casulo Ácido, ver enemy.Specimen) — sprites únicos e estáticos
-        gerados por código (LEIA-ME_sprites_chapados.md), não spritesheets.
-        esporo_e_poca.png guarda os dois desenhos na mesma imagem (esporo em
-        x 4..19, poça em x 28..61); _sheet_crop separa cada um."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "lab_specimen.png", 56, 48, [8, 8, 7, 8, 4, 12], scale=self.SPECIMEN_SCALE
-        )
-        spore_and_puddle = self._load_image("vfx/boss_attacks/esporo_e_poca.png")
-        return {
-            "idle": rows[0], "walk": rows[1],
-            "jet": rows[2], "lunge": rows[3],
-            "hurt": rows[4], "dead": rows[5],
-            "cocoon": self._load_image("vfx/boss_attacks/casulo_acido.png"),
-            "spore": self._sheet_crop(spore_and_puddle, (4, 0, 15, 32)),
-            "puddle": self._sheet_crop(spore_and_puddle, (28, 0, 33, 32)),
-        }
-
-    def _load_librarian_sprites(self):
-        """librarian_boss.png: quadro 64x64, grade 14x6 — repouso(8)/
-        deslize(8)/ataque A silêncio(9)/ataque B errata(10)/dano(4)/
-        morte(14). Os tomos do ataque B reaproveitam o ícone de livro da
-        pesquisa (self.book) — mesma silhueta, sem precisar de arte nova.
-
-        livro_escudo.png/lamina_de_pagina.png (vfx/boss_attacks) são o
-        ataque C novo (Escudo de Página, ver enemy.Librarian) — sprites
-        únicos e estáticos, mesmo padrão do meteoro/indicador do Dragão."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "librarian_boss.png", 64, 64, [8, 8, 9, 10, 4, 14], scale=self.LIBRARIAN_SCALE
-        )
-        return {
-            "idle": rows[0], "walk": rows[1],
-            "attack_a": rows[2], "attack_b": rows[3],
-            "hurt": rows[4], "dead": rows[5],
-            "tome": self.book,
-            "shield": self._load_image("vfx/boss_attacks/livro_escudo.png"),
-            "blade": self._load_image("vfx/boss_attacks/lamina_de_pagina.png"),
-        }
-
-    def _load_small_slime_sprites(self):
-        """slime_common.png: quadro 32x32, grade 8x4 — repouso(6, não usado)
-        /pulo(8)/dano(3)/morte(6). Mesmo corpo do Rei Slime sem coroa nem
-        núcleo, usado pelos filhotes da Cisão."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "slime_common.png", 32, 32, [6, 8, 3, 6]
-        )
-        return {"walk": rows[1], "hurt": rows[2], "dead": rows[3]}
-
-    # slime_king.png já nasce grande (64x64); esta escala é só o empurrão
-    # extra pedido no LEIA-ME pra ele ler como um dos maiores do jogo.
-    SLIME_KING_SCALE = 1.3
-
-    def _load_slime_king_sprites(self):
-        """slime_king.png: quadro 64x64, grade 12x6 — repouso(8)/pulo(8)/
-        ataque A esmagar(9)/ataque B cisão(10)/dano(4)/morte(12)."""
-        rows = self._load_grid_sheet(
-            ASSET_DIR / "enemies" / "slime_king.png", 64, 64, [8, 8, 9, 10, 4, 12], scale=self.SLIME_KING_SCALE
-        )
-        return {
-            "idle": rows[0], "walk": rows[1],
-            "attack_a": rows[2], "attack_b": rows[3],
-            "hurt": rows[4], "dead": rows[5],
-        }
-
-    # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
-    # destacarem melhor perto dela sem deixar de ler como "gente", mesma
-    # técnica de ampliação pós-recorte usada nos inimigos/chefes.
-    NPC_SCALE = 1.65
-
-    def _load_scientist_sprites(self):
-        """cientistas_idle.png: quadro 48x48, grade 8x5 — uma linha por
-        cientista (ver NPC_SPRITE_ROWS), 8 quadros a 8fps, sem espelhamento
-        (elas são desenhadas sempre de frente, LEIA-ME_cientistas.md)."""
-        return self._load_grid_sheet(
-            ASSET_DIR / "npcs" / "cientistas_idle.png", 48, 48, [8, 8, 8, 8, 8], scale=self.NPC_SCALE
-        )
-
-    # Mesma ampliação das cientistas (ver NPC_SCALE) pros moradores.
-    def _build_npc_frames(self):
-        """name -> lista de quadros. As cientistas vêm das 5 linhas de
-        cientistas_idle.png; cada morador vem da sua própria folha de uma
-        linha só, se o arquivo existir."""
-        frames = {
-            name: self.scientist_sprites[row]
-            for name, row in NPC_SPRITE_ROWS.items()
-            if row < len(self.scientist_sprites)
-        }
-        npcs_dir = ASSET_DIR / "npcs"
-        for name, filename in VILLAGER_SPRITE_FILES.items():
-            path = npcs_dir / filename
-            if not path.exists():
-                continue
-            sheet = pygame.image.load(path).convert_alpha()
-            # Uma linha só; a contagem de quadros vem da largura real do
-            # arquivo, então redesenhar a folha com mais/menos quadros não
-            # exige tocar em código.
-            count = max(1, sheet.get_width() // sheet.get_height())
-            frames[name] = self._load_grid_sheet(
-                path, sheet.get_height(), sheet.get_height(), [count], scale=self.NPC_SCALE
-            )[0]
-        return frames
-
-    def _load_item_icons(self):
-        """items.png: quadro 16x16, 4 col x N lin, 6fps — usa só o primeiro
-        quadro de cada linha como ícone estático do inventário/HUD (ver
-        hud.draw_inventory); a animação de 4 quadros fica pro chão, se algum
-        dia o item ganhar uma versão "largada" animada.
-
-        N vem da altura real do arquivo (não fixo em 7): a chave de fenda
-        (ver ITEM_DEFS, PLANO_MINIGAMES.md §3.1) pede uma linha 7 nova que
-        ainda não foi desenhada. Enquanto ela não existir, o item continua
-        funcionando (inventário, sem tecla de uso) só que sem ícone — ver o
-        `continue` abaixo e hud.draw_inventory (`icons.get(key)`, tolera
-        ícone ausente)."""
-        sheet_path = ASSET_DIR / "items" / "items.png"
-        row_count = pygame.image.load(sheet_path).get_height() // 16
-        rows = self._load_grid_sheet(sheet_path, 16, 16, [4] * row_count)
-        icons = {}
-        for key, definition in ITEM_DEFS.items():
-            row = definition["row"]
-            if row >= len(rows):
-                continue
-            frame = rows[row][0]
-            icons[key] = pygame.transform.scale(frame, (28, 28))
-        return icons
-
-    def _load_energy_box_sprites(self):
-        """Caixa de energia (Fase 2, laboratório — ver PLANO_MINIGAMES.md
-        §3, minigame.EnergyBoxMinigame). Só carrega de verdade se TODOS os
-        arquivos já existirem: enquanto faltar um só, devolve None e a
-        mecânica inteira fica desligada — Level._draw_energy_box não
-        desenha nada (self.energy_box_sprites nunca chega lá) e
-        _use_energy_box não abre o minigame. Mesmo padrão já usado pro céu
-        da vila (village_background) e pro parry_flash.png: o jogo não
-        quebra enquanto a arte não chega, só a mecânica fica invisível."""
-        objects_dir = ASSET_DIR / "objects"
-        required = (
-            "caixa_energia_fechada.png", "caixa_energia_aberta.png",
-            "caixa_energia_ligada.png", "tampa_caixa.png", "parafuso.png",
-            "fio_ponta.png", "terminal.png", "chave_fenda_grande.png",
-        )
-        if not all((objects_dir / name).exists() for name in required):
-            return None
-
-        def load(name):
-            return pygame.image.load(objects_dir / name).convert_alpha()
-
-        def split(name, count):
-            # Divide a folha em `count` quadros iguais lado a lado — não
-            # assume nenhum tamanho de pixel fixo (o Raul pode ter
-            # exportado em qualquer resolução), só que os quadros têm
-            # todos a mesma largura dentro do arquivo.
-            sheet = load(name)
-            frame_width = sheet.get_width() // count
-            return [
-                sheet.subsurface(pygame.Rect(index * frame_width, 0, frame_width, sheet.get_height())).copy()
-                for index in range(count)
-            ]
-
-        parafuso_no_lugar, parafuso_caindo = split("parafuso.png", 2)
-        terminal_vazio, terminal_conectado = split("terminal.png", 2)
-        fio_frames = split("fio_ponta.png", len(WIRE_COLORS))
-        sprites = {
-            "fechada": load("caixa_energia_fechada.png"),
-            "aberta": load("caixa_energia_aberta.png"),
-            "ligada": load("caixa_energia_ligada.png"),
-            "tampa": load("tampa_caixa.png"),
-            "parafuso_no_lugar": parafuso_no_lugar,
-            "parafuso_caindo": parafuso_caindo,
-            "terminal_vazio": terminal_vazio,
-            "terminal_conectado": terminal_conectado,
-            "fio_por_cor": dict(zip(WIRE_COLORS, fio_frames)),
-            "chave_grande": load("chave_fenda_grande.png"),
-        }
-
-        # Dois extras totalmente opcionais, cada um checado por conta
-        # própria (não entram no `required` acima — o minigame já sabe
-        # cair pro visual desenhado por código enquanto um dos dois não
-        # existir, ver minigame.py EnergyBoxMinigame._draw_wire_band e
-        # _draw_fios):
-        # - fio_corpo.png: 4 quadros lado a lado (mesma ordem de
-        #   WIRE_COLORS — vermelho/azul/verde/amarelo), cada um um trecho
-        #   sólido de fio na cor certa. O código estica/encolhe e
-        #   rotaciona esse quadro pra caber entre âncora e ponta — não
-        #   precisa ser do tamanho exato, pygame.transform.scale ajusta
-        #   pra qualquer comprimento. Sem ele, o fio continua sendo
-        #   desenhado por círculos.
-        fio_corpo_path = objects_dir / "fio_corpo.png"
-        if fio_corpo_path.exists():
-            sprites["fio_esticado_por_cor"] = dict(
-                zip(WIRE_COLORS, split("fio_corpo.png", len(WIRE_COLORS)))
-            )
-        # - tomada.png: 2 quadros pra desenhar no lugar de
-        #   terminal_vazio/terminal_conectado. Sem ele, usa os quadros de
-        #   terminal.png que já carregam sempre (ver `required`). Já
-        #   inverti essa ordem uma vez e saiu do jeito errado (conectado
-        #   parecendo desligado e vice-versa) — voltando pra ordem
-        #   original do arquivo: quadro 1 = vazia, quadro 2 = conectada.
-        tomada_path = objects_dir / "tomada.png"
-        if tomada_path.exists():
-            tomada_vazia, tomada_conectada = split("tomada.png", 2)
-            sprites["tomada_vazia"] = tomada_vazia
-            sprites["tomada_conectada"] = tomada_conectada
-
-        # - chave_desparafusando.png: laço de giro da chave "desapertando",
-        #   6 quadros. Sem ele, minigame.py rotaciona chave_grande em
-        #   tempo real (pygame.transform.rotate borra a pixel art fora de
-        #   múltiplos de 90°, então isso é só o provisório até o
-        #   quadro-a-quadro chegar — ver EnergyBoxMinigame._draw_screw_anim).
-        chave_anim_path = objects_dir / "chave_desparafusando.png"
-        if chave_anim_path.exists():
-            sprites["chave_desparafusando"] = split("chave_desparafusando.png", 6)
-
-        # - parafuso_caindo_anim.png: o parafuso saltando pra fora e
-        #   tombando até o chão, 6 quadros. Sem ele, mesma lógica acima:
-        #   rotaciona parafuso_caindo em tempo real como provisório.
-        parafuso_anim_path = objects_dir / "parafuso_caindo_anim.png"
-        if parafuso_anim_path.exists():
-            sprites["parafuso_caindo_anim"] = split("parafuso_caindo_anim.png", 6)
-
-        return sprites
 
     def load_level(self, index):
         """Inicia uma fase sem modificar a quantidade atual de vidas."""
         self.level = Level(index)
-        self._apply_fog_sprite(self.level)
+        self.assets.apply_fog(self.level)
         self.checkpoint = self.level.spawn
         self.player.reset(*self.checkpoint)
         self.collected = set()
-        self.artifacts_collected = set()
+        self._artifacts_by_room = {}
         # Enquanto self._base_level não for None, self.level aponta pra uma
         # sala (biblioteca/laboratório) e self._base_level guarda a fase
         # principal, intacta, pra restaurar ao sair — ver enter_room/exit_room.
@@ -1196,7 +229,7 @@ class Game:
         # com ESC no meio do modo fios não perde progresso). Nenhum dos
         # dois faz nada visível enquanto self.level.energy_box/tool_pickups
         # estiverem vazios (sem o objeto no Tiled ainda) ou enquanto
-        # self.energy_box_sprites for None (arte ainda não chegou).
+        # self.assets.energy_box_sprites for None (arte ainda não chegou).
         self.tools_collected = set()
         self.energy_box_state = {"screws_removed": False, "wired": False}
         self.energy_box_wires = dict.fromkeys(WIRE_COLORS, False)
@@ -1213,6 +246,12 @@ class Game:
         self.show_message(self.level.data["subtitle"], MESSAGE_DURATION_LONG)
         self.state = PLAYING
 
+    @property
+    def artifacts_collected(self):
+        """Cada mapa tem seus próprios índices, preservados ao revisitar a sala."""
+        key = (self.level.index, self.level.room)
+        return self._artifacts_by_room.setdefault(key, set())
+
     def enter_room(self, room_key):
         """Troca para uma sala secundária (porta interativa no corredor),
         preservando a fase principal intacta (inimigos, pesquisa coletada)
@@ -1220,7 +259,7 @@ class Game:
         self._base_level = self.level
         self._base_state = (self.player.x, self.player.y, self.camera_x, self.camera_y)
         self.level = Level(self.level.index, room=room_key)
-        self._apply_fog_sprite(self.level)
+        self.assets.apply_fog(self.level)
         self.player.reset(*self.level.spawn)
         self.riding_platform = None
         self.pending_drops = []
@@ -1250,19 +289,17 @@ class Game:
     # audio_settings.json: JSON simples na raiz, gravado em pontos
     # discretos (checkpoint e fim de fase) e lido uma vez na abertura.
     # Nada de auto-save por quadro.
-    SAVE_PATH = ROOT_DIR / "save.json"
-    SAVE_VERSION = 1
+    SAVE_PATH = DATA_DIR / "save.json"
+    SAVE_VERSION = PROGRESS_VERSION
 
     def save_progress(self):
-        """Grava fase, checkpoint, inventário e habilidades. Silencioso em
-        caso de erro de escrita — perder o save é chato, travar o jogo no
-        meio de uma partida é pior."""
+        """Grava de forma atômica; registra falhas sem interromper a partida."""
         if self.level.room:
             # Dentro de uma sala não há checkpoint; o ponto de retorno de
             # verdade é o do corredor, que já foi salvo ao entrar nele.
             return
         try:
-            self.SAVE_PATH.write_text(json.dumps({
+            write_progress(self.SAVE_PATH, {
                 "version": self.SAVE_VERSION,
                 "level": self.level.index,
                 "checkpoint": list(self.checkpoint),
@@ -1271,35 +308,28 @@ class Game:
                 "inventory": self.inventory,
                 "ranged_unlocked": self.ranged_unlocked,
                 "collected": sorted(self.collected),
-            }), encoding="utf-8")
-        except Exception:
-            pass
+            })
+        except (OSError, ValueError, TypeError):
+            logging.getLogger(__name__).warning("Não foi possível gravar o progresso", exc_info=True)
 
     def load_progress(self):
-        """Retoma o save, se houver. Devolve True se conseguiu. Qualquer
-        inconsistência (arquivo de uma versão antiga, fase que não existe
-        mais, JSON corrompido) simplesmente começa um jogo novo — um save
-        quebrado não pode impedir alguém de jogar."""
+        """Valida o save antes de retomar; dados inválidos preservam a sessão."""
         try:
-            data = json.loads(self.SAVE_PATH.read_text(encoding="utf-8"))
-            if data.get("version") != self.SAVE_VERSION:
-                return False
-            index = data["level"]
-            if index != VILLAGE and not (0 <= index < len(PHASES)):
-                return False
-            self.load_level(index)
-            self.checkpoint = tuple(data["checkpoint"])
-            self.player.reset(*self.checkpoint)
-            self.lives = min(MAX_LIVES, float(data.get("lives", STARTING_LIVES)))
-            self.shield = int(data.get("shield", 0))
-            self.inventory = {k: int(v) for k, v in data.get("inventory", {}).items()
-                              if k in ITEM_DEFS}
-            self.ranged_unlocked = bool(data.get("ranged_unlocked", False))
-            self.collected = {i for i in data.get("collected", [])
-                              if 0 <= i < len(self.level.research)}
-            return True
-        except Exception:
+            data = read_progress(self.SAVE_PATH, (VILLAGE, *range(len(PHASES))))
+        except FileNotFoundError:
             return False
+        except (OSError, ValueError, TypeError):
+            logging.getLogger(__name__).warning("Save inválido; sessão preservada", exc_info=True)
+            return False
+        self.load_level(data["level"])
+        self.checkpoint = data["checkpoint"]
+        self.player.reset(*self.checkpoint)
+        self.lives = data["lives"]
+        self.shield = data["shield"]
+        self.inventory = data["inventory"]
+        self.ranged_unlocked = data["ranged_unlocked"]
+        self.collected = {i for i in data["collected"] if i < len(self.level.research)}
+        return True
 
     def has_save(self):
         return self.SAVE_PATH.exists()
@@ -2231,29 +1261,6 @@ class Game:
                 )
                 break
 
-    def _apply_fog_sprite(self, level):
-        """FogBarrier nasce sem sprite (ver Level._make_fog_barriers —
-        Level não tem acesso às sprites carregadas por Game); isso é
-        chamado logo depois de criar/trocar de Level (load_level/
-        enter_room) pra ligar a arte de verdade em cada barreira, se já
-        tiver sido carregada (ver _load_assets). None é um valor válido
-        pra tudo isso — sem os quadros animados nem o fog_cloud.png,
-        FogBarrier.draw cai pro desenho por código igual antes."""
-        if not level.fog_barriers:
-            # Nenhuma barreira nesta fase: não há por que ter 48 quadros de
-            # neblina residentes. Antes eles eram carregados no Game() e
-            # ficavam na memória o jogo inteiro (ver
-            # _load_fog_frame_sequence).
-            return
-        if not self._fog_frames_tried:
-            self._fog_frames_tried = True
-            self.fog_frames = self._load_fog_frame_sequence("quadros", "quadro")
-            self.fog_frames_corpo = self._load_fog_frame_sequence("quadros_corpo", "corpo")
-        for barrier in level.fog_barriers:
-            barrier.sprite = self.fog_sprite
-            barrier.frames = self.fog_frames
-            barrier.frames_corpo = self.fog_frames_corpo
-
     def _release_fog_barrier(self, chave):
         """Chamado por quem completar o que libera uma neblina (ex.: o
         microscópio do laboratório escondido — ver
@@ -2701,7 +1708,7 @@ class Game:
         # que recompor de body+4 peças (ver _compose_microscope, mantido
         # como reserva) e ainda reforça visualmente "é essa bancada aqui".
         # Sem o arquivo ainda, cai pro microscope_complete.png de sempre.
-        complete_sprite = self.puzzle_sprites.get("lab_bench_assembled") or self.puzzle_sprites["microscope_complete"]
+        complete_sprite = self.assets.puzzle_sprites.get("lab_bench_assembled") or self.assets.puzzle_sprites["microscope_complete"]
         self.minigame.open(
             MicroscopeMinigame(
                 WIDTH,
@@ -2720,10 +1727,10 @@ class Game:
         vez de dict por identidade, igual ao antigo puzzle_sprites[
         "microscope_parts"] já usava."""
         return {
-            "parts": self.puzzle_sprites["microscope_parts"],
-            "complete": self.puzzle_sprites["microscope_complete"],
-            "bench_empty": self.puzzle_sprites.get("lab_bench_empty"),
-            "bench_assembled": self.puzzle_sprites.get("lab_bench_assembled"),
+            "parts": self.assets.puzzle_sprites["microscope_parts"],
+            "complete": self.assets.puzzle_sprites["microscope_complete"],
+            "bench_empty": self.assets.puzzle_sprites.get("lab_bench_empty"),
+            "bench_assembled": self.assets.puzzle_sprites.get("lab_bench_assembled"),
         }
 
     def _start_pending_dialogue(self, player):
@@ -2756,17 +1763,16 @@ class Game:
             self.show_message(f"Ainda falta: {names}.", MESSAGE_DURATION_LONG)
             player.x = self.level.world_width - 160
         elif self.level.index == VILLAGE:
-            self.save_progress()
             # Fim da rua da vila = caminho pra floresta → Fase 1 (ver
             # PLANO_VILA.md). Não é "fase+1" porque VILLAGE não é um índice
             # numérico — cai fora de PHASES de propósito.
             self.load_level(0)
+            self.save_progress()
         elif self.level.index == len(PHASES) - 1:
             self.state = COMPLETE
         else:
             finished_index = self.level.index
             self.load_level(finished_index + 1)
-            self.save_progress()
             # load_level já sobrescreveu self.message com o subtítulo da fase
             # nova (message_timer=0, ver load_level) — o aviso de desbloqueio
             # entra DEPOIS de propósito, pra não ser apagado por ele.
@@ -2776,6 +1782,7 @@ class Game:
                     "Novo poder: Ataque à Distância [R] desbloqueado!",
                     MESSAGE_DURATION_LONG,
                 )
+            self.save_progress()
 
     def check_enemies(self):
         """Verifica ataque, ataque reforçado durante dash e contato com slimes.
@@ -2867,11 +1874,11 @@ class Game:
         """Caixa de energia (Fase 2, laboratório — ver PLANO_MINIGAMES.md
         §3.2/§3.3). self.level.energy_box é None em qualquer mapa sem o
         objeto "caixa_energia" ainda (ver Level._make_energy_box), e
-        self.energy_box_sprites é None enquanto faltar algum arquivo de
+        self.assets.energy_box_sprites é None enquanto faltar algum arquivo de
         arte (ver _load_energy_box_sprites) — os dois casos fazem esse
         método devolver False sem fazer nada, exatamente como se a caixa
         não existisse no jogo ainda."""
-        if self.level.energy_box is None or self.energy_box_sprites is None:
+        if self.level.energy_box is None or self.assets.energy_box_sprites is None:
             return False
         if not player.rect.colliderect(self.level.energy_box.inflate(70, 60)):
             return False
@@ -2885,7 +1892,7 @@ class Game:
             EnergyBoxMinigame(
                 WIDTH,
                 HEIGHT,
-                self.energy_box_sprites,
+                self.assets.energy_box_sprites,
                 self.energy_box_state,
                 self.energy_box_wires,
             )
@@ -3047,7 +2054,7 @@ class Game:
     MICROSCOPE_SPRITE_IDENTITY_ORDER = ("objetiva", "base", "iluminador", "ocular")
 
     def _microscope_sprites_by_identity(self):
-        sprites = self.puzzle_sprites["microscope_parts"]
+        sprites = self.assets.puzzle_sprites["microscope_parts"]
         return dict(zip(self.MICROSCOPE_SPRITE_IDENTITY_ORDER, sprites))
 
     def _open_microscope_minigame(self):
@@ -3056,9 +2063,9 @@ class Game:
                 WIDTH,
                 HEIGHT,
                 self._microscope_sprites_by_identity(),
-                self.puzzle_sprites["microscope_complete"],
+                self.assets.puzzle_sprites["microscope_complete"],
                 self.microscope_slots,
-                body_sprite=self.puzzle_sprites.get("microscope_body"),
+                body_sprite=self.assets.puzzle_sprites.get("microscope_body"),
             )
         )
 
@@ -3182,15 +2189,15 @@ class Game:
         cor de cena já veio composta na imagem (ver _load_backgrounds)."""
         variant = self._background_variant()
         key = self._background_key()
-        if key == "village" and self.village_layers:
+        if key == "village" and self.assets.village_layers:
             self._draw_village_parallax(surface, variant)
             return
-        images = self.backgrounds.get(key)
+        images = self.assets.backgrounds.get(key)
         if images is None:
             # Nenhuma arte de fundo disponível pra este contexto (hoje só a
             # vila sem ceu.png nem o pack GrassLand) — céu liso, que também
             # cobre a tela toda.
-            surface.fill(self.VILLAGE_PLACEHOLDER_SKY)
+            surface.fill(self.assets.VILLAGE_PLACEHOLDER_SKY)
             return
         image = images[variant]
         if key == "university":
@@ -3206,7 +2213,7 @@ class Game:
         opaca) cobre a tela inteira primeiro, então as de cima já blitam
         transparência sobre um fundo opaco, sem risco de "vazar" cor onde
         deveria ficar vazio (ver _load_village_parallax_layers)."""
-        for layer in self.village_layers:
+        for layer in self.assets.village_layers:
             image = layer["variants"][variant]
             self._draw_repeating_background(surface, image, parallax=layer["parallax"])
 
@@ -3228,7 +2235,7 @@ class Game:
         # Fase 1 e vila compartilham o céu novo (pedido do Raul: "vai ficar
         # melhor"); sem as camadas do GrassLand nem ceu.png, a Fase 1 cai no
         # fundo antigo da escola e a vila no preenchimento liso.
-        if self.village_layers or "village" in self.backgrounds:
+        if self.assets.village_layers or "village" in self.assets.backgrounds:
             return "village"
         return "school" if self.level.index == 0 else None
 
@@ -3254,44 +2261,22 @@ class Game:
             surface.blit(background, (x, 0))
 
     def _draw_world(self, surface):
-        self.level.draw(
-            surface,
-            self.camera_x,
-            self.camera_y,
-            self.tiles,
-            self.book,
-            self.checkpoint_flag,
-            self.checkpoint,
-            self.collected,
-            self.lever_on,
-            self.sequence_progress,
-            self.sequence_solved,
-            self.microscope_collected,
-            self.microscope_assembled,
-            self.puzzle_sprites,
-            self.slime_sprites,
-            self.school_sprites,
-            draw_text,
-            self.stag_sprites,
-            self.wraith_sprites,
-            self.student_sprites,
-            self.janitor_sprites,
-            self.specimen_sprites,
-            self._current_artifact_image(),
-            self.artifacts_collected,
-            self.librarian_sprites,
-            self.small_slime_sprites,
-            self.slime_king_sprites,
-            self.npc_frames,
-            tool_icon=self.item_icons.get("chave_fenda"),
+        state = WorldDrawState(
+            collected=self.collected,
+            lever_on=self.lever_on,
+            sequence_progress=self.sequence_progress,
+            sequence_solved=self.sequence_solved,
+            microscope_collected=self.microscope_collected,
+            microscope_assembled=self.microscope_assembled,
+            artifact_image=self._current_artifact_image(),
+            artifacts_collected=self.artifacts_collected,
             tools_collected=self.tools_collected,
-            energy_box_sprites=self.energy_box_sprites,
             energy_box_state=self.energy_box_state,
             lab_microscope_sprites=self._lab_microscope_sprites(),
             lab_microscope_collected=self.lab_microscope_collected,
             lab_microscope_assembled=self.lab_microscope_assembled,
-            secret_elevator_sprite=self.secret_elevator_sprite,
         )
+        self.level.draw(surface, self.camera_x, self.camera_y, self.assets, state, draw_text)
 
     def _draw_world_foreground(self, surface):
         """Camada "Frente" do Tiled (pedido do Raul, Fase 1 — ver
@@ -3313,7 +2298,7 @@ class Game:
             return
         pulse = 3 * abs((pygame.time.get_ticks() % 900) / 450 - 1)
         for drop in self.pending_drops:
-            icon = self.item_icons.get(drop["item"])
+            icon = self.assets.item_icons.get(drop["item"])
             if not icon:
                 continue
             x = drop["x"] - icon.get_width() / 2 - self.camera_x
@@ -3322,8 +2307,8 @@ class Game:
 
     def _current_artifact_image(self):
         if self.level.room == "biblioteca":
-            return self.artifact_library_image
-        return self.artifact_image
+            return self.assets.artifact_library_image
+        return self.assets.artifact_image
 
 
     DOOR_PROMPT_RANGE = 60
@@ -3371,15 +2356,15 @@ class Game:
             self.player.x
             - self.camera_x
             + PLAYER_HITBOX_WIDTH // 2
-            - self.player_light.get_width() // 2
+            - self.assets.player_light.get_width() // 2
         )
         light_y = int(
             self.player.y
             - self.camera_y
             + PLAYER_HEIGHT // 2
-            - self.player_light.get_height() // 2
+            - self.assets.player_light.get_height() // 2
         )
-        surface.blit(self.player_light, (light_x, light_y))
+        surface.blit(self.assets.player_light, (light_x, light_y))
 
     def _active_boss(self):
         """Chefe em luta agora — vivo e já acordado (ver enemy.py DORMANT/
@@ -3483,7 +2468,7 @@ class Game:
             self.shield,
         )
         self._draw_boss_health_bar(surface)
-        draw_inventory(surface, self.inventory, self.item_icons, ITEM_ORDER)
+        draw_inventory(surface, self.inventory, self.assets.item_icons, ITEM_ORDER)
         draw_ability_ui(
             surface,
             self.player.dash_cooldown,
@@ -3620,8 +2605,8 @@ class Game:
     def draw_university_background(self, surface, background, variant="normal"):
         """Repete o pátio alternando cópias normais e espelhadas. Recebe a
         imagem já tingida de fora (ver _draw_background) em vez de buscar em
-        self.backgrounds[1] — o dicionário agora é por nome + variante."""
-        mirror = self.background_mirror[variant]
+        self.assets.backgrounds[1] — o dicionário agora é por nome + variante."""
+        mirror = self.assets.background_mirror[variant]
         image_width = background.get_width()
         x = -int(self.camera_x) % image_width - image_width
         tile_number = (x + int(self.camera_x)) // image_width

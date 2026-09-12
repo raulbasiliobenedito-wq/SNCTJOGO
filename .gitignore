@@ -14,3 +14,7 @@ save.json
 
 __pycache__/
 *.pyc
+
+# Ambiente local e resultados das verificações
+.venv/
+.test-output/

@@ -897,47 +897,36 @@ class Level:
             destination.append(SmallSlime(_StaticZone(zone)))
         spawns.clear()
 
-    def draw(self, surface, camera_x, camera_y, tiles, book_image, checkpoint_image, _checkpoint,
-             collected, lever_on, sequence_progress, sequence_solved, microscope_collected,
-             microscope_assembled, puzzle_sprites, slime_sprites, school_sprites, text_fn,
-             stag_sprites=None, wraith_sprites=None,
-             student_sprites=None, janitor_sprites=None, specimen_sprites=None,
-             artifact_image=None, artifacts_collected=None, librarian_sprites=None,
-             small_slime_sprites=None, slime_king_sprites=None,
-             npc_frames=None,
-             tool_icon=None, tools_collected=None,
-             energy_box_sprites=None, energy_box_state=None,
-             lab_microscope_sprites=None, lab_microscope_collected=None,
-             lab_microscope_assembled=False, secret_elevator_sprite=None):
+    def draw(self, surface, camera_x, camera_y, assets, state, text_fn):
         if self.tiled_map:
             self.tiled_map.draw(surface, camera_x, camera_y)
-        self._draw_platforms(surface, camera_x, camera_y, tiles, school_sprites)
+        self._draw_platforms(surface, camera_x, camera_y, assets.tiles, assets.school_sprites)
         self._draw_collectibles(
             surface,
             camera_x,
             camera_y,
-            book_image,
-            checkpoint_image,
-            collected,
+            assets.book,
+            assets.checkpoint_flag,
+            state.collected,
         )
-        if artifact_image is not None:
-            self._draw_artifacts(surface, camera_x, camera_y, artifact_image, artifacts_collected or set())
-        if tool_icon is not None:
-            self._draw_tool_pickups(surface, camera_x, camera_y, tool_icon, tools_collected or set())
-        if energy_box_sprites is not None:
-            self._draw_energy_box(surface, camera_x, camera_y, energy_box_sprites, energy_box_state or {})
-        self._draw_secret_elevators(surface, camera_x, camera_y, secret_elevator_sprite)
-        if lab_microscope_sprites is not None:
+        if state.artifact_image is not None:
+            self._draw_artifacts(surface, camera_x, camera_y, state.artifact_image, state.artifacts_collected or set())
+        if assets.item_icons.get("chave_fenda") is not None:
+            self._draw_tool_pickups(surface, camera_x, camera_y, assets.item_icons.get("chave_fenda"), state.tools_collected or set())
+        if assets.energy_box_sprites is not None:
+            self._draw_energy_box(surface, camera_x, camera_y, assets.energy_box_sprites, state.energy_box_state or {})
+        self._draw_secret_elevators(surface, camera_x, camera_y, assets.secret_elevator_sprite)
+        if state.lab_microscope_sprites is not None:
             self._draw_lab_microscope(
                 surface,
                 camera_x,
                 camera_y,
-                lab_microscope_sprites,
-                lab_microscope_collected or set(),
-                lab_microscope_assembled,
+                state.lab_microscope_sprites,
+                state.lab_microscope_collected or set(),
+                state.lab_microscope_assembled,
             )
-        if npc_frames:
-            self._draw_npcs(surface, camera_x, camera_y, npc_frames)
+        if assets.npc_frames:
+            self._draw_npcs(surface, camera_x, camera_y, assets.npc_frames)
         if self.is_underground and not self.room:
             # Idem: o laboratório escondido desenha sua própria bancada/
             # peças (ver Game._draw_lab_bench/_draw_lab_microscope_parts),
@@ -946,33 +935,33 @@ class Level:
                 surface,
                 camera_x,
                 camera_y,
-                lever_on,
-                sequence_progress,
-                sequence_solved,
-                microscope_collected,
-                microscope_assembled,
-                puzzle_sprites,
+                state.lever_on,
+                state.sequence_progress,
+                state.sequence_solved,
+                state.microscope_collected,
+                state.microscope_assembled,
+                assets.puzzle_sprites,
                 text_fn,
             )
         for enemy in self.enemies:
             if isinstance(enemy, CrystalStag):
-                enemy.draw(surface, camera_x, camera_y, stag_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.stag_sprites)
             elif isinstance(enemy, DarkWraith):
-                enemy.draw(surface, camera_x, camera_y, wraith_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.wraith_sprites)
             elif isinstance(enemy, PossessedStudent):
-                enemy.draw(surface, camera_x, camera_y, student_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.student_sprites)
             elif isinstance(enemy, JanitorGuardian):
-                enemy.draw(surface, camera_x, camera_y, janitor_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.janitor_sprites)
             elif isinstance(enemy, Specimen):
-                enemy.draw(surface, camera_x, camera_y, specimen_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.specimen_sprites)
             elif isinstance(enemy, Librarian):
-                enemy.draw(surface, camera_x, camera_y, librarian_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.librarian_sprites)
             elif isinstance(enemy, SlimeKing):
-                enemy.draw(surface, camera_x, camera_y, slime_king_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.slime_king_sprites)
             elif isinstance(enemy, SmallSlime):
-                enemy.draw(surface, camera_x, camera_y, small_slime_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.small_slime_sprites)
             else:
-                enemy.draw(surface, camera_x, camera_y, slime_sprites)
+                enemy.draw(surface, camera_x, camera_y, assets.slime_sprites)
         self._draw_enemy_attack_hazards(surface, camera_x, camera_y)
         for barrier in self.fog_barriers:
             barrier.draw(surface, camera_x, camera_y)

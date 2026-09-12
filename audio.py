@@ -21,7 +21,7 @@ código."""
 import json
 import sys
 
-from settings import ROOT_DIR
+from settings import DATA_DIR
 
 _current_track = None
 # Volume mestre (0.0-1.0) do menu de Configurações — ver
@@ -40,7 +40,7 @@ shake_scale = 1.0
 #: (ver dialogue.DialogueBox.CHARACTERS_PER_FRAME). 0 = instantâneo.
 text_speed = 0.65
 
-_SETTINGS_PATH = ROOT_DIR / "audio_settings.json"
+_SETTINGS_PATH = DATA_DIR / "audio_settings.json"
 
 
 # Vira True depois do primeiro aviso, pra não repetir a cada som tocado.

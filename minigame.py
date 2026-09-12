@@ -21,6 +21,7 @@ Game.__init__). Ele não sabe nada sobre microscópio ou caixa de energia
 e observa `finished`/`result` pra saber quando fechar sozinho."""
 
 import math
+from functools import lru_cache
 
 import pygame
 
@@ -270,14 +271,21 @@ DIM_COLOR = (4, 6, 12)
 DIM_ALPHA = 205
 
 
+@lru_cache(maxsize=2)
+def _modal_dim(width, height):
+    """Imagem fixa compartilhada; os chamadores apenas a desenham."""
+    dim = pygame.Surface((width, height), pygame.SRCALPHA)
+    dim.fill((*DIM_COLOR, DIM_ALPHA))
+    return dim
+
+
 def draw_modal_backdrop(surface, panel_rect, width, height):
     """Escurece a tela e desenha o painel de fundo — comum aos dois
     minigames. Opacidade fixa, sem fade de entrada (o minigame abre "de
     golpe" — não há necessidade de suavizar: quem abriu já sabe que vai
     interagir, ao contrário de uma dica que aparece sem aviso, ver
     hint.py)."""
-    dim = pygame.Surface((width, height), pygame.SRCALPHA)
-    dim.fill((*DIM_COLOR, DIM_ALPHA))
+    dim = _modal_dim(width, height)
     surface.blit(dim, (0, 0))
     pygame.draw.rect(surface, PANEL_BG, panel_rect, border_radius=18)
     pygame.draw.rect(surface, PANEL_BORDER, panel_rect, 3, border_radius=18)
@@ -698,6 +706,7 @@ class EnergyBoxMinigame(_BaseMinigame):
         # _build_screws calcular de verdade a partir de BOX_DISPLAY_HEIGHT.
         self._box_scale = 1.0
         self._scaled_cache = {}
+        self._diagram_lid = None
 
         # Animação de desparafusar em andamento (None = nenhuma) — ver
         # _start_screw_unscrew/_update_screw_anim/_draw_screw_anim.
@@ -1279,14 +1288,16 @@ class EnergyBoxMinigame(_BaseMinigame):
         # pintado dentro da própria arte da tampa (ver WIRE_TERMINAL); o
         # jogador tem que ler a sprite, não uma cópia em texto dela. Por
         # isso ela é ampliada pra caber quase todo o painel do diagrama.
-        tampa_raw = self.sprites["tampa"]
-        tampa_scale = min(
-            (diagram_rect.width - 40) / tampa_raw.get_width(),
-            (diagram_rect.height - 70) / tampa_raw.get_height(),
-        )
-        tampa = pygame.transform.scale(
-            tampa_raw, (round(tampa_raw.get_width() * tampa_scale), round(tampa_raw.get_height() * tampa_scale))
-        )
+        if self._diagram_lid is None:
+            tampa_raw = self.sprites["tampa"]
+            tampa_scale = min(
+                (diagram_rect.width - 40) / tampa_raw.get_width(),
+                (diagram_rect.height - 70) / tampa_raw.get_height(),
+            )
+            self._diagram_lid = pygame.transform.scale(
+                tampa_raw, (round(tampa_raw.get_width() * tampa_scale), round(tampa_raw.get_height() * tampa_scale))
+            )
+        tampa = self._diagram_lid
         tampa_rect = tampa.get_rect(midtop=(diagram_rect.centerx, diagram_rect.y + 40))
         surface.blit(tampa, tampa_rect)
 

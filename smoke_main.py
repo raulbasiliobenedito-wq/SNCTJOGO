@@ -11,6 +11,7 @@ hook, globais injetados, ordem de inicialização) ficava sem teste. Foi
 assim que `on_mouse_move(pos, _rel)` chegou na mão do jogador.
 """
 import os, sys, types, traceback
+from test_support import isolated_game_data
 
 os.environ['SDL_VIDEODRIVER'] = 'dummy'
 os.environ['SDL_AUDIODRIVER'] = 'dummy'
@@ -65,6 +66,8 @@ def fake_go():
             ns['on_key_down'](pgzero.constants.keys.ESCAPE)
 
 import pgzrun
+original_go = pgzrun.go
+original_main = sys.modules["__main__"]
 pgzrun.go = fake_go
 
 try:
@@ -73,11 +76,16 @@ try:
     module = types.ModuleType('__main__')
     module.__file__ = os.path.join(ROOT, 'main.py')
     sys.modules['__main__'] = module
-    exec(compile(source, 'main.py', 'exec'), vars(module))
+    with isolated_game_data():
+        exec(compile(source, 'main.py', 'exec'), vars(module))
 except Exception:
     print("FALHOU ao executar main.py:")
     traceback.print_exc()
     sys.exit(1)
+finally:
+    sys.modules["__main__"] = original_main
+    pgzrun.go = original_go
+    pygame.quit()
 
 print(f"main.py executou de ponta a ponta: {frames_run['n']} quadros, "
       "spellcheck + update + draw + on_key_down + on_mouse_down/move/up OK")
