@@ -26,6 +26,7 @@ O jogo abre em tela cheia; F11 alterna para janela. Recursos, mapas e fontes sã
 | `render_state.py` | Dados da sessão necessários ao desenho do cenário |
 | `level.py`, `tiled_map.py` | Construção dos cenários, entidades e leitura TMX/TSX |
 | `player.py`, `enemy.py`, `projectile.py` | Movimento e comportamento de personagens, inimigos e projéteis |
+| `enemy_common.py` | Ciclo de dano/morte/respawn e patrulha compartilhados pelos inimigos de chão |
 | `minigame.py` | Microscópio e caixa de energia |
 | `progress.py` | Validação e gravação atômica do save v1 |
 | `audio.py`, `hud.py`, `dialogue.py`, `vfx.py` | Áudio e apresentação |
