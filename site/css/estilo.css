@@ -1,0 +1,543 @@
+/* ==========================================================================
+   Echoes of Life — folha de estilo do site de apresentação
+   --------------------------------------------------------------------------
+   Organização:
+     1. Fontes e variáveis          6. Mundo (rota das fases)
+     2. Reset e tipografia          7. Elenco, inimigos, itens
+     3. Utilitários e componentes   8. Mecânicas, minigames, ciência
+     4. Barra de navegação          9. Ficha técnica, jogar, créditos
+     5. Capa (hero)                10. Rodapé, responsivo, acessibilidade
+
+   Tudo funciona OFFLINE: nenhuma fonte, script ou imagem vem da internet —
+   a apresentação da SNCT não pode depender de wi-fi.
+   ========================================================================== */
+
+/* 1. FONTES E VARIÁVEIS =================================================== */
+
+/* As duas fontes já estavam na pasta fonts/ do jogo.
+   ThaleahFat NÃO tem caracteres acentuados (ç, ã, é viram quadrados), então
+   ela é usada SÓ no título "Echoes of Life", que não tem acento nenhum.
+   Press Start 2P (minha_fonte.ttf, a mesma do HUD do jogo) tem acentuação
+   completa e fica nos rótulos curtos. O texto corrido usa fonte do sistema:
+   fonte pixelada em parágrafo longo é bonita e ilegível. */
+@font-face {
+  font-family: 'Thaleah';
+  src: url('../../fonts/ThaleahFat.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PressStart';
+  src: url('../../fonts/minha_fonte.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  /* Base — o azul-violeta escuro das cavernas e do laboratório */
+  --tinta-0: #0b0912;
+  --tinta-1: #120e1d;
+  --tinta-2: #1a1428;
+  --superficie: #211a33;
+  --superficie-2: #2b2240;
+  --borda: rgba(247, 201, 216, 0.14);
+  --borda-forte: rgba(247, 201, 216, 0.3);
+
+  /* Coral — a cor da anomalia. É a cor-assinatura do jogo, citada na
+     própria história ("um núcleo de uma cor que não existe em nenhum outro
+     lugar do mundo de Lia"), então é ela que manda no site. */
+  --coral-escuro: #4a1c3c;
+  --coral-medio: #94406e;
+  --coral: #d4709a;
+  --coral-claro: #f7c9d8;
+
+  /* Apoio */
+  --ciano: #7fe3ec;     /* laboratório, ciência, dados */
+  --ambar: #ffd166;     /* pesquisa, conquista */
+  --violeta: #a97bd9;   /* névoa / campo de contenção */
+  --verde: #8fd694;     /* vila, ar livre */
+  --brasa: #ff8a5c;     /* fase 3, vulcão */
+
+  /* Texto */
+  --texto: #f4eef2;
+  --texto-suave: #c3b6d2;
+  --texto-fraco: #8d80a3;
+
+  /* Medidas */
+  --largura: 1180px;
+  --raio: 14px;
+  --raio-p: 8px;
+  --sombra: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --transicao: 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* 2. RESET E TIPOGRAFIA ================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  /* compensa a barra fixa quando se pula pra uma âncora */
+  scroll-padding-top: 86px;
+}
+
+body {
+  margin: 0;
+  background: var(--tinta-0);
+  color: var(--texto);
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.65;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Toda arte do jogo é pixel art: sem isso o navegador borra os sprites. */
+img, .sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+h1, h2, h3, h4 { margin: 0 0 0.45em; line-height: 1.2; font-weight: 700; }
+h2 { font-size: clamp(1.7rem, 3.4vw, 2.5rem); color: var(--texto); letter-spacing: -0.01em; }
+h3 { font-size: 1.25rem; color: var(--coral-claro); }
+h4 { font-size: 1.02rem; color: var(--texto); }
+p { margin: 0 0 0.9em; color: var(--texto-suave); }
+a { color: var(--coral-claro); text-decoration-color: var(--coral-medio); text-underline-offset: 3px; }
+a:hover { color: var(--ambar); }
+b, strong { color: var(--texto); font-weight: 600; }
+code {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.86em; background: rgba(127, 227, 236, 0.1);
+  color: var(--ciano); padding: 0.15em 0.45em; border-radius: 5px;
+  border: 1px solid rgba(127, 227, 236, 0.18);
+}
+ul { padding-left: 1.1em; }
+
+/* 3. UTILITÁRIOS E COMPONENTES ========================================== */
+
+.secao { max-width: var(--largura); margin: 0 auto; padding: 96px 22px; }
+.secao--estreita { max-width: 860px; }
+.cabecalho-secao { max-width: 720px; margin-bottom: 44px; }
+.cabecalho-secao p { font-size: 1.06rem; }
+
+/* Rótulo pequeno em fonte de pixel — o "carimbo" de cada seção */
+.rotulo {
+  display: inline-block; font-family: 'PressStart', ui-monospace, monospace;
+  font-size: 0.6rem; letter-spacing: 0.08em;
+  color: var(--ciano); background: rgba(127, 227, 236, 0.08);
+  border: 1px solid rgba(127, 227, 236, 0.28);
+  border-radius: 999px; padding: 0.6em 1.1em; margin-bottom: 1.2em;
+  line-height: 1.8;
+  max-width: 100%;
+}
+.rotulo--coral { color: var(--coral-claro); background: rgba(212, 112, 154, 0.1); border-color: rgba(212, 112, 154, 0.32); }
+.rotulo--ambar { color: var(--ambar); background: rgba(255, 209, 102, 0.09); border-color: rgba(255, 209, 102, 0.3); }
+
+/* Cartão-dossiê: a unidade visual do site inteiro. Faixa de etiqueta em
+   cima, código em monoespaçada, conteúdo embaixo — como uma ficha de
+   laboratório, que é exatamente o que a Lia passa o jogo coletando. */
+.ficha {
+  background: linear-gradient(180deg, var(--superficie) 0%, var(--tinta-2) 100%);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  overflow: hidden;
+  position: relative;
+  transition: border-color var(--transicao), transform var(--transicao);
+}
+.ficha:hover { border-color: var(--borda-forte); transform: translateY(-3px); }
+.ficha::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, var(--coral-medio), var(--coral), transparent 75%);
+}
+.ficha__topo {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--borda);
+  background: rgba(0, 0, 0, 0.22);
+}
+.ficha__id {
+  font-family: ui-monospace, monospace; font-size: 0.72rem; letter-spacing: 0.14em;
+  color: var(--texto-fraco); text-transform: uppercase;
+}
+.ficha__corpo { padding: 20px 18px 22px; }
+.ficha__corpo p:last-child { margin-bottom: 0; }
+
+.etiqueta {
+  display: inline-block; font-size: 0.73rem; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--texto-fraco);
+  border: 1px solid var(--borda); border-radius: 999px;
+  padding: 0.25em 0.8em; margin: 0 6px 6px 0;
+}
+.etiqueta--coral { color: var(--coral-claro); border-color: rgba(212, 112, 154, 0.4); }
+.etiqueta--ciano { color: var(--ciano); border-color: rgba(127, 227, 236, 0.4); }
+.etiqueta--ambar { color: var(--ambar); border-color: rgba(255, 209, 102, 0.4); }
+.etiqueta--violeta { color: var(--violeta); border-color: rgba(169, 123, 217, 0.45); }
+.etiqueta--verde { color: var(--verde); border-color: rgba(143, 214, 148, 0.4); }
+
+.botao {
+  display: inline-flex; align-items: center; gap: 0.55em;
+  font-family: 'PressStart', monospace; font-size: 0.68rem; letter-spacing: 0.04em;
+  padding: 1.05em 1.6em; border-radius: 10px; text-decoration: none;
+  border: 1px solid transparent; cursor: pointer; line-height: 1;
+  transition: transform var(--transicao), box-shadow var(--transicao), background var(--transicao);
+}
+.botao--principal {
+  background: linear-gradient(135deg, var(--coral-medio), var(--coral));
+  color: #2a0d1e; box-shadow: 0 10px 30px rgba(212, 112, 154, 0.3);
+}
+.botao--principal:hover { transform: translateY(-2px); box-shadow: 0 14px 38px rgba(212, 112, 154, 0.45); color: #2a0d1e; }
+.botao--fantasma { background: rgba(255, 255, 255, 0.04); border-color: var(--borda-forte); color: var(--texto); }
+.botao--fantasma:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.08); color: var(--texto); }
+
+/* Palco: caixa de altura fixa com o sprite apoiado embaixo. Sem ela, folhas
+   de alturas diferentes (32, 34, 48, 64 px) empurravam o nome de cada cartão
+   pra uma altura diferente e a grade ficava desalinhada. */
+.palco { display: flex; align-items: flex-end; justify-content: center; }
+.palco--mob { height: 150px; margin-bottom: 10px; }
+.palco--npc { height: 160px; margin-bottom: 8px; }
+.palco--chefe { height: 200px; align-items: center; }
+
+/* Quadro de sprite: o JS preenche background-image/size/position a partir
+   de js/site.js. Sem JS (ou com a imagem faltando) o quadro some sozinho,
+   em vez de deixar um buraco. */
+.sprite {
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  flex: none;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+.sprite[hidden] { display: none !important; }
+
+.nota { font-size: 0.88rem; color: var(--texto-fraco); font-style: italic; }
+
+/* 4. BARRA DE NAVEGAÇÃO ================================================= */
+
+.pular-para {
+  position: absolute; left: -9999px; top: 0; z-index: 200;
+  background: var(--coral); color: #2a0d1e; padding: 12px 18px; border-radius: 0 0 8px 0;
+}
+.pular-para:focus { left: 0; }
+
+.barra {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(11, 9, 18, 0.86);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--borda);
+}
+.barra__interior {
+  max-width: var(--largura); margin: 0 auto;
+  display: flex; align-items: center; gap: 18px;
+  padding: 12px 22px;
+}
+.marca {
+  font-family: 'PressStart', monospace; font-size: 0.72rem; color: var(--ambar);
+  text-decoration: none; letter-spacing: 0.02em; white-space: nowrap; line-height: 1.4;
+}
+.marca:hover { color: var(--ambar); }
+.marca span { color: var(--coral); }
+
+.barra__menu { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.barra__menu ul { display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+.barra__menu a {
+  display: block; padding: 8px 11px; border-radius: 8px; font-size: 0.9rem;
+  color: var(--texto-suave); text-decoration: none; transition: color var(--transicao), background var(--transicao);
+}
+.barra__menu a:hover { color: var(--texto); background: rgba(255, 255, 255, 0.06); }
+.barra__menu a.ativo { color: var(--coral-claro); background: rgba(212, 112, 154, 0.14); }
+.barra__menu .destaque { color: var(--ambar); border: 1px solid rgba(255, 209, 102, 0.35); margin-left: 8px; }
+
+/* Fita fina no rodapé da barra mostrando o quanto da página já foi lida */
+.progresso {
+  height: 2px; background: linear-gradient(90deg, var(--coral), var(--ambar));
+  width: 0%; transition: width 80ms linear;
+}
+
+.menu-botao {
+  display: none; background: none; border: 1px solid var(--borda-forte);
+  color: var(--texto); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 1.1rem;
+}
+
+/* 5. CAPA (HERO) ======================================================== */
+
+.capa {
+  position: relative; overflow: hidden;
+  min-height: min(88vh, 760px);
+  display: flex; align-items: center;
+  border-bottom: 1px solid var(--borda);
+}
+.capa__fundo {
+  position: absolute; inset: 0;
+  background-image: url('../../images/backgrounds/ceu.png');
+  background-size: cover; background-position: center;
+  opacity: 0.5;
+  transform: scale(1.08);
+}
+.capa__veu {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(900px 520px at 18% 25%, rgba(148, 64, 110, 0.5), transparent 62%),
+    radial-gradient(800px 500px at 88% 10%, rgba(127, 227, 236, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(11, 9, 18, 0.55) 0%, rgba(11, 9, 18, 0.86) 62%, var(--tinta-0) 100%);
+}
+.capa__interior {
+  position: relative; z-index: 2;
+  max-width: var(--largura); margin: 0 auto; padding: 90px 22px 70px; width: 100%;
+}
+.capa__titulo {
+  font-family: 'Thaleah', 'Trebuchet MS', sans-serif;
+  font-size: clamp(3rem, 11vw, 7rem);
+  line-height: 0.9; margin: 0.1em 0 0.25em;
+  color: var(--ambar);
+  text-shadow: 0 0 26px rgba(255, 209, 102, 0.28), 0 6px 0 rgba(74, 28, 60, 0.9);
+  letter-spacing: 0.02em;
+}
+.capa__linha { max-width: 640px; font-size: 1.12rem; color: var(--texto-suave); }
+.capa__citacao {
+  max-width: 560px; margin: 1.6em 0; padding: 14px 20px;
+  border-left: 3px solid var(--coral); background: rgba(212, 112, 154, 0.07);
+  border-radius: 0 var(--raio-p) var(--raio-p) 0;
+  color: var(--coral-claro); font-style: italic; font-size: 1.04rem;
+}
+.capa__acoes { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 1.4em; }
+.capa__lia {
+  position: absolute; right: 6%; bottom: 6px; z-index: 2;
+  display: flex; align-items: flex-end;
+}
+.capa__chao {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px; z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--coral-medio), transparent);
+}
+
+/* Faixa de números logo abaixo da capa */
+.numeros {
+  border-bottom: 1px solid var(--borda);
+  background: linear-gradient(180deg, var(--tinta-1), var(--tinta-0));
+}
+.numeros__grade {
+  max-width: var(--largura); margin: 0 auto; padding: 30px 22px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 14px;
+}
+.numero { text-align: center; padding: 10px 6px; }
+.numero b {
+  display: block; font-family: 'PressStart', monospace;
+  font-size: clamp(1rem, 2.4vw, 1.5rem); color: var(--coral-claro); margin-bottom: 0.5em;
+}
+.numero span { font-size: 0.8rem; color: var(--texto-fraco); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* 6. MUNDO — a rota das fases =========================================== */
+
+.rota { position: relative; padding-left: 34px; }
+/* linha vertical ligando as etapas, como um mapa de percurso */
+.rota::before {
+  content: ''; position: absolute; left: 9px; top: 12px; bottom: 12px; width: 2px;
+  background: linear-gradient(180deg, var(--verde), var(--coral), var(--violeta), var(--brasa));
+  opacity: 0.5;
+}
+.etapa { position: relative; margin-bottom: 30px; }
+.etapa::before {
+  content: ''; position: absolute; left: -30px; top: 26px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--coral); box-shadow: 0 0 0 4px rgba(212, 112, 154, 0.18);
+}
+.etapa--secreta::before { background: var(--violeta); box-shadow: 0 0 0 4px rgba(169, 123, 217, 0.2); }
+.etapa__grade { display: grid; grid-template-columns: 260px 1fr; }
+.etapa__arte {
+  position: relative; min-height: 190px;
+  background-size: cover; background-position: center;
+  border-right: 1px solid var(--borda);
+}
+.etapa__arte::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(11, 9, 18, 0.25), rgba(26, 20, 40, 0.9));
+}
+.etapa__num {
+  position: absolute; left: 14px; top: 10px; z-index: 2;
+  font-family: 'Thaleah', sans-serif; font-size: 3.4rem; line-height: 1;
+  color: rgba(255, 255, 255, 0.9); text-shadow: 0 3px 0 var(--coral-escuro);
+}
+.etapa__corpo { padding: 22px 22px 24px; }
+.etapa__fala {
+  display: block; font-family: 'PressStart', monospace; font-size: 0.62rem;
+  color: var(--ambar); margin-bottom: 1.1em; line-height: 1.9;
+}
+.etapa__meta { margin-top: 14px; }
+.medida {
+  font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--texto-fraco);
+  margin-top: 10px;
+}
+
+/* 7. ELENCO, INIMIGOS, ITENS ============================================ */
+
+.grade { display: grid; gap: 18px; }
+.grade--2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grade--3 { grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); }
+.grade--4 { grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); }
+
+.lia-cartao .ficha__corpo { display: grid; grid-template-columns: auto 1fr; gap: 26px; align-items: center; }
+
+.pessoa { text-align: center; }
+.pessoa .sprite { margin: 6px auto 14px; }
+.pessoa__papel {
+  display: block; font-family: 'PressStart', monospace; font-size: 0.55rem;
+  color: var(--ciano); margin-bottom: 0.9em; line-height: 1.8;
+}
+.pessoa__fala {
+  font-style: italic; color: var(--coral-claro); font-size: 0.95rem;
+  border-left: 2px solid var(--coral-medio); padding-left: 12px; text-align: left; margin: 12px 0;
+}
+.pessoa__fato {
+  font-size: 0.88rem; color: var(--texto-fraco); text-align: left;
+  border-top: 1px solid var(--borda); padding-top: 11px; margin-top: 11px;
+}
+
+.inimigo { text-align: center; }
+.inimigo .sprite { margin: 10px auto 12px; }
+.inimigo p { font-size: 0.9rem; margin-bottom: 0; }
+
+.chefe .ficha__corpo { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: start; }
+.ataques { display: grid; gap: 10px; margin-top: 14px; }
+.ataque {
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--borda);
+  border-left: 3px solid var(--coral-medio);
+  border-radius: var(--raio-p); padding: 11px 14px;
+}
+.ataque b { display: block; color: var(--coral-claro); font-size: 0.95rem; margin-bottom: 0.15em; }
+.ataque span { font-size: 0.9rem; color: var(--texto-suave); }
+
+.item .ficha__corpo { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+.item h4 { margin-bottom: 0.2em; }
+.item p { font-size: 0.88rem; margin: 0.4em 0 0; }
+
+/* 8. MECÂNICAS, MINIGAMES, CIÊNCIA ====================================== */
+
+.controles { width: 100%; border-collapse: collapse; }
+.controles th { text-align: left; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texto-fraco); padding-bottom: 8px; font-weight: 600; }
+.controles td { padding: 9px 0; border-top: 1px solid var(--borda); vertical-align: top; font-size: 0.95rem; color: var(--texto-suave); }
+.controles td:first-child { width: 42%; color: var(--texto); }
+.tecla {
+  display: inline-block; font-family: 'PressStart', monospace; font-size: 0.6rem;
+  background: var(--superficie-2); border: 1px solid var(--borda-forte);
+  border-bottom-width: 3px; border-radius: 6px; padding: 0.55em 0.7em; margin: 2px 3px 2px 0;
+  color: var(--texto); line-height: 1;
+}
+
+.mecanica .ficha__corpo { padding-top: 18px; }
+.mecanica h4 { color: var(--coral-claro); }
+.mecanica p { font-size: 0.92rem; margin-bottom: 0; }
+
+.fatos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+.fato {
+  background: var(--superficie); border: 1px solid var(--borda);
+  border-top: 3px solid var(--ambar); border-radius: var(--raio-p); padding: 16px 17px;
+}
+.fato--final { border-top-color: var(--ciano); }
+.fato__chave {
+  display: block; font-family: 'PressStart', monospace; font-size: 0.55rem;
+  color: var(--ambar); margin-bottom: 0.9em; line-height: 1.8;
+}
+.fato--final .fato__chave { color: var(--ciano); }
+.fato__quem { display: block; font-weight: 600; color: var(--texto); margin-bottom: 0.35em; }
+.fato p { font-size: 0.9rem; margin: 0; }
+
+/* 9. FICHA TÉCNICA, JOGAR, CRÉDITOS ===================================== */
+
+.tabela { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.tabela th, .tabela td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borda); }
+.tabela th { color: var(--texto-fraco); font-size: 0.74rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; }
+.tabela td:first-child { color: var(--texto); width: 38%; }
+.tabela td { color: var(--texto-suave); }
+.tabela tr:last-child td { border-bottom: none; }
+
+.arvore {
+  font-family: ui-monospace, monospace; font-size: 0.85rem; line-height: 1.75;
+  color: var(--texto-suave); background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--borda); border-radius: var(--raio-p);
+  padding: 16px 18px; overflow-x: auto; margin: 0;
+}
+.arvore b { color: var(--ciano); font-weight: 600; }
+.arvore i { color: var(--texto-fraco); font-style: normal; }
+
+.abas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.aba {
+  font-family: inherit; font-size: 0.92rem; padding: 10px 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--borda);
+  color: var(--texto-suave); cursor: pointer; transition: all var(--transicao);
+}
+.aba:hover { color: var(--texto); border-color: var(--borda-forte); }
+.aba[aria-selected="true"] { background: rgba(212, 112, 154, 0.16); border-color: rgba(212, 112, 154, 0.5); color: var(--coral-claro); }
+.painel[hidden] { display: none; }
+
+.moldura-jogo {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  background: #000; border: 1px solid var(--borda); border-radius: var(--raio);
+  overflow: hidden; margin-bottom: 18px;
+}
+.moldura-jogo iframe { width: 100%; height: 100%; border: 0; display: none; }
+.moldura-jogo .aviso {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 30px; background: radial-gradient(600px 300px at 50% 40%, rgba(148, 64, 110, 0.22), transparent 70%);
+}
+.moldura-jogo .aviso p { max-width: 520px; font-size: 0.95rem; }
+
+.passos { counter-reset: passo; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.passos li {
+  counter-increment: passo; position: relative; padding: 12px 16px 12px 52px;
+  background: rgba(0, 0, 0, 0.22); border: 1px solid var(--borda);
+  border-radius: var(--raio-p); font-size: 0.95rem; color: var(--texto-suave);
+}
+.passos li::before {
+  content: counter(passo); position: absolute; left: 15px; top: 12px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--coral-medio); color: #fff;
+  font-family: 'PressStart', monospace; font-size: 0.55rem;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.creditos { display: grid; gap: 16px; }
+.credito { font-size: 0.94rem; }
+.credito b { display: block; color: var(--coral-claro); margin-bottom: 0.15em; }
+
+/* 10. RODAPÉ, RESPONSIVO, ACESSIBILIDADE ================================ */
+
+.rodape {
+  border-top: 1px solid var(--borda); text-align: center;
+  padding: 46px 22px; color: var(--texto-fraco); font-size: 0.9rem;
+  background: var(--tinta-1);
+}
+.rodape p { color: var(--texto-fraco); margin: 0.3em 0; }
+.rodape .coracao { color: var(--coral); }
+
+/* Aparição suave ao rolar — o JS põe .visivel quando a seção entra na tela */
+.revelar { opacity: 0; transform: translateY(18px); transition: opacity 500ms ease, transform 500ms ease; }
+.revelar.visivel { opacity: 1; transform: none; }
+
+:focus-visible { outline: 2px solid var(--ciano); outline-offset: 3px; border-radius: 4px; }
+
+@media (max-width: 900px) {
+  .etapa__grade { grid-template-columns: 1fr; }
+  .etapa__arte { min-height: 130px; border-right: none; border-bottom: 1px solid var(--borda); }
+  .etapa__arte::after { background: linear-gradient(180deg, rgba(11, 9, 18, 0.2), rgba(26, 20, 40, 0.9)); }
+  .capa__lia { display: none; }
+  .chefe .ficha__corpo { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .chefe .ataque { text-align: left; }
+  .lia-cartao .ficha__corpo { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+}
+
+@media (max-width: 780px) {
+  .menu-botao { display: block; }
+  .barra__menu {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: rgba(11, 9, 18, 0.97); border-bottom: 1px solid var(--borda);
+    padding: 10px 16px 16px; display: none;
+  }
+  .barra__menu.aberto { display: block; }
+  .barra__menu ul { flex-direction: column; gap: 2px; }
+  .barra__menu a { padding: 11px 12px; }
+  .barra__menu .destaque { margin: 6px 0 0; text-align: center; }
+  .barra__interior { position: relative; }
+  .secao { padding: 62px 18px; }
+  .rota { padding-left: 26px; }
+  .etapa::before { left: -23px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  .revelar { opacity: 1; transform: none; }
+}

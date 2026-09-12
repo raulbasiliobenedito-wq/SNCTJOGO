@@ -3,702 +3,990 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Echoes of Life — o jogo</title>
-<style>
-  :root{
-    --bg: #12101c;
-    --bg2: #1a1628;
-    --panel: #211c34;
-    --panel2: #291f3c;
-    --coral-1: #4A1C3C;
-    --coral-2: #6E2A55;
-    --coral-3: #94406E;
-    --coral-4: #B85C87;
-    --coral-5: #D486A6;
-    --coral-6: #EFB7C8;
-    --cyan: #7fe3ec;
-    --gold: #ffe477;
-    --text: #f2e9e4;
-    --muted: #b9aecb;
-    --border: rgba(239,183,200,0.18);
-  }
-  *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
-  body{
-    margin:0;
-    background:
-      radial-gradient(1200px 700px at 15% -10%, rgba(148,64,110,0.25), transparent 60%),
-      radial-gradient(1000px 600px at 100% 0%, rgba(127,227,236,0.08), transparent 55%),
-      var(--bg);
-    color:var(--text);
-    font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
-    line-height:1.6;
-  }
-  img{image-rendering:pixelated; image-rendering:-moz-crisp-edges; image-rendering:crisp-edges;}
-  a{color:var(--coral-6);}
-  h1,h2,h3,h4{font-family:'Trebuchet MS', 'Segoe UI', sans-serif; letter-spacing:.02em; margin:0 0 .4em;}
-  h2{color:var(--gold); font-size:2rem; text-shadow:0 2px 12px rgba(0,0,0,.5);}
-  h3{color:var(--coral-6);}
-  p{color:var(--muted); margin:.4em 0;}
-  .section{max-width:1120px; margin:0 auto; padding:90px 24px;}
-  .section-intro{max-width:760px; color:var(--muted); margin-bottom:2.2em;}
-  .badge{
-    display:inline-block; font-size:.72rem; text-transform:uppercase; letter-spacing:.12em;
-    color:var(--cyan); border:1px solid rgba(127,227,236,0.35); border-radius:999px;
-    padding:.25em .9em; margin-bottom:1em; background:rgba(127,227,236,0.06);
-  }
-
-  /* nav */
-  nav{
-    position:sticky; top:0; z-index:50;
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 26px; backdrop-filter:blur(10px);
-    background:rgba(18,16,28,0.82); border-bottom:1px solid var(--border);
-  }
-  nav .brand{font-weight:bold; color:var(--gold); letter-spacing:.05em; font-size:1.05rem; white-space:nowrap;}
-  nav ul{list-style:none; display:flex; gap:22px; margin:0; padding:0; flex-wrap:wrap;}
-  nav a{color:var(--muted); text-decoration:none; font-size:.92rem; transition:color .15s;}
-  nav a:hover{color:var(--coral-6);}
-  nav .play-cta{
-    background:linear-gradient(135deg, var(--coral-3), var(--coral-1));
-    color:#fff !important; padding:.45em 1.1em; border-radius:8px; font-weight:bold;
-    box-shadow:0 4px 14px rgba(74,28,60,.5);
-  }
-
-  /* hero */
-  .hero{
-    position:relative; overflow:hidden; text-align:center;
-    padding:130px 24px 100px;
-    background:
-      linear-gradient(180deg, rgba(18,16,28,.4), rgba(18,16,28,.92) 85%),
-      url('../images/backgrounds/cave_background_v2.png');
-    background-size:cover; background-position:center 30%;
-    border-bottom:1px solid var(--border);
-  }
-  .hero::before{
-    content:""; position:absolute; inset:0;
-    background:radial-gradient(600px 300px at 50% 20%, rgba(239,183,200,.16), transparent 70%);
-  }
-  .hero-inner{position:relative; max-width:820px; margin:0 auto;}
-  .hero h1{
-    font-size:clamp(2.4rem, 6vw, 4.2rem); margin:0;
-    background:linear-gradient(90deg, var(--coral-6), var(--gold), var(--coral-5));
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 0 40px rgba(239,183,200,.25);
-  }
-  .hero .subtitle{font-size:1.15rem; color:var(--text); margin-top:.6em; max-width:600px; margin-left:auto; margin-right:auto;}
-  .hero .motivation{
-    margin-top:1.8em; font-style:italic; color:var(--cyan); font-size:1rem;
-    border-top:1px solid var(--border); border-bottom:1px solid var(--border);
-    padding:.9em 0; max-width:520px; margin-left:auto; margin-right:auto;
-  }
-  .hero-ctas{margin-top:2em; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;}
-  .btn{
-    display:inline-block; padding:.85em 1.7em; border-radius:10px; text-decoration:none;
-    font-weight:bold; font-size:.95rem; border:1px solid transparent; cursor:pointer;
-    transition:transform .15s, box-shadow .15s;
-  }
-  .btn:hover{transform:translateY(-2px);}
-  .btn-primary{background:linear-gradient(135deg, var(--coral-4), var(--coral-1)); color:#fff; box-shadow:0 6px 20px rgba(74,28,60,.55);}
-  .btn-ghost{background:transparent; border-color:var(--border); color:var(--coral-6);}
-  .btn-cyan{background:linear-gradient(135deg,#3aa7b3,#1d5b63); color:#fff; box-shadow:0 6px 20px rgba(31,90,98,.5);}
-
-  /* about grid */
-  .grid-2{display:grid; grid-template-columns:1.1fr .9fr; gap:40px; align-items:start;}
-  @media (max-width:820px){.grid-2{grid-template-columns:1fr;}}
-  .pill-list{list-style:none; margin:0; padding:0; display:grid; gap:10px;}
-  .pill-list li{
-    background:var(--panel); border:1px solid var(--border); border-radius:10px;
-    padding:.7em 1em; color:var(--text); font-size:.93rem;
-  }
-  .pill-list b{color:var(--coral-6);}
-  table.controls{width:100%; border-collapse:collapse; margin-top:.5em;}
-  table.controls td{padding:.5em .3em; border-bottom:1px solid var(--border); font-size:.92rem;}
-  table.controls td:first-child{color:var(--gold); font-family:monospace; white-space:nowrap; width:38%;}
-
-  /* lore */
-  .lore-card{
-    background:linear-gradient(160deg, var(--panel), var(--bg2));
-    border:1px solid var(--border); border-radius:16px; padding:34px 36px;
-    box-shadow:0 20px 50px rgba(0,0,0,.35);
-  }
-  .lore-card p{color:var(--text); font-size:1.02rem;}
-  .lore-card p:first-of-type::first-letter{
-    font-size:2.6em; float:left; padding-right:.12em; line-height:.8;
-    color:var(--coral-6); font-weight:bold;
-  }
-  .coral-line{
-    margin:1.6em 0; padding:14px 18px; border-left:3px solid var(--coral-4);
-    background:rgba(148,64,110,0.12); border-radius:0 8px 8px 0; color:var(--coral-6); font-style:italic;
-  }
-
-  /* phases */
-  .phase-card{
-    display:grid; grid-template-columns:280px 1fr; gap:0; margin-bottom:34px;
-    border:1px solid var(--border); border-radius:16px; overflow:hidden;
-    background:var(--panel);
-  }
-  @media (max-width:720px){.phase-card{grid-template-columns:1fr;}}
-  .phase-art{
-    background-size:cover; background-position:center; min-height:210px; position:relative;
-  }
-  .phase-art .num{
-    position:absolute; top:12px; left:12px; font-size:2.4rem; font-weight:bold;
-    color:rgba(255,255,255,.85); text-shadow:0 2px 10px rgba(0,0,0,.7);
-  }
-  .phase-body{padding:24px 28px;}
-  .phase-body h3{margin-bottom:.15em; font-size:1.3rem;}
-  .phase-tag{color:var(--cyan); font-style:italic; font-size:.92rem; margin-bottom:.7em; display:block;}
-  .phase-meta{display:flex; gap:10px; flex-wrap:wrap; margin-top:.8em;}
-  .chip{
-    font-size:.76rem; padding:.25em .7em; border-radius:999px; background:rgba(239,183,200,.1);
-    border:1px solid var(--border); color:var(--muted);
-  }
-
-  /* characters */
-  .cast-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:22px;}
-  .cast-card{
-    background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px;
-    text-align:center; transition:transform .15s, border-color .15s;
-  }
-  .cast-card:hover{transform:translateY(-4px); border-color:var(--coral-4);}
-  .sprite-frame{
-    margin:0 auto 14px; display:block; border-radius:10px;
-    background-color:rgba(0,0,0,.25); border:1px solid var(--border);
-    background-repeat:no-repeat;
-  }
-  .cast-card .role{color:var(--cyan); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em;}
-  .cast-card .quote{
-    font-style:italic; color:var(--coral-6); font-size:.88rem; margin:.8em 0;
-    border-top:1px dashed var(--border); padding-top:.7em;
-  }
-  .cast-card .fact{font-size:.83rem; color:var(--muted);}
-  .cast-card .holding{font-size:.78rem; color:var(--muted); margin-top:.4em;}
-
-  /* lia card */
-  .lia-card{
-    display:grid; grid-template-columns:auto 1fr; gap:28px; align-items:center;
-    background:linear-gradient(135deg, rgba(127,227,236,.08), var(--panel));
-    border:1px solid rgba(127,227,236,.3); border-radius:16px; padding:26px 30px; margin-bottom:36px;
-  }
-  @media (max-width:600px){.lia-card{grid-template-columns:1fr; text-align:center;}}
-
-  /* enemies / bosses */
-  .enemy-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:18px; margin-bottom:44px;}
-  .enemy-card{
-    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center;
-  }
-  .enemy-card .sprite-frame{margin-bottom:10px;}
-  .enemy-card h4{margin:.2em 0; color:var(--coral-6); font-size:.95rem;}
-  .enemy-card p{font-size:.8rem;}
-
-  .boss-card{
-    display:grid; grid-template-columns:220px 1fr; gap:26px; align-items:start;
-    background:linear-gradient(160deg, var(--panel2), var(--bg2));
-    border:1px solid var(--border); border-radius:16px; padding:26px; margin-bottom:26px;
-  }
-  @media (max-width:680px){.boss-card{grid-template-columns:1fr; text-align:center;} .boss-card .sprite-frame{margin:0 auto;}}
-  .boss-card h3{font-size:1.4rem; margin-bottom:.1em;}
-  .boss-loc{color:var(--cyan); font-size:.85rem; margin-bottom:.8em; display:block;}
-  .attack-list{display:grid; gap:10px; margin-top:.8em;}
-  .attack{
-    background:rgba(0,0,0,.2); border-left:3px solid var(--coral-4); border-radius:0 8px 8px 0;
-    padding:.6em .9em;
-  }
-  .attack b{color:var(--gold); font-size:.85rem;}
-  .attack span{display:block; font-size:.82rem; color:var(--muted); margin-top:.15em;}
-
-  /* items */
-  .item-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(210px,1fr)); gap:18px;}
-  .item-card{
-    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px;
-    display:flex; gap:14px; align-items:flex-start;
-  }
-  .item-card .sprite-frame{flex-shrink:0;}
-  .item-card h4{margin:0 0 .2em; color:var(--coral-6); font-size:.95rem;}
-  .item-card .kind{font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--cyan);}
-  .item-card p{font-size:.82rem; margin:.4em 0 0;}
-
-  /* science */
-  .science-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:16px;}
-  .science-card{
-    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px;
-    border-top:3px solid var(--coral-4);
-  }
-  .science-card .who{color:var(--gold); font-weight:bold; font-size:.92rem; display:block; margin-bottom:.35em;}
-  .science-card .tag{font-size:.7rem; color:var(--cyan); text-transform:uppercase; letter-spacing:.1em;}
-  .science-card p{font-size:.85rem; margin-top:.5em;}
-
-  /* jogar */
-  .play-wrap{
-    background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden;
-  }
-  .play-tabs{display:flex; border-bottom:1px solid var(--border);}
-  .play-tab{
-    flex:1; text-align:center; padding:16px; cursor:pointer; color:var(--muted); font-weight:bold;
-    background:transparent; border:none; font-size:.95rem; border-bottom:2px solid transparent;
-  }
-  .play-tab.active{color:var(--coral-6); border-bottom-color:var(--coral-4); background:rgba(239,183,200,.05);}
-  .play-panel{padding:30px; display:none;}
-  .play-panel.active{display:block;}
-  .browser-box{
-    aspect-ratio:16/9; max-width:760px; margin:0 auto 20px; border-radius:12px; overflow:hidden;
-    border:1px solid var(--border); background:#000 url('../images/backgrounds/cave_background_v2.png') center/cover;
-    display:flex; align-items:center; justify-content:center; position:relative;
-  }
-  .browser-box iframe{width:100%; height:100%; border:0; display:none;}
-  .browser-box .placeholder{
-    text-align:center; background:rgba(18,16,28,.78); padding:26px 30px; border-radius:12px;
-    max-width:80%;
-  }
-  .steps{counter-reset:step; list-style:none; padding:0; margin:0; display:grid; gap:14px;}
-  .steps li{
-    counter-increment:step; position:relative; padding-left:44px; font-size:.92rem; color:var(--text);
-  }
-  .steps li::before{
-    content:counter(step); position:absolute; left:0; top:-2px; width:30px; height:30px; border-radius:50%;
-    background:linear-gradient(135deg, var(--coral-4), var(--coral-1)); color:#fff; font-weight:bold;
-    display:flex; align-items:center; justify-content:center; font-size:.85rem;
-  }
-  code{background:rgba(0,0,0,.35); padding:.15em .5em; border-radius:5px; color:var(--cyan); font-size:.88em;}
-  .note{
-    margin-top:20px; font-size:.85rem; color:var(--muted); border-top:1px dashed var(--border); padding-top:14px;
-  }
-
-  footer{
-    text-align:center; padding:50px 24px 70px; color:var(--muted); font-size:.85rem;
-    border-top:1px solid var(--border); margin-top:40px;
-  }
-  footer .heart{color:var(--coral-4);}
-</style>
+<title>Echoes of Life — um jogo sobre não desistir de uma pergunta</title>
+<meta name="description" content="Echoes of Life: platformer 2D feito em Python com Pygame Zero. Uma vila, três fases, um laboratório escondido, quatro chefes e doze fatos sobre cientistas mulheres.">
+<meta name="author" content="Raul Basílio Benedito">
+<meta name="theme-color" content="#0b0912">
+<link rel="stylesheet" href="css/estilo.css">
 </head>
 <body>
 
-<nav>
-  <div class="brand">✦ ECHOES OF LIFE</div>
-  <ul>
-    <li><a href="#sobre">Sobre</a></li>
-    <li><a href="#historia">História</a></li>
-    <li><a href="#mundo">Mundo</a></li>
-    <li><a href="#personagens">Personagens</a></li>
-    <li><a href="#inimigos">Inimigos</a></li>
-    <li><a href="#itens">Itens</a></li>
-    <li><a href="#ciencia">Ciência</a></li>
-    <li><a href="#jogar" class="play-cta">Jogar</a></li>
-  </ul>
-</nav>
+<a class="pular-para" href="#conteudo">Pular para o conteúdo</a>
 
-<header class="hero" id="hero">
-  <div class="hero-inner">
-    <span class="badge">Um jogo de plataforma 2D · Python / Pygame Zero</span>
-    <h1>Echoes of Life</h1>
-    <p class="subtitle">Depois de saber que a mãe está com câncer, Lia sai atrás de qualquer pista de resposta — da própria escola até um centro de pesquisa vulcânico — coletando o trabalho de cientistas reais pelo caminho.</p>
-    <p class="motivation">"Todo experimento pode falhar. Levante-se e tente novamente!"</p>
-    <div class="hero-ctas">
-      <a href="#jogar" class="btn btn-primary">▶ Jogar agora</a>
-      <a href="#historia" class="btn btn-ghost">Conhecer a história</a>
-    </div>
+<!-- ===================== BARRA DE NAVEGAÇÃO ===================== -->
+<header class="barra">
+  <div class="barra__interior">
+    <a class="marca" href="#topo">✦ ECHOES <span>OF</span> LIFE</a>
+
+    <button class="menu-botao" id="menu-botao" aria-expanded="false" aria-controls="menu" aria-label="Abrir menu">☰</button>
+
+    <nav class="barra__menu" id="menu" aria-label="Seções do site">
+      <ul>
+        <li><a href="#sobre">Sobre</a></li>
+        <li><a href="#historia">História</a></li>
+        <li><a href="#mundo">Mundo</a></li>
+        <li><a href="#personagens">Personagens</a></li>
+        <li><a href="#inimigos">Inimigos</a></li>
+        <li><a href="#itens">Itens</a></li>
+        <li><a href="#mecanicas">Mecânicas</a></li>
+        <li><a href="#ciencia">Ciência</a></li>
+        <li><a href="#tecnica">Ficha técnica</a></li>
+        <li><a href="#jogar" class="destaque">▶ Jogar</a></li>
+      </ul>
+    </nav>
   </div>
+  <div class="progresso" id="progresso" role="presentation"></div>
 </header>
 
-<!-- SOBRE -->
-<section class="section" id="sobre">
-  <span class="badge">Sobre o jogo</span>
-  <h2>O que é Echoes of Life</h2>
-  <p class="section-intro">Um platformer 2D em Python (Pygame Zero) com três fases, quatro chefes, sete itens e cinco cientistas-NPC — tudo isso a serviço de uma pesquisa que Lia começa por um motivo bem pessoal: a mãe dela está doente, e ela precisa entender o que pode ajudar.</p>
+<!-- ===================== CAPA ===================== -->
+<section class="capa" id="topo">
+  <div class="capa__fundo" role="presentation"></div>
+  <div class="capa__veu" role="presentation"></div>
 
-  <div class="grid-2">
-    <div>
-      <ul class="pill-list">
-        <li><b>Abertura</b> — uma cutscene inicial mostra Lia e a mãe no hospital antes da Fase 1 começar (dá pra pular com ESC).</li>
-        <li><b>Gênero</b> — plataforma 2D com combate corpo a corpo, exploração e chefes com padrões de ataque telegrafados.</li>
-        <li><b>3 fases</b> — Escola, Universidade (com laboratório e biblioteca secretos) e Centro de Pesquisa (com uma caverna vulcânica submersa).</li>
-        <li><b>Progressão</b> — cada fase só libera a saída depois que Lia derrota o(s) chefe(s) local(is) e coleta o item de pesquisa que eles soltam.</li>
-        <li><b>Vida e escudo</b> — corações que podem ser recuperados e um escudo que absorve um golpe, ambos vindos de itens consumíveis.</li>
-        <li><b>Fôlego</b> — na caverna da Fase 3, trechos submersos usam um medidor de oxigênio próprio.</li>
-        <li><b>Diálogo</b> — cinco cientistas espalhadas pelas fases só falam quando Lia se aproxima e aperta <b>E</b>, com um aviso no estilo "APERTE E PARA FALAR".</li>
-      </ul>
+  <div class="capa__interior">
+    <span class="rotulo">Plataforma 2D · Python</span>
+    <h1 class="capa__titulo">Echoes<br>of Life</h1>
+    <p class="capa__linha">
+      Depois de descobrir que a mãe está com câncer, Lia sai atrás de qualquer
+      pista de resposta — da vila onde cresceu até uma caverna vulcânica sob um
+      centro de pesquisa — coletando pelo caminho o trabalho de cientistas reais.
+    </p>
+    <blockquote class="capa__citacao">
+      “Todo experimento pode falhar. Levante-se e tente de novo, minha filha —
+      isso vale pra ciência, e vale pra vida.”
+    </blockquote>
+    <div class="capa__acoes">
+      <a class="botao botao--principal" href="#jogar">▶ Jogar agora</a>
+      <a class="botao botao--fantasma" href="#historia">Conhecer a história</a>
     </div>
-    <div>
-      <h3>Controles</h3>
-      <table class="controls">
-        <tr><td>← → / A D</td><td>Mover</td></tr>
-        <tr><td>Espaço / ↑ / W</td><td>Pular</td></tr>
-        <tr><td>Q</td><td>Investida (dash)</td></tr>
-        <tr><td>F / clique esquerdo</td><td>Atacar</td></tr>
-        <tr><td>E / Enter</td><td>Interagir e falar com NPCs</td></tr>
-        <tr><td>1 · 2 · 3</td><td>Usar item consumível</td></tr>
-        <tr><td>R</td><td>Reiniciar (na tela de fim)</td></tr>
-      </table>
-    </div>
+  </div>
+
+  <div class="capa__lia" aria-hidden="true">
+    <div class="sprite" data-sprite="lia" data-escala="3"></div>
+  </div>
+  <div class="capa__chao" role="presentation"></div>
+</section>
+
+<!-- ===================== NÚMEROS ===================== -->
+<section class="numeros" aria-label="O jogo em números">
+  <div class="numeros__grade">
+    <div class="numero"><b>1 + 3</b><span>vila e fases</span></div>
+    <div class="numero"><b>7</b><span>mapas jogáveis</span></div>
+    <div class="numero"><b>10</b><span>tipos de inimigo</span></div>
+    <div class="numero"><b>4</b><span>chefes</span></div>
+    <div class="numero"><b>8</b><span>itens</span></div>
+    <div class="numero"><b>11</b><span>personagens que falam</span></div>
+    <div class="numero"><b>12</b><span>fatos de pesquisa</span></div>
+    <div class="numero"><b>2</b><span>minigames</span></div>
   </div>
 </section>
 
-<!-- HISTÓRIA -->
-<section class="section" id="historia">
-  <span class="badge">História</span>
-  <h2>Por trás de cada pista</h2>
-  <p class="section-intro">O jogo começa num quarto de hospital, não numa masmorra. Tudo que vem depois — o coral que brilha, o frasco rachado, a página rasgada — é Lia atrás de uma resposta.</p>
+<main id="conteudo">
 
-  <div class="lore-card">
-    <p>Lia está sentada ao lado da cama, no quarto do hospital, quando a mãe pede pra ela se aproximar. Os médicos encontraram um câncer; vai ter tratamento, e vai ter dias difíceis. Lia pergunta se tem cura, se existe alguma coisa que ela possa fazer — e a mãe responde com a frase que, sem Lia saber ainda, vai valer pro resto da jornada dela:</p>
+<!-- ===================== SOBRE ===================== -->
+<section class="secao revelar" id="sobre">
+  <div class="cabecalho-secao">
+    <span class="rotulo">Sobre o jogo</span>
+    <h2>O que é Echoes of Life</h2>
+    <p>
+      Um platformer 2D escrito em Python com Pygame Zero. Tem combate corpo a
+      corpo, exploração, chefes com ataques telegrafados e dois minigames de
+      mouse — tudo a serviço de uma pesquisa que Lia começa por um motivo bem
+      pessoal: a mãe dela está doente, e ela precisa entender o que pode ajudar.
+    </p>
+  </div>
 
-    <div class="coral-line">"Todo experimento pode falhar. Levante-se e tente de novo, minha filha — isso vale pra ciência, e vale pra vida."</div>
+  <div class="grade grade--2">
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Como o jogo se estrutura</h3><span class="ficha__id">GD-01</span></div>
+      <div class="ficha__corpo">
+        <ul>
+          <li><b>Abertura</b> — uma cutscene no quarto do hospital mostra Lia e a mãe antes de tudo começar.</li>
+          <li><b>Prólogo jogável</b> — a Vila, onde os vizinhos ensinam os controles um de cada vez, no ponto em que cada um passa a ser necessário.</li>
+          <li><b>Três fases</b> — Escola, Universidade e Centro de Pesquisa, cada uma com salas secundárias escondidas.</li>
+          <li><b>Progressão</b> — cada fase só libera a saída depois que Lia derrota o chefe local e pega o item de pesquisa que ele solta.</li>
+          <li><b>Vida e escudo</b> — cinco corações, mais um escudo que absorve um golpe inteiro; os dois vêm de itens consumíveis.</li>
+          <li><b>Fôlego</b> — nos trechos submersos da Fase 3 existe um medidor de oxigênio de 7 segundos que enche de volta fora d'água.</li>
+          <li><b>Checkpoints e save</b> — bandeiras espalhadas pelas fases; o progresso é gravado em <code>save.json</code> e o título ganha um botão “Continuar”.</li>
+        </ul>
+      </div>
+    </article>
 
-    <p>É assim que Lia decide ir atrás de cada pista, cada pesquisa, cada resposta que existir por aí. <em>Echoes of Life</em> não é uma história sobre monstros — é sobre uma menina que resolve levar ciência a sério porque precisa dela, de verdade, por alguém que ama.</p>
-
-    <p>A primeira pista aparece perto de casa, no laboratório escondido embaixo do pátio da própria escola. Ali, dentro do Rei Slime, pulsa um núcleo de uma cor que não existe em nenhum outro lugar do mundo de Lia — um <b style="color:var(--coral-6)">coral</b> que, ela vai descobrir, está ligado a algo que cientistas de verdade andam estudando há tempos: uma reação biológica rara demais pra ignorar, poderosa demais pra ser simples.</p>
-
-    <p>É na Universidade que a pesquisa começa a fazer sentido. No laboratório mais velho do prédio, um tanque de contenção rachado guarda o que sobrou do <b>Espécime 07</b> — o material que primeiro revelou essa reação. A etiqueta ainda diz <em>"ESPÉCIME 07 — NÃO REMOVER DO TANQUE"</em>, mas alguém removeu assim mesmo, e o que escapou se espalhou pelo prédio inteiro: alunos com os olhos acesos naquele mesmo coral, um zelador que continua fazendo a ronda de sempre, um Bibliotecário Silente guardando páginas que ninguém devia ter lido. Não são monstros — são o preço de mexer com algo que ainda não se entende direito. E é exatamente por isso que Lia precisa entender: porque o que quer que tenha acontecido ali pode ser também parte da resposta que ela procura.</p>
-
-    <p>No Centro de Pesquisa, mais fundo ainda, numa caverna vulcânica sob o prédio, os estudos estão mais avançados — e mais perigosos. Um dragão feito da própria rocha do lugar guarda o que restou das pesquisas originais, e entidades sombrias flutuam pela escuridão com o mesmo olhar de sempre. É o fim da linha: se existir uma resposta em algum lugar, é ali.</p>
-
-    <p>Em cada fase, Lia encontra cientistas — mulheres reais, de hoje e de um século atrás — dispostas a conversar com ela quando ela se aproxima. Marie Curie, Ada Lovelace, Katherine Johnson, Jaqueline Goes de Jesus e Rosalind Franklin não sabem da mãe de Lia. Mas cada uma delas, à sua maneira, mostra o que significa não desistir de uma pergunta difícil — e é exatamente disso que Lia precisa pra continuar.</p>
-
-    <p>No fim, o jogo não promete uma cura mágica — nenhuma pesquisa real funciona assim. O que ele promete é o que a mãe de Lia disse no início: que toda tentativa vale a pena, mesmo quando falha, e que ninguém precisa procurar sozinho.</p>
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Controles</h3><span class="ficha__id">GD-02</span></div>
+      <div class="ficha__corpo">
+        <table class="controles">
+          <thead><tr><th>Tecla</th><th>Ação</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tecla">←</span><span class="tecla">→</span><span class="tecla">A</span><span class="tecla">D</span></td><td>Mover</td></tr>
+            <tr><td><span class="tecla">ESPAÇO</span><span class="tecla">↑</span><span class="tecla">W</span></td><td>Pular</td></tr>
+            <tr><td><span class="tecla">F</span> ou clique</td><td>Atacar (combo de 4 golpes)</td></tr>
+            <tr><td><span class="tecla">Q</span></td><td>Investida — atravessa vãos largos e bate mais forte</td></tr>
+            <tr><td><span class="tecla">E</span></td><td>Falar, interagir, usar elevador e bancada</td></tr>
+            <tr><td><span class="tecla">1</span><span class="tecla">2</span><span class="tecla">3</span></td><td>Usar os três itens consumíveis</td></tr>
+            <tr><td><span class="tecla">ESC</span></td><td>Pausar / voltar</td></tr>
+            <tr><td><span class="tecla">R</span></td><td>Reiniciar na tela de fim</td></tr>
+            <tr><td><span class="tecla">F11</span></td><td>Tela cheia</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
   </div>
 </section>
 
-<!-- MUNDO -->
-<section class="section" id="mundo">
-  <span class="badge">Mundo e fases</span>
-  <h2>Da escola até o vulcão</h2>
-  <p class="section-intro">Três fases, cada uma com sua paleta, seu chefe (ou chefes) e sua parte da história.</p>
-
-  <div class="phase-card">
-    <div class="phase-art" style="background-image:url('../images/backgrounds/background_school.png')"><span class="num">01</span></div>
-    <div class="phase-body">
-      <h3>Fase 1 — Escola</h3>
-      <span class="phase-tag">"A primeira pergunta pode mudar o mundo."</span>
-      <p>Lia começa no lugar mais familiar: sua própria escola, com um laboratório subterrâneo escondido embaixo do pátio. É lá, contra o Rei Slime e seu núcleo coral pulsante, que a anomalia aparece pela primeira vez — ainda sem nome, ainda parecendo só "um slime maior".</p>
-      <div class="phase-meta">
-        <span class="chip">Chefe: Rei Slime</span>
-        <span class="chip">NPC: Rosalind Franklin</span>
-        <span class="chip">Item de pesquisa: Essência de Slime</span>
-      </div>
-    </div>
+<!-- ===================== HISTÓRIA ===================== -->
+<section class="secao secao--estreita revelar" id="historia">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--coral">História</span>
+    <h2>Por trás de cada pista</h2>
+    <p>O jogo começa num quarto de hospital, não numa masmorra. Tudo que vem
+       depois — o coral que brilha, o frasco rachado, a página rasgada — é Lia
+       atrás de uma resposta.</p>
   </div>
 
-  <div class="phase-card">
-    <div class="phase-art" style="background-image:url('../images/backgrounds/university_background.png')"><span class="num">02</span></div>
-    <div class="phase-body">
-      <h3>Fase 2 — Universidade</h3>
-      <span class="phase-tag">"Conhecimento se constrói em movimento."</span>
-      <p>Um corredor universitário tomado por alunos possuídos e vigiado por um zelador guardião leva a duas salas secretas: o <b>laboratório</b>, onde um espécime escapou de seu tanque de contenção, e a <b>biblioteca</b>, onde um Bibliotecário Silente guarda páginas que ninguém devia ter lido. É aqui que a origem da anomalia é revelada.</p>
-      <div class="phase-meta">
-        <span class="chip">Mini-chefe do corredor: Zelador Guardião</span>
-        <span class="chip">Chefe do laboratório: Espécime 07</span>
-        <span class="chip">Chefe da biblioteca: Bibliotecário Silente</span>
-        <span class="chip">NPCs: Katherine Johnson · Marie Curie · Ada Lovelace</span>
-        <span class="chip">Itens: Livro Mágico + Amostra de Espécime</span>
-      </div>
-    </div>
-  </div>
+  <article class="ficha">
+    <div class="ficha__topo"><h3>O começo</h3><span class="ficha__id">LORE-00</span></div>
+    <div class="ficha__corpo">
+      <p>Lia está sentada ao lado da cama, no quarto do hospital, quando a mãe pede
+         pra ela se aproximar. Os médicos encontraram um câncer; vai ter tratamento,
+         e vai ter dias difíceis. Lia pergunta se tem cura, se existe alguma coisa
+         que ela possa fazer — e a mãe responde com a frase que, sem Lia saber ainda,
+         vai valer pro resto da jornada dela:</p>
 
-  <div class="phase-card">
-    <div class="phase-art" style="background-image:url('../images/backgrounds/cave_background_v2.png')"><span class="num">03</span></div>
-    <div class="phase-body">
-      <h3>Fase 3 — Centro de Pesquisa</h3>
-      <span class="phase-tag">"Pesquisa é colaboração, coragem e esperança."</span>
-      <p>Sob o centro de pesquisa há uma caverna vulcânica, com trechos submersos que exigem gerenciar o fôlego de Lia. No fundo dela, um Dragão feito de basalto e magma guarda o que restou da anomalia — e o fim da jornada de Lia.</p>
-      <div class="phase-meta">
-        <span class="chip">Chefe: Dragão</span>
-        <span class="chip">NPC: Jaqueline Goes de Jesus</span>
-        <span class="chip">Mecânica extra: fôlego/natação</span>
-        <span class="chip">Item de pesquisa: Sangue do Dragão</span>
-      </div>
+      <blockquote class="capa__citacao" style="margin-left:0;">
+        “Todo experimento pode falhar. Levante-se e tente de novo, minha filha —
+        isso vale pra ciência, e vale pra vida.”
+      </blockquote>
+
+      <p>No dia seguinte ela atravessa a vila onde cresceu. Os vizinhos já sabem —
+         a Sra. Amélia chega a perguntar, sem jeito, se é verdade. Ninguém tenta
+         impedir. Seu Joaquim, Cadu e Zeca só vão ensinando o que ela vai precisar
+         saber pra seguir: como andar, como se defender, como atravessar um buraco
+         largo demais pra pular. É o mundo dela se despedindo com o que tem.</p>
+
+      <p>A primeira pista aparece perto de casa, num laboratório lacrado embaixo do
+         pátio da própria escola. Ali, dentro do Rei Slime, pulsa um núcleo de uma
+         cor que não existe em nenhum outro lugar do mundo de Lia — um
+         <b style="color:var(--coral-claro)">coral</b> que, ela vai descobrir, está
+         ligado a uma reação biológica rara demais pra ignorar.</p>
+
+      <p>É na Universidade que a pesquisa começa a fazer sentido. No laboratório
+         mais velho do prédio, um tanque de contenção rachado guarda o que sobrou do
+         <b>Espécime 07</b> — o material que primeiro revelou essa reação. A etiqueta
+         ainda diz <em>“ESPÉCIME 07 — NÃO REMOVER DO TANQUE”</em>, mas alguém removeu
+         assim mesmo, e o que escapou se espalhou pelo prédio inteiro: alunos com os
+         olhos acesos naquele mesmo coral, um zelador que continua fazendo a ronda de
+         sempre, um Bibliotecário Silente guardando páginas que ninguém devia ter
+         lido. Não são monstros — são o preço de mexer com algo que ainda não se
+         entende direito.</p>
+
+      <p>No Centro de Pesquisa, mais fundo ainda, numa caverna vulcânica sob o
+         prédio, os estudos estão mais avançados — e mais perigosos. Um dragão feito
+         da própria rocha do lugar guarda o que restou das pesquisas originais. É o
+         fim da linha: se existir uma resposta em algum lugar, é ali.</p>
+
+      <p>Em cada fase, Lia encontra cientistas — mulheres reais, de hoje e de um
+         século atrás — dispostas a conversar com ela quando ela se aproxima. Nenhuma
+         delas sabe da mãe de Lia. Mas cada uma, à sua maneira, mostra o que significa
+         não desistir de uma pergunta difícil.</p>
+
+      <p>No fim, o jogo não promete uma cura mágica — nenhuma pesquisa real funciona
+         assim. O que ele promete é o que a mãe de Lia disse no início: que toda
+         tentativa vale a pena, mesmo quando falha, e que ninguém precisa procurar
+         sozinho.</p>
     </div>
-  </div>
+  </article>
 </section>
 
-<!-- PERSONAGENS -->
-<section class="section" id="personagens">
-  <span class="badge">Personagens</span>
-  <h2>Lia e as cientistas</h2>
-  <p class="section-intro">Cinco cientistas reais aparecem como NPCs, uma por local — sempre esperando que Lia chegue perto e aperte E.</p>
-
-  <div class="lia-card">
-    <div class="sprite-frame" style="width:96px;height:144px;background-image:url('../images/player/player_sheet.png');background-size:672px 144px;background-position:0 0;"></div>
-    <div>
-      <h3 style="margin-bottom:.1em;">Lia</h3>
-      <span class="role">Protagonista</span>
-      <p>Estudante curiosa o bastante para reparar no que os outros ignoram. Pula, corre com investida (dash), luta corpo a corpo e nada em trechos submersos — mas o que a leva adiante, fase após fase, é sempre a mesma pergunta: o que é isso, e por que ninguém mais está vendo?</p>
-    </div>
+<!-- ===================== MUNDO ===================== -->
+<section class="secao revelar" id="mundo">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ambar">Mundo</span>
+    <h2>Da vila até o vulcão</h2>
+    <p>O percurso completo de Lia, na ordem em que ele acontece. As medidas são
+       o tamanho real de cada mapa do Tiled, em pixels de jogo.</p>
   </div>
 
-  <div class="cast-grid">
-    <div class="cast-card">
-      <div class="sprite-frame" style="width:144px;height:144px;background-image:url('../images/npcs/cientistas.png');background-size:720px 144px;background-position:-288px 0;"></div>
-      <span class="role">Fase 2 — Laboratório</span>
-      <h4>Marie Curie</h4>
-      <div class="holding">Segura um frasco de rádio, cujo halo pulsa em luz fria.</div>
-      <div class="quote">"Passei anos isolando o rádio, grama por grama. A ciência exige coragem tanto quanto método."</div>
-      <div class="fact">Foi a primeira pessoa a receber dois Prêmios Nobel, em áreas científicas diferentes.</div>
-    </div>
+  <div class="rota">
 
-    <div class="cast-card">
-      <div class="sprite-frame" style="width:144px;height:144px;background-image:url('../images/npcs/cientistas.png');background-size:720px 144px;background-position:-432px 0;"></div>
-      <span class="role">Fase 2 — Biblioteca</span>
-      <h4>Ada Lovelace</h4>
-      <div class="holding">Segura um cartão perfurado, cujos furos acendem em sequência.</div>
-      <div class="quote">"Escrevi o primeiro algoritmo antes mesmo de existir a máquina para executá-lo. Os livros aqui guardam mais do que respostas."</div>
-      <div class="fact">É reconhecida por escrever um dos primeiros algoritmos feitos para uma máquina.</div>
-    </div>
-
-    <div class="cast-card">
-      <div class="sprite-frame" style="width:144px;height:144px;background-image:url('../images/npcs/cientistas.png');background-size:720px 144px;background-position:-576px 0;"></div>
-      <span class="role">Fase 2 — Corredor</span>
-      <h4>Katherine Johnson</h4>
-      <div class="holding">Segura um caderno de trajetória, onde uma cápsula percorre o arco de reentrada.</div>
-      <div class="quote">"Calculei à mão as trajetórias que levaram naves ao espaço. Confie na sua própria conta."</div>
-      <div class="fact">Calculou trajetórias essenciais para missões espaciais da NASA.</div>
-    </div>
-
-    <div class="cast-card">
-      <div class="sprite-frame" style="width:144px;height:144px;background-image:url('../images/npcs/cientistas.png');background-size:720px 144px;background-position:0px 0;"></div>
-      <span class="role">Fase 3 — Centro de Pesquisa</span>
-      <h4>Jaqueline Goes de Jesus</h4>
-      <div class="holding">Segura uma micropipeta, com uma gota que se forma e cai.</div>
-      <div class="quote">"Sequenciei o genoma do coronavírus com uma equipe inteira ao meu lado. Compartilhe o que aprendeu, Lia."</div>
-      <div class="fact">Participou do sequenciamento do genoma do coronavírus no Brasil, em 2020.</div>
-    </div>
-
-    <div class="cast-card">
-      <div class="sprite-frame" style="width:144px;height:144px;background-image:url('../images/npcs/cientistas.png');background-size:720px 144px;background-position:-144px 0;"></div>
-      <span class="role">Fase 1 — Escola</span>
-      <h4>Rosalind Franklin</h4>
-      <div class="holding">Segura a Foto 51, cuja cruz de difração cintila.</div>
-      <div class="quote">"Minha Foto 51 revelou a estrutura do DNA. Olhe com atenção para o que os outros ignoram, Lia."</div>
-      <div class="fact">Produziu imagens de raios X fundamentais para compreender a estrutura do DNA.</div>
-    </div>
-  </div>
-  <p class="note" style="max-width:760px;">Jaqueline Goes de Jesus é uma cientista viva; sua presença aqui é uma homenagem feita com respeito, no contexto de um projeto escolar não-comercial.</p>
-</section>
-
-<!-- INIMIGOS -->
-<section class="section" id="inimigos">
-  <span class="badge">Inimigos e chefes</span>
-  <h2>Quem se atravessa no caminho</h2>
-  <p class="section-intro">Inimigos comuns patrulham cada fase; cada local principal tem seu próprio chefe, com dois ataques telegrafados que pedem respostas diferentes.</p>
-
-  <h3 style="margin-bottom:14px;">Inimigos comuns</h3>
-  <div class="enemy-row">
-    <div class="enemy-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/enemies/slime_common.png');background-size:768px 384px;background-position:0 -96px;"></div>
-      <h4>Slime</h4>
-      <p>Fase 1 · patrulha a plataforma onde nasceu.</p>
-    </div>
-    <div class="enemy-card">
-      <div class="sprite-frame" style="width:120px;height:102px;background-image:url('../images/enemies/crystal_stag.png');background-size:1680px 408px;background-position:0 0;"></div>
-      <h4>Cervo de Cristal</h4>
-      <p>Fase 3 · para nas bordas antes de virar; morre se mineralizando.</p>
-    </div>
-    <div class="enemy-card">
-      <div class="sprite-frame" style="width:120px;height:120px;background-image:url('../images/enemies/dark_wraith.png');background-size:1680px 480px;background-position:0 0;"></div>
-      <h4>Entidade Sombria</h4>
-      <p>Fase 3 · flutua devagar e faz investidas rápidas telegrafadas.</p>
-    </div>
-    <div class="enemy-card">
-      <div class="sprite-frame" style="width:120px;height:120px;background-image:url('../images/enemies/possessed_student.png');background-size:1440px 600px;background-position:0 0;"></div>
-      <h4>Estudante Possuído</h4>
-      <p>Fase 2 · anda até a borda, pausa, vira — mesmo olhar coral da anomalia.</p>
-    </div>
-    <div class="enemy-card">
-      <div class="sprite-frame" style="width:128px;height:128px;background-image:url('../images/enemies/janitor_guardian.png');background-size:1536px 768px;background-position:0 0;"></div>
-      <h4>Zelador Guardião</h4>
-      <p>Fase 2 · mini-chefe do corredor: maior, mais resistente, mais lento.</p>
-    </div>
-  </div>
-
-  <h3 style="margin-bottom:14px;">Chefes</h3>
-
-  <div class="boss-card">
-    <div class="sprite-frame" style="width:128px;height:128px;background-image:url('../images/enemies/slime_king.png');background-size:1536px 768px;background-position:0 0;"></div>
-    <div>
-      <h3>Rei Slime</h3>
-      <span class="boss-loc">Chefe da Fase 1 — Escola</span>
-      <p>Corpo translúcido e gelatinoso com um núcleo coral visível por dentro — a primeira aparição da anomalia no jogo.</p>
-      <div class="attack-list">
-        <div class="attack"><b>Esmagar</b><span>Se achata, sobe e faz uma onda rasteira nos dois lados ao aterrissar. Responda pulando por cima da onda.</span></div>
-        <div class="attack"><b>Cisão</b><span>Se estica, convulsiona e cospe 4 slimes menores que se espalham e persistem depois. Responda andando para limpar o espaço — pular no meio deles é a pior escolha.</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="boss-card">
-    <div class="sprite-frame" style="width:112px;height:96px;background-image:url('../images/enemies/lab_specimen.png');background-size:1344px 576px;background-position:0 0;"></div>
-    <div>
-      <h3>Espécime 07</h3>
-      <span class="boss-loc">Chefe da sala do Laboratório — Fase 2</span>
-      <p>Guardião do laboratório velho: a coisa que estava no tanque de contenção antes de alguém removê-la de lá. É a peça-chave que revela de onde vem o coral — e talvez o motivo pelo qual vale a pena entendê-lo.</p>
-      <div class="attack-list">
-        <div class="attack"><b>Jato</b><span>Ataque à distância vindo de um rastejo baixo.</span></div>
-        <div class="attack"><b>Investida</b><span>Avanço rápido corpo a corpo depois de uma antecipação visível.</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="boss-card">
-    <div class="sprite-frame" style="width:128px;height:128px;background-image:url('../images/enemies/librarian_boss.png');background-size:1792px 768px;background-position:0 0;"></div>
-    <div>
-      <h3>Bibliotecário Silente</h3>
-      <span class="boss-loc">Chefe da sala da Biblioteca — Fase 2</span>
-      <p>O rosto está apagado; só resta uma página acesa em coral onde o rosto deveria estar — o mesmo vocabulário visual do estudante possuído e da entidade sombria da Fase 3.</p>
-      <div class="attack-list">
-        <div class="attack"><b>Silêncio</b><span>Ataque de área que pune ficar parado perto dele.</span></div>
-        <div class="attack"><b>Errata</b><span>Invoca tomos que reaproveitam a silhueta do livro de pesquisa do jogo.</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="boss-card">
-    <div class="sprite-frame" style="width:168px;height:144px;background-image:url('../images/enemies/dragon.png');background-size:2352px 864px;background-position:0 0;"></div>
-    <div>
-      <h3>Dragão</h3>
-      <span class="boss-loc">Chefe da Fase 3 — Centro de Pesquisa</span>
-      <p>Feito do mesmo material da caverna: dorso de basalto escuro, ventre em brasa — como se tivesse nascido da lava, e não apenas vivido nela.</p>
-      <div class="attack-list">
-        <div class="attack"><b>Sopro</b><span>O peito acende em 4 estágios antes de um jato rasteiro varrer o chão inteiro. Responda pulando.</span></div>
-        <div class="attack"><b>Brasas</b><span>Abre as asas, decola e solta pedras incandescentes em posições aleatórias — que continuam caindo mesmo depois dele pousar. Responda andando para reposicionar; pular é a pior escolha aqui.</span></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ITENS -->
-<section class="section" id="itens">
-  <span class="badge">Itens</span>
-  <h2>O que Lia encontra pelo caminho</h2>
-  <p class="section-intro">Consumíveis têm efeito imediato; os itens de pesquisa são drop garantido de cada chefe e não se "usam" — eles destravam o avanço de fase.</p>
-
-  <div class="item-grid">
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 0;"></div>
-      <div><h4>Gororoba</h4><span class="kind">Consumível</span><p>Recupera 1 coração de vida. Cai de slimes comuns na Fase 1.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -96px;"></div>
-      <div><h4>Essência de Slime</h4><span class="kind">Pesquisa · conclui a Fase 1</span><p>Drop garantido do Rei Slime.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -192px;"></div>
-      <div><h4>Carcaça de Robô</h4><span class="kind">Consumível</span><p>+1 escudo, absorve o próximo dano. Cai de inimigos da Fase 2.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -288px;"></div>
-      <div><h4>Livro Mágico</h4><span class="kind">Pesquisa · conclui a Fase 2</span><p>Drop garantido do Bibliotecário Silente.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -384px;"></div>
-      <div><h4>Amostra de Espécime</h4><span class="kind">Pesquisa · conclui a Fase 2</span><p>Drop garantido do Espécime 07 — o primeiro material que liga o coral a algo que pode valer a pena estudar de perto.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -480px;"></div>
-      <div><h4>Dark Crystal</h4><span class="kind">Consumível</span><p>+1 coração e +1 escudo. Cai de inimigos da Fase 3.</p></div>
-    </div>
-    <div class="item-card">
-      <div class="sprite-frame" style="width:96px;height:96px;background-image:url('../images/items/items.png');background-size:384px 672px;background-position:0 -576px;"></div>
-      <div><h4>Sangue do Dragão</h4><span class="kind">Pesquisa · conclui a Fase 3</span><p>Drop garantido do Dragão.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- CIÊNCIA -->
-<section class="section" id="ciencia">
-  <span class="badge">A ciência delas</span>
-  <h2>Fatos coletados como pesquisa</h2>
-  <p class="section-intro">Ao longo das três fases, Lia coleta fragmentos de pesquisa que revelam fatos reais sobre cientistas mulheres — algumas delas também aparecem em pessoa como NPCs, outras só através desses fragmentos. Nenhuma delas estudou o câncer da mãe de Lia, mas todas mostram um jeito de não desistir de uma pergunta difícil.</p>
-
-  <div class="science-grid">
-    <div class="science-card"><span class="tag">Curiosidade</span><span class="who">Marie Curie</span><p>Foi a primeira pessoa a receber dois Prêmios Nobel, em áreas científicas diferentes.</p></div>
-    <div class="science-card"><span class="tag">Observação</span><span class="who">Bertha Lutz</span><p>Cientista brasileira e uma das grandes vozes pela participação das mulheres na sociedade.</p></div>
-    <div class="science-card"><span class="tag">Hipótese</span><span class="who">Enedina Alves Marques</span><p>Primeira mulher negra a se formar engenheira no Brasil.</p></div>
-    <div class="science-card"><span class="tag">Experimento</span><span class="who">Jaqueline Goes de Jesus</span><p>Participou do sequenciamento do genoma do coronavírus no Brasil, em 2020.</p></div>
-    <div class="science-card"><span class="tag">Registro</span><span class="who">Nise da Silveira</span><p>Transformou a psiquiatria brasileira com cuidado, arte e respeito às pessoas.</p></div>
-    <div class="science-card"><span class="tag">Método</span><span class="who">Ada Lovelace</span><p>Reconhecida por escrever um dos primeiros algoritmos para uma máquina.</p></div>
-    <div class="science-card"><span class="tag">Dados</span><span class="who">Katherine Johnson</span><p>Calculou trajetórias essenciais para missões espaciais da NASA.</p></div>
-    <div class="science-card"><span class="tag">Análise</span><span class="who">Sônia Guimarães</span><p>Primeira mulher negra brasileira doutora em Física.</p></div>
-    <div class="science-card"><span class="tag">Testes</span><span class="who">Rosalind Franklin</span><p>Produziu imagens de raios X fundamentais para compreender a estrutura do DNA.</p></div>
-    <div class="science-card"><span class="tag">Resultados</span><span class="who">Mayana Zatz</span><p>Referência brasileira em genética humana e no estudo de doenças neuromusculares.</p></div>
-    <div class="science-card"><span class="tag">Cura</span><span class="who">Johanna Döbereiner</span><p>Contribuiu para o estudo da fixação de nitrogênio, importante para a agricultura brasileira.</p></div>
-    <div class="science-card" style="border-top-color:var(--cyan);"><span class="tag">Pesquisa completa</span><span class="who">A mensagem final</span><p>A ciência avança quando muitas pessoas fazem perguntas, compartilham dados e persistem juntas.</p></div>
-  </div>
-</section>
-
-<!-- JOGAR -->
-<section class="section" id="jogar">
-  <span class="badge">Jogar</span>
-  <h2>Jogue Echoes of Life</h2>
-  <p class="section-intro">Duas formas de jogar: direto no navegador (versão web, gerada com pygbag) ou rodando o jogo localmente com Python.</p>
-
-  <div class="play-wrap">
-    <div class="play-tabs">
-      <button class="play-tab active" onclick="showPlayTab('browser', this)">🌐 No navegador</button>
-      <button class="play-tab" onclick="showPlayTab('local', this)">💻 Baixar e rodar</button>
-    </div>
-
-    <div class="play-panel active" id="panel-browser">
-      <div class="browser-box">
-        <iframe id="gameFrame"></iframe>
-        <div class="placeholder" id="framePlaceholder">
-          <h4 style="margin-top:0;">Versão para navegador</h4>
-          <p style="margin:0;">Este jogo foi escrito com Pygame Zero e precisa ser compilado para WebAssembly (com a ferramenta <a href="https://github.com/pygame-web/pygbag" target="_blank">pygbag</a>) antes de rodar aqui dentro. O ponto de entrada web (<code>main_web.py</code>) já está pronto na pasta do projeto — falta só gerar o build.</p>
+    <article class="ficha etapa">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/ceu.png')"><span class="etapa__num">00</span></div>
+        <div class="etapa__corpo">
+          <h3>Vila — o prólogo jogável</h3>
+          <span class="etapa__fala">“Antes da estrada — a vila onde Lia cresceu.”</span>
+          <p>A primeira vez que Lia anda livre pelo mundo. Em vez de uma tela de
+             tutorial, os próprios vizinhos ensinam: Seu Joaquim dá o básico, Cadu
+             ensina o ataque bem na frente de um slime que bloqueia a passagem, e
+             Zeca ensina a investida bem na beira de um buraco largo demais pra pular.
+             A Sra. Amélia é a única que toca no assunto da mãe — em três falas
+             seguidas, a única conversa do jogo com mais de um beat.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--verde">6 moradores</span>
+            <span class="etiqueta">Tutorial distribuído</span>
+            <span class="etiqueta">Fundo com 5 camadas de parallax</span>
+          </div>
+          <p class="medida">maps/vila.tmx — 220 × 20 tiles (7040 × 640 px)</p>
         </div>
       </div>
-      <div class="steps">
-        <li>Instale o pygbag: <code>pip install pygbag</code></li>
-        <li>Na pasta do jogo, rode: <code>python -m pygbag main_web.py</code></li>
-        <li>Copie o conteúdo gerado em <code>build/web/</code> para <code>site/jogo_web/</code></li>
-        <li>Recarregue esta página — o jogo aparece automaticamente no quadro acima</li>
-      </div>
-      <p class="note">Se o pygbag pedir um arquivo chamado exatamente <code>main.py</code>, renomeie temporariamente <code>main.py</code> → <code>main_desktop.py</code> e <code>main_web.py</code> → <code>main.py</code> só durante o build, depois desfaça.</p>
-    </div>
+    </article>
 
-    <div class="play-panel" id="panel-local">
-      <div class="steps">
-        <li>Instale o <a href="https://www.python.org/downloads/" target="_blank">Python 3</a> (3.9 ou mais recente).</li>
-        <li>Instale o Pygame Zero: <code>pip install pgzero</code></li>
-        <li>Abra um terminal na pasta do jogo (a mesma deste site) e rode: <code>pgzrun main.py</code></li>
-        <li>A janela abre em tela cheia — use os controles descritos na seção <a href="#sobre">Sobre o jogo</a>.</li>
+    <article class="ficha etapa">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/background_school.png')"><span class="etapa__num">01</span></div>
+        <div class="etapa__corpo">
+          <h3>Fase 1 — Escola</h3>
+          <span class="etapa__fala">“A primeira pergunta pode mudar o mundo.”</span>
+          <p>O lugar mais familiar de todos, com um laboratório escondido embaixo do
+             pátio. No fim do pátio, um campo de contenção de névoa bloqueia a
+             passagem para a arena do Rei Slime — e não tem como forçar. A única saída
+             é achar o elevador de serviço e descer.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--coral">Chefe: Rei Slime</span>
+            <span class="etiqueta etiqueta--ciano">Cientista: Rosalind Franklin</span>
+            <span class="etiqueta etiqueta--ambar">Item: Essência de Slime</span>
+            <span class="etiqueta etiqueta--violeta">Campo de contenção</span>
+          </div>
+          <p class="medida">maps/fase1_escola.tmx — 242 × 46 tiles (7744 × 1472 px)</p>
+        </div>
       </div>
-      <p class="note">O jogo inteiro (código + assets) está nesta mesma pasta do projeto — não é preciso baixar nada separado.</p>
-    </div>
+    </article>
+
+    <article class="ficha etapa etapa--secreta">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/lab_background.png')"><span class="etapa__num">1S</span></div>
+        <div class="etapa__corpo">
+          <h3>Laboratório lacrado <span class="etiqueta etiqueta--violeta">área secreta</span></h3>
+          <span class="etapa__fala">“Melhor eu não usar isso ainda.”</span>
+          <p>Descendo pelo elevador, Lia encontra a instalação que gerou o campo de
+             contenção: um poço rompido com poça tóxica no fundo, uma galeria de
+             tanques de espécime, uma sala elétrica e um corredor alagado. As quatro
+             peças de um microscópio estão espalhadas por ali — montá-las na bancada
+             do fim é o que desliga o campo lá em cima e abre o caminho pro chefe.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta">4 peças de microscópio</span>
+            <span class="etiqueta">Poças tóxicas</span>
+            <span class="etiqueta">Passarelas e mezanino</span>
+          </div>
+          <p class="medida">maps/fase1_laboratorio_secreto.tmx — 96 × 34 tiles (3072 × 1088 px)</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha etapa">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/university_background.png')"><span class="etapa__num">02</span></div>
+        <div class="etapa__corpo">
+          <h3>Fase 2 — Universidade</h3>
+          <span class="etapa__fala">“Conhecimento se constrói em movimento.”</span>
+          <p>Um corredor universitário tomado por alunos possuídos e vigiado por um
+             zelador guardião. Duas portas levam às salas onde a origem da anomalia é
+             revelada — e as duas são obrigatórias: a fase só termina com os
+             <em>dois</em> itens de pesquisa na mochila.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--coral">Mini-chefe: Zelador Guardião</span>
+            <span class="etiqueta etiqueta--ciano">Katherine Johnson · Marie Curie · Ada Lovelace</span>
+            <span class="etiqueta etiqueta--ambar">Itens: Livro Mágico + Amostra de Espécime</span>
+          </div>
+          <p class="medida">maps/fase2_universidade.tmx — 216 × 55 tiles (6912 × 1760 px)</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha etapa etapa--secreta">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/lab_background.png')"><span class="etapa__num">2A</span></div>
+        <div class="etapa__corpo">
+          <h3>Sala do Laboratório <span class="etiqueta etiqueta--violeta">porta lateral</span></h3>
+          <p>O laboratório velho, com o tanque de contenção rachado do Espécime 07 e
+             uma caixa de energia que precisa ser reaberta à mão — o minigame de
+             parafusos e fios. É aqui que Marie Curie fica.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--coral">Chefe: Espécime 07</span>
+            <span class="etiqueta">Minigame da caixa de energia</span>
+          </div>
+          <p class="medida">maps/fase2_laboratorio_sala.tmx — 60 × 55 tiles (1920 × 1760 px)</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha etapa etapa--secreta">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/library_background.png')"><span class="etapa__num">2B</span></div>
+        <div class="etapa__corpo">
+          <h3>Sala da Biblioteca <span class="etiqueta etiqueta--violeta">porta lateral</span></h3>
+          <p>Estantes altas e um Bibliotecário Silente guardando o que foi escrito
+             sobre a anomalia. A chave de fenda usada no minigame da caixa de energia
+             está escondida aqui. Ada Lovelace espera entre as prateleiras.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--coral">Chefe: Bibliotecário Silente</span>
+            <span class="etiqueta">Chave de fenda</span>
+          </div>
+          <p class="medida">maps/fase2_biblioteca_sala.tmx — 64 × 55 tiles (2048 × 1760 px)</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha etapa">
+      <div class="etapa__grade">
+        <div class="etapa__arte" style="background-image:url('../images/backgrounds/cave_background_v2.png')"><span class="etapa__num">03</span></div>
+        <div class="etapa__corpo">
+          <h3>Fase 3 — Centro de Pesquisa</h3>
+          <span class="etapa__fala">“Pesquisa é colaboração, coragem e esperança.”</span>
+          <p>O maior mapa do jogo: uma caverna vulcânica sob o centro de pesquisa,
+             com lagos de lava, trechos submersos que exigem gerenciar o fôlego e
+             cervos de cristal que se mineralizam ao morrer. No fundo dela, um Dragão
+             feito de basalto e magma guarda o que restou das pesquisas originais.</p>
+          <div class="etapa__meta">
+            <span class="etiqueta etiqueta--coral">Chefe: Dragão</span>
+            <span class="etiqueta etiqueta--ciano">Cientista: Jaqueline Goes de Jesus</span>
+            <span class="etiqueta etiqueta--ambar">Item: Sangue do Dragão</span>
+            <span class="etiqueta">Natação e fôlego</span>
+          </div>
+          <p class="medida">maps/fase3_pesquisa.tmx — 315 × 100 tiles (10080 × 3200 px)</p>
+        </div>
+      </div>
+    </article>
+
   </div>
 </section>
 
-<footer>
-  <p>Echoes of Life — um jogo sobre curiosidade, feito com Python e Pygame Zero.</p>
-  <p>Site feito com <span class="heart">♥</span> para apresentar o projeto.</p>
+<!-- ===================== PERSONAGENS ===================== -->
+<section class="secao revelar" id="personagens">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ciano">Personagens</span>
+    <h2>Quem Lia encontra</h2>
+    <p>Onze personagens conversam com ela ao longo do jogo — seis moradores da
+       vila e cinco cientistas reais, uma por local. Todos esperam Lia chegar
+       perto e apertar <span class="tecla">E</span>.</p>
+  </div>
+
+  <article class="ficha lia-cartao" style="margin-bottom:26px;">
+    <div class="ficha__topo"><h3>Lia</h3><span class="ficha__id">PJ-00</span></div>
+    <div class="ficha__corpo">
+      <div class="sprite" data-sprite="lia" data-escala="2"></div>
+      <div>
+        <span class="pessoa__papel">Protagonista</span>
+        <p>Estudante curiosa o bastante pra reparar no que os outros ignoram. Pula,
+           corre com investida, encadeia um combo de quatro golpes, apara ataques de
+           chefe no tempo certo e nada nos trechos submersos. Mas o que a leva
+           adiante, fase após fase, é sempre a mesma pergunta: o que é isso, e por
+           que ninguém mais está vendo?</p>
+      </div>
+    </div>
+  </article>
+
+  <h3 style="margin:34px 0 16px;">As cientistas</h3>
+  <div class="grade grade--3">
+
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">NPC-01</span><span class="ficha__id">Fase 1</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="franklin" data-escala="3"></div></div>
+        <h4>Rosalind Franklin</h4>
+        <span class="pessoa__papel">Escola</span>
+        <p class="pessoa__fala">“Minha Foto 51 revelou a estrutura do DNA. Olhe com atenção para o que os outros ignoram, Lia.”</p>
+        <p class="pessoa__fato">Produziu imagens de raios X que foram fundamentais para compreender a estrutura do DNA.</p>
+      </div>
+    </article>
+
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">NPC-02</span><span class="ficha__id">Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="johnson" data-escala="3"></div></div>
+        <h4>Katherine Johnson</h4>
+        <span class="pessoa__papel">Corredor da universidade</span>
+        <p class="pessoa__fala">“Calculei à mão as trajetórias que levaram naves ao espaço. Confie na sua própria conta.”</p>
+        <p class="pessoa__fato">Calculou trajetórias essenciais para missões espaciais da NASA.</p>
+      </div>
+    </article>
+
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">NPC-03</span><span class="ficha__id">Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="curie" data-escala="3"></div></div>
+        <h4>Marie Curie</h4>
+        <span class="pessoa__papel">Sala do laboratório</span>
+        <p class="pessoa__fala">“Passei anos isolando o rádio, grama por grama. A ciência exige coragem tanto quanto método.”</p>
+        <p class="pessoa__fato">Foi a primeira pessoa a receber dois Prêmios Nobel, em áreas científicas diferentes.</p>
+      </div>
+    </article>
+
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">NPC-04</span><span class="ficha__id">Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="lovelace" data-escala="3"></div></div>
+        <h4>Ada Lovelace</h4>
+        <span class="pessoa__papel">Sala da biblioteca</span>
+        <p class="pessoa__fala">“Escrevi o primeiro algoritmo antes mesmo de existir a máquina para executá-lo. Os livros aqui guardam mais do que respostas.”</p>
+        <p class="pessoa__fato">É reconhecida por escrever um dos primeiros algoritmos feitos para uma máquina.</p>
+      </div>
+    </article>
+
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">NPC-05</span><span class="ficha__id">Fase 3</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="jaqueline" data-escala="3"></div></div>
+        <h4>Jaqueline Goes de Jesus</h4>
+        <span class="pessoa__papel">Centro de pesquisa</span>
+        <p class="pessoa__fala">“Sequenciei o genoma do coronavírus com uma equipe inteira ao meu lado. Compartilhe o que aprendeu, Lia.”</p>
+        <p class="pessoa__fato">Participou do sequenciamento do genoma do coronavírus no Brasil, em 2020.</p>
+      </div>
+    </article>
+
+  </div>
+  <p class="nota" style="max-width:760px;margin-top:18px;">
+    Jaqueline Goes de Jesus é uma cientista viva; a presença dela aqui é uma
+    homenagem feita com respeito, no contexto de um trabalho escolar não-comercial.
+  </p>
+
+  <h3 style="margin:44px 0 16px;">Os moradores da vila</h3>
+  <div class="grade grade--3">
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-01</span><span class="ficha__id">tutorial</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--npc"><div class="sprite" data-sprite="joaquim" data-escala="3"></div></div>
+        <h4>Seu Joaquim</h4>
+        <span class="pessoa__papel">Ensina o básico</span>
+        <p class="pessoa__fala">“Vai com calma: as setas te movem, o espaço faz pular. E qualquer um por aqui que quiser conversar, é só chegar perto e apertar E.”</p>
+      </div>
+    </article>
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-02</span><span class="ficha__id">tutorial</span></div>
+      <div class="ficha__corpo">
+        <h4 style="margin-top:12px;">Cadu</h4>
+        <span class="pessoa__papel">Ensina o ataque</span>
+        <p class="pessoa__fala">“Um bichinho de geleia fugiu do quintal do meu avô — não morde forte, mas fica no meio do caminho. Se ele chegar perto, aperta o F.”</p>
+      </div>
+    </article>
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-03</span><span class="ficha__id">tutorial</span></div>
+      <div class="ficha__corpo">
+        <h4 style="margin-top:12px;">Zeca</h4>
+        <span class="pessoa__papel">Ensina a investida</span>
+        <p class="pessoa__fala">“Esse buraco aqui é largo demais pra pular normal, já tentei. Mas se você apertar Q bem na hora de correr, sai disparada e passa reto por cima.”</p>
+      </div>
+    </article>
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-04</span><span class="ficha__id">história</span></div>
+      <div class="ficha__corpo">
+        <h4 style="margin-top:12px;">Sra. Amélia</h4>
+        <span class="pessoa__papel">A única que pergunta</span>
+        <p class="pessoa__fala">“Eu sinto muito. Mas você tem uma cara decidida hoje — vai atrás de alguma coisa, não vai? Então vai. E volta pra contar pra gente.”</p>
+      </div>
+    </article>
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-05</span><span class="ficha__id">história</span></div>
+      <div class="ficha__corpo">
+        <h4 style="margin-top:12px;">Dona Marta</h4>
+        <span class="pessoa__papel">Vizinha</span>
+        <p class="pessoa__fala">“Olha o tanto que você cresceu... Sua mãe tem muito orgulho de você, sabia?”</p>
+      </div>
+    </article>
+    <article class="ficha pessoa">
+      <div class="ficha__topo"><span class="ficha__id">VILA-06</span><span class="ficha__id">história</span></div>
+      <div class="ficha__corpo">
+        <h4 style="margin-top:12px;">Bento</h4>
+        <span class="pessoa__papel">Amigo</span>
+        <p class="pessoa__fala">“Depois eu te chamo pra jogar bola, tá? ...Ou você tá com pressa hoje? Parece que tá indo em algum lugar importante.”</p>
+      </div>
+    </article>
+  </div>
+  <p class="nota" style="max-width:760px;margin-top:18px;">
+    Cadu, Zeca, Sra. Amélia, Dona Marta e Bento ainda não têm sprite desenhado —
+    dá pra conversar com todos normalmente, eles só não aparecem em tela. O jogo
+    ignora sozinho a arte que falta, sem quebrar.
+  </p>
+</section>
+
+<!-- ===================== INIMIGOS ===================== -->
+<section class="secao revelar" id="inimigos">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--coral">Inimigos e chefes</span>
+    <h2>Quem se atravessa no caminho</h2>
+    <p>Cinco inimigos comuns patrulham as fases. Cada local principal tem seu
+       chefe, com dois ataques telegrafados que pedem respostas diferentes — e
+       os dois podem ser aparados no tempo certo.</p>
+  </div>
+
+  <h3 style="margin-bottom:16px;">Inimigos comuns</h3>
+  <div class="grade grade--4" style="margin-bottom:44px;">
+    <article class="ficha inimigo">
+      <div class="ficha__topo"><span class="ficha__id">MOB-01</span><span class="ficha__id">Fase 1</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--mob"><div class="sprite" data-sprite="slime" data-escala="3"></div></div>
+        <h4>Slime</h4>
+        <p>Patrulha a plataforma onde nasceu. O primeiro inimigo do jogo — e o que o Cadu usa pra ensinar o ataque.</p>
+      </div>
+    </article>
+    <article class="ficha inimigo">
+      <div class="ficha__topo"><span class="ficha__id">MOB-02</span><span class="ficha__id">Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--mob"><div class="sprite" data-sprite="estudante" data-escala="2"></div></div>
+        <h4>Estudante Possuído</h4>
+        <p>Anda até a borda, pausa, vira. Tem nos olhos o mesmo coral da anomalia.</p>
+      </div>
+    </article>
+    <article class="ficha inimigo">
+      <div class="ficha__topo"><span class="ficha__id">MOB-03</span><span class="ficha__id">Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--mob"><div class="sprite" data-sprite="zelador" data-escala="2"></div></div>
+        <h4>Zelador Guardião</h4>
+        <p>Mini-chefe do corredor: maior, mais resistente e mais lento, ainda fazendo a ronda de sempre.</p>
+      </div>
+    </article>
+    <article class="ficha inimigo">
+      <div class="ficha__topo"><span class="ficha__id">MOB-04</span><span class="ficha__id">Fase 3</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--mob"><div class="sprite" data-sprite="cervo" data-escala="2"></div></div>
+        <h4>Cervo de Cristal</h4>
+        <p>Para nas bordas antes de virar e morre se mineralizando, virando parte da caverna.</p>
+      </div>
+    </article>
+    <article class="ficha inimigo">
+      <div class="ficha__topo"><span class="ficha__id">MOB-05</span><span class="ficha__id">Fase 3</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--mob"><div class="sprite" data-sprite="sombra" data-escala="2"></div></div>
+        <h4>Entidade Sombria</h4>
+        <p>Flutua devagar pela escuridão e faz investidas rápidas, sempre com uma antecipação visível antes.</p>
+      </div>
+    </article>
+  </div>
+
+  <h3 style="margin-bottom:16px;">Chefes</h3>
+  <div class="grade" style="gap:20px;">
+
+    <article class="ficha chefe">
+      <div class="ficha__topo"><h3>Rei Slime</h3><span class="ficha__id">BOSS-01 · Fase 1</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--chefe"><div class="sprite" data-sprite="rei_slime" data-escala="2"></div></div>
+        <div>
+          <p>Corpo translúcido e gelatinoso com um núcleo coral visível por dentro —
+             a primeira aparição da anomalia no jogo. Guarda a arena no fim do pátio
+             da escola, atrás do campo de contenção.</p>
+          <div class="ataques">
+            <div class="ataque"><b>Esmagar</b><span>Se achata, sobe e solta uma onda rasteira pros dois lados ao aterrissar. Resposta: pular por cima da onda.</span></div>
+            <div class="ataque"><b>Cisão</b><span>Se estica, convulsiona e cospe 4 slimes menores que se espalham e continuam vivos depois. Resposta: andar pra limpar espaço — pular no meio deles é a pior escolha.</span></div>
+          </div>
+          <p style="margin-top:14px;"><span class="etiqueta etiqueta--ambar">Solta: Essência de Slime</span></p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha chefe">
+      <div class="ficha__topo"><h3>Espécime 07</h3><span class="ficha__id">BOSS-02 · Fase 2 · laboratório</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--chefe"><div class="sprite" data-sprite="especime" data-escala="2"></div></div>
+        <div>
+          <p>Guardião do laboratório velho: a coisa que estava no tanque de contenção
+             antes de alguém removê-la de lá. É a peça-chave que revela de onde vem
+             o coral.</p>
+          <div class="ataques">
+            <div class="ataque"><b>Jato</b><span>Ataque à distância disparado de um rastejo baixo, que varre a linha do chão.</span></div>
+            <div class="ataque"><b>Investida</b><span>Avanço rápido corpo a corpo, sempre depois de uma antecipação visível.</span></div>
+          </div>
+          <p style="margin-top:14px;"><span class="etiqueta etiqueta--ambar">Solta: Amostra de Espécime</span></p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha chefe">
+      <div class="ficha__topo"><h3>Bibliotecário Silente</h3><span class="ficha__id">BOSS-03 · Fase 2 · biblioteca</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--chefe"><div class="sprite" data-sprite="bibliotecario" data-escala="2"></div></div>
+        <div>
+          <p>O rosto está apagado; no lugar dele resta só uma página acesa em coral —
+             o mesmo vocabulário visual do estudante possuído e da entidade sombria
+             da Fase 3.</p>
+          <div class="ataques">
+            <div class="ataque"><b>Silêncio</b><span>Ataque de área que pune ficar parado perto dele.</span></div>
+            <div class="ataque"><b>Errata</b><span>Invoca tomos voadores que reaproveitam a silhueta do livro de pesquisa do jogo — e que podem ser aparados.</span></div>
+          </div>
+          <p style="margin-top:14px;"><span class="etiqueta etiqueta--ambar">Solta: Livro Mágico</span></p>
+        </div>
+      </div>
+    </article>
+
+    <article class="ficha chefe">
+      <div class="ficha__topo"><h3>Dragão</h3><span class="ficha__id">BOSS-04 · Fase 3</span></div>
+      <div class="ficha__corpo">
+        <div class="palco palco--chefe"><div class="sprite" data-sprite="dragao" data-escala="0.55"></div></div>
+        <div>
+          <p>Feito do mesmo material da caverna: dorso de basalto escuro e ventre em
+             brasa, como se tivesse nascido da lava e não apenas vivido nela. O último
+             obstáculo da jornada.</p>
+          <div class="ataques">
+            <div class="ataque"><b>Sopro</b><span>O peito acende em 4 estágios antes de um jato rasteiro varrer o chão inteiro. Resposta: pular.</span></div>
+            <div class="ataque"><b>Brasas</b><span>Abre as asas, decola e solta pedras incandescentes em posições aleatórias, que continuam caindo depois dele pousar. Resposta: andar pra se reposicionar — e aparar as pedras que dá.</span></div>
+          </div>
+          <p style="margin-top:14px;"><span class="etiqueta etiqueta--ambar">Solta: Sangue do Dragão</span></p>
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ===================== ITENS ===================== -->
+<section class="secao revelar" id="itens">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ambar">Itens</span>
+    <h2>O que Lia encontra pelo caminho</h2>
+    <p>Três consumíveis com efeito imediato, quatro itens de pesquisa que são
+       drop garantido de chefe e destravam o avanço de fase, e uma ferramenta
+       que serve pra um minigame específico.</p>
+  </div>
+
+  <div class="grade grade--2">
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-0</span><span class="etiqueta">Consumível · tecla 1</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-0" data-escala="4"></div>
+        <div><h4>Gororoba</h4><p>Recupera 1 coração. Cai de slimes comuns na Fase 1.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-2</span><span class="etiqueta">Consumível · tecla 2</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-2" data-escala="4"></div>
+        <div><h4>Carcaça de Robô</h4><p>+1 escudo: absorve o próximo dano inteiro. Cai de inimigos da Fase 2.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-5</span><span class="etiqueta">Consumível · tecla 3</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-5" data-escala="4"></div>
+        <div><h4>Dark Crystal</h4><p>+1 coração e +1 escudo de uma vez. Cai de inimigos da Fase 3.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-7</span><span class="etiqueta etiqueta--ciano">Ferramenta</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-7" data-escala="4"></div>
+        <div><h4>Chave de Fenda</h4><p>Escondida na sala da biblioteca. Não se usa com tecla — é o que abre a caixa de energia do laboratório.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-1</span><span class="etiqueta etiqueta--ambar">Pesquisa · conclui a Fase 1</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-1" data-escala="4"></div>
+        <div><h4>Essência de Slime</h4><p>Drop garantido do Rei Slime.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-4</span><span class="etiqueta etiqueta--ambar">Pesquisa · Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-4" data-escala="4"></div>
+        <div><h4>Amostra de Espécime</h4><p>Drop garantido do Espécime 07 — o primeiro material que liga o coral a algo que vale a pena estudar de perto.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-3</span><span class="etiqueta etiqueta--ambar">Pesquisa · Fase 2</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-3" data-escala="4"></div>
+        <div><h4>Livro Mágico</h4><p>Drop garantido do Bibliotecário Silente. A Fase 2 exige os dois itens de pesquisa dela pra liberar a saída.</p></div>
+      </div>
+    </article>
+    <article class="ficha item">
+      <div class="ficha__topo"><span class="ficha__id">ITEM-6</span><span class="etiqueta etiqueta--ambar">Pesquisa · conclui a Fase 3</span></div>
+      <div class="ficha__corpo">
+        <div class="sprite" data-sprite="item-6" data-escala="4"></div>
+        <div><h4>Sangue do Dragão</h4><p>Drop garantido do Dragão, no fim da caverna.</p></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== MECÂNICAS ===================== -->
+<section class="secao revelar" id="mecanicas">
+  <div class="cabecalho-secao">
+    <span class="rotulo">Mecânicas</span>
+    <h2>Como o jogo funciona por dentro</h2>
+    <p>Os sistemas que sustentam as três fases — do combate ao save.</p>
+  </div>
+
+  <div class="grade grade--3">
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Combo de 4 golpes</h4><span class="ficha__id">MEC-01</span></div>
+      <div class="ficha__corpo"><p>Cada <span class="tecla">F</span> dentro da janela do anterior avança o combo. O quarto golpe é o finalizador e causa o dobro do dano de um golpe comum.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Investida ofensiva</h4><span class="ficha__id">MEC-02</span></div>
+      <div class="ficha__corpo"><p>Atacar durante a investida aumenta o alcance do golpe e o dano. Serve pra atravessar vãos largos e pra abrir espaço quando o chefe encurrala.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Aparar (parry)</h4><span class="ficha__id">MEC-03</span></div>
+      <div class="ficha__corpo"><p>Acertar o ataque corpo a corpo num projétil de chefe — pedra do Dragão, tomo do Bibliotecário, jato do Espécime — destrói o projétil, devolve o maior dano do jogo e dá 1 segundo de invencibilidade, com congelamento de quadro e tremor de tela.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Vida e escudo</h4><span class="ficha__id">MEC-04</span></div>
+      <div class="ficha__corpo"><p>Cinco corações. Encostar num inimigo comum tira meio coração; ataques de chefe tiram mais. O escudo absorve um golpe inteiro antes de qualquer perda de vida.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Campo de contenção</h4><span class="ficha__id">MEC-05</span></div>
+      <div class="ficha__corpo"><p>Uma parede de névoa animada bloqueia a passagem e só cai quando o objetivo ligado a ela é cumprido. Na Fase 1, o campo só desliga quando Lia monta o microscópio no laboratório lacrado lá embaixo.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Fôlego e natação</h4><span class="ficha__id">MEC-06</span></div>
+      <div class="ficha__corpo"><p>Nos trechos submersos da Fase 3, Lia nada em vez de pular e um medidor de oxigênio de 7 segundos aparece na tela. Fora d'água ele enche de volta três vezes mais rápido do que esvazia.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Checkpoints e save</h4><span class="ficha__id">MEC-07</span></div>
+      <div class="ficha__corpo"><p>Bandeiras espalhadas pelas fases marcam o ponto de retorno. Tocar numa delas grava fase, checkpoint, vidas, inventário e pesquisa coletada em <code>save.json</code> — e o menu inicial passa a mostrar “Continuar”.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Pausa e opções</h4><span class="ficha__id">MEC-08</span></div>
+      <div class="ficha__corpo"><p><span class="tecla">ESC</span> congela o jogo com o mundo desfocado ao fundo. O menu de opções tem quatro controles deslizantes: volume da música, volume dos efeitos, intensidade do tremor de tela e velocidade do texto dos diálogos.</p></div>
+    </article>
+    <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Diálogo e dicas</h4><span class="ficha__id">MEC-09</span></div>
+      <div class="ficha__corpo"><p>O texto aparece letra por letra e acelera se você segurar a tecla de interação. Dicas de mecânica usam um sistema separado, com vinheta escura, para avisos pontuais.</p></div>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== MINIGAMES ===================== -->
+<section class="secao revelar" id="minigames">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ciano">Minigames</span>
+    <h2>Duas telas que pedem o mouse</h2>
+    <p>Os dois pausam o jogo, funcionam com clique e arraste, e guardam o
+       progresso se você fechar no meio com <span class="tecla">ESC</span>.</p>
+  </div>
+
+  <div class="grade grade--2">
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Montagem do microscópio</h3><span class="ficha__id">MINI-01</span></div>
+      <div class="ficha__corpo">
+        <p>Quatro encaixes empilhados à esquerda — base embaixo, ocular no topo — e
+           as quatro peças embaralhadas à direita. Peça certa no encaixe certo, mas
+           fora de ordem, é recusada explicando o que falta antes; peça no encaixe
+           errado é recusada explicando pra que aquela peça serve. Nada de tentativa
+           e erro cego: cada recusa ensina alguma coisa.</p>
+        <p>Aparece duas vezes no jogo, com bancadas independentes: a da Fase 1 e a
+           do laboratório lacrado, que é a que desliga o campo de contenção.</p>
+        <p><span class="etiqueta etiqueta--violeta">Sem punição</span><span class="etiqueta">Sem limite de tempo</span></p>
+      </div>
+    </article>
+
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Caixa de energia</h3><span class="ficha__id">MINI-02</span></div>
+      <div class="ficha__corpo">
+        <p>Dois modos na mesma sessão. Primeiro <b>parafuso</b>: arrastar a chave de
+           fenda até os quatro parafusos dos cantos da tampa, sem ordem exigida e sem
+           penalidade. Quando cai o quarto, a tampa desliza sozinha e revela os
+           <b>fios</b>: quatro fios coloridos para quatro terminais, seguindo o
+           diagrama desenhado ao lado.</p>
+        <p>Errar solta faísca e devolve só aquele fio. No terceiro erro a caixa fecha
+           sozinha — sem dano, só recomeçar. Fica na sala do laboratório da Fase 2.</p>
+        <p><span class="etiqueta etiqueta--ambar">Precisa da chave de fenda</span><span class="etiqueta">3 erros e fecha</span></p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== CIÊNCIA ===================== -->
+<section class="secao revelar" id="ciencia">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ambar">A ciência delas</span>
+    <h2>Doze fatos coletados como pesquisa</h2>
+    <p>Espalhados pelas fases na forma de fragmentos de pesquisa. Cada um traz um
+       fato real sobre uma cientista mulher — algumas também aparecem em pessoa
+       como NPC, outras só através desses fragmentos. Nenhuma delas estudou o
+       câncer da mãe de Lia; todas mostram um jeito de não desistir de uma
+       pergunta difícil.</p>
+  </div>
+
+  <div class="fatos">
+    <div class="fato"><span class="fato__chave">Curiosidade</span><span class="fato__quem">Marie Curie</span><p>Foi a primeira pessoa a receber dois Prêmios Nobel, em áreas científicas diferentes.</p></div>
+    <div class="fato"><span class="fato__chave">Observação</span><span class="fato__quem">Bertha Lutz</span><p>Cientista brasileira e uma das grandes vozes pela participação das mulheres na sociedade.</p></div>
+    <div class="fato"><span class="fato__chave">Hipótese</span><span class="fato__quem">Enedina Alves Marques</span><p>Primeira mulher negra a se formar engenheira no Brasil.</p></div>
+    <div class="fato"><span class="fato__chave">Experimento</span><span class="fato__quem">Jaqueline Goes de Jesus</span><p>Participou do sequenciamento do genoma do coronavírus no Brasil, em 2020.</p></div>
+    <div class="fato"><span class="fato__chave">Registro</span><span class="fato__quem">Nise da Silveira</span><p>Transformou a psiquiatria brasileira com cuidado, arte e respeito às pessoas.</p></div>
+    <div class="fato"><span class="fato__chave">Método</span><span class="fato__quem">Ada Lovelace</span><p>Reconhecida por escrever um dos primeiros algoritmos para uma máquina.</p></div>
+    <div class="fato"><span class="fato__chave">Dados</span><span class="fato__quem">Katherine Johnson</span><p>Calculou trajetórias essenciais para missões espaciais da NASA.</p></div>
+    <div class="fato"><span class="fato__chave">Análise</span><span class="fato__quem">Sônia Guimarães</span><p>Primeira mulher negra brasileira doutora em Física.</p></div>
+    <div class="fato"><span class="fato__chave">Testes</span><span class="fato__quem">Rosalind Franklin</span><p>Produziu imagens de raios X que foram fundamentais para compreender a estrutura do DNA.</p></div>
+    <div class="fato"><span class="fato__chave">Resultados</span><span class="fato__quem">Mayana Zatz</span><p>Referência brasileira em genética humana e no estudo de doenças neuromusculares.</p></div>
+    <div class="fato"><span class="fato__chave">Cura</span><span class="fato__quem">Johanna Döbereiner</span><p>Contribuiu para o estudo da fixação de nitrogênio, importante para a agricultura brasileira.</p></div>
+    <div class="fato fato--final"><span class="fato__chave">Pesquisa completa</span><span class="fato__quem">A mensagem final</span><p>A ciência avança quando muitas pessoas fazem perguntas, compartilham dados e persistem juntas.</p></div>
+  </div>
+</section>
+
+<!-- ===================== FICHA TÉCNICA ===================== -->
+<section class="secao revelar" id="tecnica">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--ciano">Ficha técnica</span>
+    <h2>Como o jogo foi feito</h2>
+    <p>Tudo em Python puro, sem motor de jogo pronto: a física, a câmera, o
+       leitor de mapas do Tiled, a máquina de estados dos chefes e os menus
+       foram escritos à mão em cima do Pygame Zero.</p>
+  </div>
+
+  <div class="grade grade--2">
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Tecnologia</h3><span class="ficha__id">TEC-01</span></div>
+      <div class="ficha__corpo">
+        <table class="tabela">
+          <tbody>
+            <tr><td>Linguagem</td><td>Python 3</td></tr>
+            <tr><td>Biblioteca</td><td>Pygame Zero (<code>pgzrun</code>), sobre o pygame</td></tr>
+            <tr><td>Editor de mapas</td><td>Tiled — arquivos <code>.tmx</code> lidos por um leitor próprio</td></tr>
+            <tr><td>Resolução lógica</td><td>1920 × 1080, ampliada para qualquer janela</td></tr>
+            <tr><td>Taxa de quadros</td><td>60 fps</td></tr>
+            <tr><td>Versão web</td><td>pygbag (WebAssembly), pela entrada <code>main_web.py</code></td></tr>
+            <tr><td>Dependências externas</td><td>nenhuma além do pygame — nada de motor de terceiros</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="ficha">
+      <div class="ficha__topo"><h3>O projeto em números</h3><span class="ficha__id">TEC-02</span></div>
+      <div class="ficha__corpo">
+        <table class="tabela">
+          <tbody>
+            <tr><td>Código Python</td><td>~12.300 linhas em 22 arquivos</td></tr>
+            <tr><td>Maiores módulos</td><td><code>game.py</code> (~3.700), <code>enemy.py</code> (~2.900), <code>minigame.py</code> (~1.300), <code>level.py</code> (~1.200)</td></tr>
+            <tr><td>Mapas do Tiled</td><td>7 mapas e 15 tilesets</td></tr>
+            <tr><td>Maior mapa</td><td>Fase 3 — 315 × 100 tiles (10.080 × 3.200 px)</td></tr>
+            <tr><td>Arte</td><td>264 arquivos PNG</td></tr>
+            <tr><td>Sistemas próprios</td><td>leitor de TMX, câmera, colisão em blocos, diálogo, cutscenes, HUD, minigames, save</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+
+  <div class="grade grade--2" style="margin-top:20px;">
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Estrutura dos arquivos</h3><span class="ficha__id">TEC-03</span></div>
+      <div class="ficha__corpo">
+        <pre class="arvore">SNCTJOGO/
+├── <b>main.py</b>            <i>entrada do jogo no computador</i>
+├── <b>main_web.py</b>        <i>entrada da versão de navegador</i>
+├── <b>game.py</b>            <i>estado da partida, HUD, menus, save</i>
+├── <b>level.py</b>           <i>monta cada fase a partir do mapa</i>
+├── <b>player.py</b>          <i>física e animação da Lia</i>
+├── <b>enemy.py</b>           <i>inimigos e os 4 chefes</i>
+├── <b>tiled_map.py</b>       <i>leitor próprio dos arquivos .tmx</i>
+├── <b>minigame.py</b>        <i>microscópio e caixa de energia</i>
+├── <b>fog.py</b>             <i>campo de contenção de névoa</i>
+├── dialogue.py  hud.py  cutscene.py  hint.py
+├── audio.py  vfx.py  sprites.py  settings.py
+├── <b>maps/</b>              <i>7 mapas .tmx + tilesets</i>
+├── <b>images/</b>            <i>264 PNGs de arte</i>
+├── fonts/  music/  sounds/
+└── <b>site/</b>              <i>este site</i>
+    ├── index.html
+    ├── css/estilo.css
+    └── js/site.js</pre>
+      </div>
+    </article>
+
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Decisões de engenharia</h3><span class="ficha__id">TEC-04</span></div>
+      <div class="ficha__corpo">
+        <ul>
+          <li><b>Mapas fora do código</b> — fase nenhuma é escrita em Python. Tudo vem do <code>.tmx</code>, então mudar o level design não exige mexer em código.</li>
+          <li><b>Colisão em blocos</b> — o mapa é indexado em pedaços; a cada quadro só os blocos perto da Lia são testados, não o mapa inteiro.</li>
+          <li><b>Arte carregada sob demanda</b> — sprite que a fase atual não usa não entra na memória.</li>
+          <li><b>Asset opcional</b> — arte que ainda não existe é ignorada em silêncio em vez de derrubar o jogo; por isso dá pra jogar a vila mesmo sem os sprites dos moradores.</li>
+          <li><b>Tolerância a erro do editor</b> — o leitor de TMX confere o que o arquivo declara contra o tamanho real da imagem e avisa em vez de estourar.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== JOGAR ===================== -->
+<section class="secao revelar" id="jogar">
+  <div class="cabecalho-secao">
+    <span class="rotulo rotulo--coral">Jogar</span>
+    <h2>Jogue Echoes of Life</h2>
+    <p>Duas formas: direto no navegador (versão web gerada com pygbag) ou
+       rodando o jogo no computador com Python.</p>
+  </div>
+
+  <div class="abas" role="tablist" aria-label="Formas de jogar">
+    <button class="aba" role="tab" id="aba-navegador" aria-controls="painel-navegador" aria-selected="true">🌐 No navegador</button>
+    <button class="aba" role="tab" id="aba-local" aria-controls="painel-local" aria-selected="false">💻 No computador</button>
+  </div>
+
+  <div class="painel" id="painel-navegador" role="tabpanel" aria-labelledby="aba-navegador">
+    <div class="moldura-jogo">
+      <iframe id="quadro-jogo" title="Echoes of Life — versão para navegador"></iframe>
+      <div class="aviso" id="aviso-jogo">
+        <h3>Versão para navegador</h3>
+        <p>O jogo é escrito em Pygame Zero e precisa ser compilado para WebAssembly
+           com o <b>pygbag</b> antes de rodar aqui dentro. A entrada web
+           (<code>main_web.py</code>) já está pronta na pasta do projeto — falta só
+           gerar o build e copiar pra cá.</p>
+      </div>
+    </div>
+    <ol class="passos">
+      <li>Instale o pygbag: <code>pip install pygbag</code></li>
+      <li>Na pasta do jogo, rode: <code>python -m pygbag main_web.py</code></li>
+      <li>Copie o que foi gerado em <code>build/web/</code> para <code>site/jogo_web/</code></li>
+      <li>Recarregue esta página — o jogo aparece sozinho no quadro acima</li>
+    </ol>
+    <p class="nota">Se o pygbag exigir um arquivo chamado exatamente <code>main.py</code>,
+       renomeie <code>main.py</code> → <code>main_desktop.py</code> e
+       <code>main_web.py</code> → <code>main.py</code> só durante o build, e desfaça depois.</p>
+  </div>
+
+  <div class="painel" id="painel-local" role="tabpanel" aria-labelledby="aba-local" hidden>
+    <ol class="passos">
+      <li>Instale o <a href="https://www.python.org/downloads/" target="_blank" rel="noopener">Python 3</a> (3.9 ou mais recente).</li>
+      <li>Instale o Pygame Zero: <code>pip install pgzero</code></li>
+      <li>Abra um terminal na pasta do jogo — a pasta acima desta — e rode: <code>pgzrun main.py</code></li>
+      <li>A janela abre em tela cheia. <span class="tecla">F11</span> alterna janela e tela cheia; os controles estão na seção <a href="#sobre">Sobre</a>.</li>
+    </ol>
+    <p class="nota">O jogo inteiro, código e arte, está nesta mesma pasta do projeto — não é preciso baixar nada separado.</p>
+  </div>
+</section>
+
+<!-- ===================== CRÉDITOS ===================== -->
+<section class="secao secao--estreita revelar" id="creditos">
+  <div class="cabecalho-secao">
+    <span class="rotulo">Créditos e fontes</span>
+    <h2>De onde veio cada coisa</h2>
+  </div>
+
+  <div class="grade grade--2">
+    <article class="ficha">
+      <div class="ficha__topo"><h3>O projeto</h3><span class="ficha__id">CRD-01</span></div>
+      <div class="ficha__corpo creditos">
+        <div class="credito"><b>Desenvolvimento, arte e roteiro</b>Raul Basílio Benedito</div>
+        <div class="credito"><b>Contexto</b>Trabalho escolar apresentado na Semana Nacional de Ciência e Tecnologia (SNCT). Projeto não-comercial.</div>
+        <div class="credito"><b>Fontes de tela</b>Press Start 2P e ThaleahFat, ambas fontes de pixel de uso livre.</div>
+      </div>
+    </article>
+
+    <article class="ficha">
+      <div class="ficha__topo"><h3>Sobre os fatos científicos</h3><span class="ficha__id">CRD-02</span></div>
+      <div class="ficha__corpo">
+        <p>Os doze fatos coletáveis e as falas das cinco cientistas-NPC descrevem
+           realizações históricas reais, resumidas em uma frase cada para caber na
+           caixa de diálogo do jogo. Elas não são citações literais: são resumos
+           escritos para o jogo.</p>
+        <p>Jaqueline Goes de Jesus, Mayana Zatz e Sônia Guimarães são cientistas
+           vivas. A presença delas aqui é homenagem, feita com respeito e sem fins
+           comerciais.</p>
+        <p class="nota">Nenhuma parte do jogo dá orientação médica. A doença da mãe
+           de Lia é o motivo da história, não um tema de tratamento.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+</main>
+
+<footer class="rodape">
+  <p><b>Echoes of Life</b> — um jogo sobre curiosidade, feito com Python e Pygame Zero.</p>
+  <p>Site feito com <span class="coracao">♥</span> para apresentar o projeto na SNCT.</p>
 </footer>
 
-<script>
-function showPlayTab(name, btn){
-  document.querySelectorAll('.play-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.play-panel').forEach(p=>p.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('panel-'+name).classList.add('active');
-}
-
-// Só troca o placeholder pelo iframe se o build web (jogo_web/index.html)
-// realmente existir. Sem isso, um iframe apontando pra um arquivo
-// inexistente mostraria uma página de erro em branco. Rodando via
-// file:// (abrindo o index.html direto) o fetch abaixo tende a falhar por
-// restrição do navegador — nesse caso o placeholder com as instruções
-// continua visível, que é o comportamento seguro por padrão.
-(function(){
-  var frame = document.getElementById('gameFrame');
-  var placeholder = document.getElementById('framePlaceholder');
-  fetch('jogo_web/index.html', {method: 'GET', cache: 'no-store'})
-    .then(function(response){
-      if(response.ok){
-        frame.src = 'jogo_web/index.html';
-        frame.style.display = 'block';
-        placeholder.style.display = 'none';
-      }
-    })
-    .catch(function(){ /* jogo_web ainda não existe, ou file:// bloqueou o fetch — mantém o placeholder */ });
-})();
-</script>
-
+<script src="js/site.js"></script>
 </body>
 </html>
