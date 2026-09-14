@@ -1,0 +1,95 @@
+{
+  "cases": {
+    "vila/left_house_boundary": {
+      "map": "vila.tmx",
+      "camera": [224.5, 0.25],
+      "elapsed_ms": 0,
+      "base_sha256": "e055ab38232dae42f9ecb59ad8c9b9efd5e280fb6c45a402b42326f35882f0c2",
+      "foreground_sha256": "1f51a412856bf2d2bebdf6c3e0de2e3bfac835123ba5a672f6df6821387dd40a"
+    },
+    "vila/tall_house_boundary": {
+      "map": "vila.tmx",
+      "camera": [1856.5, 96.25],
+      "elapsed_ms": 0,
+      "base_sha256": "a181feefe50b91b1233ddf6c89ef6384a1d18ca03153026735f286b63f691a9f",
+      "foreground_sha256": "658651e1221f27730292c17af720c75c12dbd3038df479804326c1ef400e3be1"
+    },
+    "vila/props_and_animation": {
+      "map": "vila.tmx",
+      "camera": [1280.5, 208.25],
+      "elapsed_ms": 350,
+      "base_sha256": "e5ccac5fce7c10a4435b79429bbb0124b99eeff3722177a807ca4f0ff86b5755",
+      "foreground_sha256": "72f48a5006e3a92ba60f9f98ac69724bcdd96159f9a930b625f746d0ee5223ef"
+    },
+    "vila/right_house_boundary": {
+      "map": "vila.tmx",
+      "camera": [2240.5, 96.25],
+      "elapsed_ms": 0,
+      "base_sha256": "5e1dabf23c3ab5ffcde0ffd86eb5bfc57fb20ae29fa753b3433db8719cf61a16",
+      "foreground_sha256": "65795c658c52754db007fa00930e90a6e4ccf56b079088c60d25e17cec063953"
+    },
+    "school/early_large_tiles": {
+      "map": "fase1_escola.tmx",
+      "camera": [480.5, 352.25],
+      "elapsed_ms": 0,
+      "base_sha256": "02e2f002a7ba1d59dd7de239220bd0dd5fdf12a3ddb106301be8276286704433",
+      "foreground_sha256": "3f97e4e67666bc801963bb24913a1734395eedb1e8f621eaca9cb918373804e7"
+    },
+    "school/foreground_boundary": {
+      "map": "fase1_escola.tmx",
+      "camera": [896.5, 352.25],
+      "elapsed_ms": 0,
+      "base_sha256": "c0596906984d80f68e7390be9c47abbdec2f47d554206d0c42711134a7e0b617",
+      "foreground_sha256": "eb109fe37bd899ee8750ef03aa819060cc4e3b4dab0cd407ce78c07fd4d75422"
+    },
+    "school/right_large_tiles": {
+      "map": "fase1_escola.tmx",
+      "camera": [6144.5, 352.25],
+      "elapsed_ms": 0,
+      "base_sha256": "5b843c7828876e24d25b6ff4a30c994d6ca7831d82cd877fd2f2cd329b54c954",
+      "foreground_sha256": "41ab94df10da31f67941bd0ac4c731e15d58f15eee836f0cdace449039142f33"
+    },
+    "secret_lab/animated_tiles": {
+      "map": "fase1_laboratorio_secreto.tmx",
+      "camera": [768.5, 320.25],
+      "elapsed_ms": 375,
+      "base_sha256": "ab20a6fd741828705bb563bda321b728586d81d01e7734d7c88f79fdaf5c5ec4",
+      "foreground_sha256": "b34e692559c364ec879ed9ae99934613709ab0520641f0cb3ad9fce7f8242362"
+    },
+    "university/animated_tiles": {
+      "map": "fase2_universidade.tmx",
+      "camera": [2048.5, 576.25],
+      "elapsed_ms": 525,
+      "base_sha256": "9cb0e40bfdf7f78cc9bb2bb3c06979cc58a3f14022c5e1b9be8ad0e6258b805f",
+      "foreground_sha256": "efd808bb841315163949e03b0e406f827e0eab074a82a67d6577f1c7a73b5b27"
+    },
+    "library/animated_tiles": {
+      "map": "fase2_biblioteca_sala.tmx",
+      "camera": [512.5, 576.25],
+      "elapsed_ms": 725,
+      "base_sha256": "0050adffbadde2b1d86bca2f68a260588806a8be12d636287f72a3d38471c6f8",
+      "foreground_sha256": "add980081737bb23f39b498b7819df477a3777ec86d36df7e856f4c8f1b29e23"
+    },
+    "laboratory/animated_tiles": {
+      "map": "fase2_laboratorio_sala.tmx",
+      "camera": [480.5, 576.25],
+      "elapsed_ms": 925,
+      "base_sha256": "c64b5a67ddfb9430255fbc0f0866d60c8d920d59e3472b6c6be9a84ff6144617",
+      "foreground_sha256": "07d30b39eb5fbb83dcc41bf77339f64aba440cd0576f6a595d631e73723f551d"
+    },
+    "cave/upper_tiles": {
+      "map": "fase3_pesquisa.tmx",
+      "camera": [0.5, 0.25],
+      "elapsed_ms": 275,
+      "base_sha256": "a8ba49a498c58d5290737ead19f2d7728fe0364f87b45cf686a46ce0224e60d3",
+      "foreground_sha256": "7c6a625e30dfec694034b9d680fa909f185875f089834be16d92cbf12552bda2"
+    },
+    "cave/deep_animated_tiles": {
+      "map": "fase3_pesquisa.tmx",
+      "camera": [4096.5, 1408.25],
+      "elapsed_ms": 875,
+      "base_sha256": "807743fe2032c77e49e7aff2330ab7462d1f2e2f1185535c4adba1d0e6e6e662",
+      "foreground_sha256": "b06ea567cfc78aeb2a0290c9a2c6c2d4355ba12c8e07501a3eecb72ab18e7120"
+    }
+  }
+}

@@ -17,9 +17,12 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
 
+from test_support import GAME_DIR, configure_game_imports, isolated_game_data
+
+configure_game_imports()
+
 import pygame
 from settings import FPS, HEIGHT, WIDTH
-from test_support import isolated_game_data
 
 KEYS = ("left", "right", "up", "down", "space", "a", "d", "w", "e", "f", "q", "r",
         "RETURN", "escape", "k_1", "k_2", "k_3")
@@ -79,7 +82,7 @@ def peak_rss_mb():
 def check_pgzero_hooks():
     """Valida nomes e assinaturas exigidos pelo Pygame Zero, sem iniciar o loop."""
     from pgzero import spellcheck
-    tree = ast.parse((ROOT / "main.py").read_text(encoding="utf-8-sig"))
+    tree = ast.parse((GAME_DIR / "main.py").read_text(encoding="utf-8-sig"))
     namespace = {}
     for node in tree.body:
         if isinstance(node, ast.FunctionDef):
@@ -129,7 +132,7 @@ def run(args):
         random.seed(args.seed)
         game.lives = 5
         game.shield = 0
-        game.inventory = {}
+        game.items.counts = {}
         game.ranged_unlocked = isinstance(index, int) and index > 0
         game.dialogue.close()
         game.load_level(index)

@@ -5,9 +5,9 @@
 O jogo já sabe tocar tudo isso — só falta os arquivos. Coloque cada
 música em `music/<nome>.mp3` (pode ser o .mp3 exportado direto do Suno,
 sem converter nada — `ogg`/`wav` também funcionam se preferir) e cada
-efeito em `sounds/<nome>.wav` ou `.mp3` (esses dois nomes de pasta são
-fixos, o Pygame Zero carrega neles sozinho, sem precisar registrar em
-lugar nenhum do código).
+efeito em `sounds/<nome>.wav` ou `.mp3`. Esses dois nomes de pasta são
+fixos; `audio_backend.py` resolve os arquivos diretamente com
+`pygame.mixer`, no desktop e no web.
 
 Convenção de nome (a que o Raul já começou a usar): música
 `<nome>_music`, efeito `<nome>_sound` — com algumas exceções curtas
@@ -16,6 +16,13 @@ Convenção de nome (a que o Raul já começou a usar): música
 Enquanto um nome não tiver arquivo, o jogo simplesmente não toca nada
 ali — sem travar, sem erro (ver `audio.py`). Dá pra ir soltando os
 arquivos aos poucos, um de cada vez, e testando.
+
+Para o build web, os dez recursos já existentes também têm uma cópia
+`.ogg`, formato aceito pelo runtime do pygbag. `pygbag.ini` deixa os
+originais MP3/WAV fora somente desse pacote; eles permanecem no projeto
+e continuam sendo preferidos no desktop. Ao adicionar áudio novo que
+precise entrar na versão web, gere também sua cópia OGG e acrescente o
+original à lista de exclusão.
 
 `music/` troca sozinho conforme o estado do jogo (fase atual, sala,
 chefe acordado, vitória/derrota — ver `Game._desired_music_track` em
@@ -29,7 +36,7 @@ etc.) — já está todo plugado nos lugares certos do código.
 - `sounds/jump.wav`
 - `sounds/projectile_sound.wav`
 - `sounds/punch/punch_1.mp3` … `punch_4.mp3` (uma pra cada hit do combo
-  corpo a corpo — `Game._update_attack` já escolhe a certa sozinho pelo
+  corpo a corpo — `CombatSystem.update_attack` já escolhe a certa sozinho pelo
   número do golpe)
 - `sounds/earthquake_dragon_sound.mp3` — já ligado! Toca no instante em
   que o Dragão bate no chão no ataque Terremoto (junto com o shake de
@@ -42,7 +49,7 @@ etc.) — já está todo plugado nos lugares certos do código.
 Todas devem ser **instrumentais** (sem letra) — no Suno, ative a opção
 "Instrumental" antes de gerar, ou inclua `[Instrumental]` no prompt.
 Duração ideal: 1-2 minutos, já que elas tocam em loop automático
-(`music.play`, ver audio.py) — não precisa ser longa.
+(reprodução em loop, ver `audio_backend.py`) — não precisa ser longa.
 
 Pedido do Raul: nada de synth cinematográfico/sombrio — o som tem que
 "parecer de um jogo de pixel art", chiptune de verdade (8/16-bit, NES/

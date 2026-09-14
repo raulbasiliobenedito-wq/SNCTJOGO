@@ -1,5 +1,10 @@
 # Echoes of Life — o que ficou de fora desta rodada (propostas para aprovação)
 
+> **Registro histórico.** Esta lista retrata as decisões pendentes da rodada em
+> que foi escrita. Parte da arquitetura e dos gargalos citados já mudou; confira
+> `REFATORACAO.md` antes de iniciar qualquer item. Propostas de arte, mapa e
+> balanceamento continuam exigindo aprovação visual do Raul.
+
 Estes quatro itens foram deliberadamente **não implementados**: risco de
 regressão ou de decisão errada sem supervisão visual. Abaixo, o que eu
 faria em cada um, para você aprovar antes.

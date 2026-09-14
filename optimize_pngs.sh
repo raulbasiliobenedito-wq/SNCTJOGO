@@ -2,7 +2,7 @@
 # Compressão SEM PERDA dos PNGs do projeto (roda no lugar).
 # oxipng é o mais rápido/eficiente; optipng é o fallback.
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/jogo"
 if command -v oxipng >/dev/null; then
   oxipng -o4 --strip safe -r images maps
 else

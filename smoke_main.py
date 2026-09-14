@@ -11,12 +11,12 @@ hook, globais injetados, ordem de inicialização) ficava sem teste. Foi
 assim que `on_mouse_move(pos, _rel)` chegou na mão do jogador.
 """
 import os, sys, types, traceback
-from test_support import isolated_game_data
+from test_support import GAME_DIR, configure_game_imports, isolated_game_data
 
 os.environ['SDL_VIDEODRIVER'] = 'dummy'
 os.environ['SDL_AUDIODRIVER'] = 'dummy'
-ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, ROOT)
+ROOT = str(GAME_DIR)
+configure_game_imports()
 os.chdir(ROOT)
 
 import pygame

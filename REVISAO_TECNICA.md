@@ -1,4 +1,10 @@
 # Echoes of Life — Revisão técnica completa
+
+> **Registro histórico de 08/09/2026.** Nomes de arquivos, linhas, métricas e
+> pendências abaixo descrevem a versão anterior à refatoração. Consulte
+> `REFATORACAO.md` para o estado validado atual; não use este documento como
+> checklist de código morto nem como base para apagar recursos.
+
 **Data:** 08/09/2026 · **Escopo:** 25 arquivos `.py` (11.629 linhas), 204 PNGs, 7 mapas `.tmx` + 8 `.tsx`, docs e site.
 **Método:** leitura integral do código + execução real do jogo (pygame 2.6.1, SDL dummy, 1920×1080) com `cProfile`, medição de RSS, `pyflakes`/`radon`/`vulture`, e parsing dos `.tmx`/`.tsx`/cabeçalhos PNG.
 

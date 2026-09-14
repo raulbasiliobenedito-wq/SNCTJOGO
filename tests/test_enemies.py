@@ -10,9 +10,15 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
+from test_support import configure_game_imports
+
+configure_game_imports()
+
 import pygame
 import enemy
+from level import Level
 from enemy_scenarios import ENEMY_NAMES, SCENARIOS, record_scenario
+from special_enemy_scenarios import CASES, record_special_scenario
 
 
 class EnemyCharacterizationTests(unittest.TestCase):
@@ -61,6 +67,48 @@ class EnemyCharacterizationTests(unittest.TestCase):
                 self.assertEqual(actor.health, 0)
                 self.assertEqual(actor.state, actor.DYING)
                 self.assertFalse(actor.stomp())
+
+    def test_special_enemy_attacks_and_timers_match_reference(self):
+        path = Path(__file__).with_name("fixtures") / "special_enemies.json"
+        reference = json.loads(path.read_text(encoding="utf-8"))
+        for case_name in CASES:
+            with self.subTest(case=case_name):
+                self.assertEqual(record_special_scenario(case_name), reference["cases"][case_name])
+
+    def test_librarian_current_orbit_timing_is_explicit(self):
+        actor = enemy.Librarian(SimpleNamespace(rect=pygame.Rect(0, 260, 500, 30)))
+        actor.state = actor.ERRATA_RISE
+        actor.state_timer = 1
+        actor.update()
+        self.assertEqual((actor.state, actor.state_timer), (actor.ERRATA_ORBIT, actor.ERRATA_ORBIT_DURATION))
+        self.assertEqual(len(actor.tomes), actor.ERRATA_TOME_COUNT)
+
+        angles_before = [tome["angle"] for tome in actor.tomes]
+        actor.update()
+        self.assertEqual((actor.state, actor.state_timer), (actor.ERRATA_DIVE, actor.ERRATA_DIVE_DURATION))
+        orbit_step = pygame.math.Vector2(1, 0).angle_to(
+            pygame.math.Vector2.from_polar((1, 360 * actor.ERRATA_ORBIT_REVOLUTIONS / actor.ERRATA_ORBIT_DURATION))
+        )
+        actual_step = (actor.tomes[0]["angle"] - angles_before[0]) * 180 / 3.141592653589793
+        self.assertAlmostEqual(actual_step, orbit_step)
+
+    def test_dead_small_slime_remains_in_level_enemy_list(self):
+        platform = SimpleNamespace(rect=pygame.Rect(0, 140, 200, 30))
+        summon = enemy.SmallSlime(platform)
+        self.assertTrue(summon.take_hit(100))
+
+        level = object.__new__(Level)
+        level.npc_animation = 0
+        level.platforms = []
+        level.enemies = [summon]
+        level.fog_barriers = []
+        level.is_underground = False
+        level.room = None
+        for _ in range(summon.DEATH_FRAMES * summon.DEATH_FRAME_TIME + 10):
+            level.update()
+
+        self.assertEqual(summon.state, summon.DEAD)
+        self.assertIn(summon, level.enemies)
 
 
 if __name__ == "__main__":

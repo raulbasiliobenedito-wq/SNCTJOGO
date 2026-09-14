@@ -12,15 +12,16 @@ adereços originais da vila continuarem no início do percurso. `Colisão`/
 `Decoração`/`Frente` têm as 220x20=4400 células cada, todas conferidas.
 
 Foram acrescentados **2 NPCs novos de tutorial espalhados pelo percurso**
-(além dos 4 originais): **Cadu**, perto de um slime que bloqueia o caminho,
-ensina o ataque (F); **Zeca**, perto de um buraco largo, ensina o dash (Q).
+(além dos 4 originais): **Cadu**, antes do slime que bloqueia o caminho,
+ensina o ataque (`F` ou clique esquerdo); **Zeca**, perto de um buraco largo,
+ensina o dash (`Q`).
 Isso substitui o modelo antigo de "Seu Joaquim explica tudo de uma vez" por
 tutorial dosado ao longo da fase — cada NPC ensina a mecânica bem no ponto
 onde ela passa a ser necessária. Há também um `slime` (mob de verdade, não
 só decoração) posicionado entre Cadu e Zeca.
 
 O código já está ligado: `TÍTULO → INTRO (hospital) → VILA → Fase 1`
-funciona, o diálogo em 3 falas da Sra. Amélia avança sozinho a cada [E], e
+funciona, os diálogos alternam Lia e cada NPC a cada [E], e
 chegar na ponta direita da rua leva pra Fase 1 automaticamente (mesmo
 mecanismo de "fim de fase" que as outras já usam).
 
@@ -140,55 +141,27 @@ de forma solta.
 
 ## NPCs e diálogos
 
-O sistema de diálogo de hoje (`NPC_DIALOGUES` em game.py) mostra **um texto
-fixo só**, sem múltiplas falas em sequência — dá conta das cientistas, mas as
-conversas abaixo (principalmente a da Sra. Amélia) precisam de mais de uma
-fala encadeada, tipo a cena do hospital. Vou estender isso quando for
-implementar (fica na lista de código no fim). Você só precisa colocar os
-objetos `npc` no Tiled com o `nome` certo — o texto eu já deixo pronto aqui:
+**Atualizado em 13/09/2026:** as conversas completas ficam em
+`jogo/game_data.py`, no formato `(falante, texto)`. Lia agora responde aos seis
+moradores, às cinco cientistas, aos fragmentos de pesquisa e aos achados das
+salas. A segunda conversa com cada NPC usa uma fala curta de repetição.
 
-**1. Tutorial — "Seu Joaquim"** (parado perto do spawn, o primeiro que ela vê)
-> "Ei, Lia! Cedo pra andar por aí, hein? Vai com calma: as setas te movem, o
-> espaço faz pular. Se precisar bater em alguma coisa — ou em alguém —, é só
-> apertar o F. Segurou fôlego demais parada? Aperta Q e sai correndo no
-> susto. E qualquer um por aqui que quiser conversar, é só chegar perto e
-> apertar E."
+O tutorial está distribuído assim:
 
-**2. Casual — "Dona Marta"** (varrendo a calçada em frente à casa dela)
-> "Bom dia, flor! Olha o tanto que você cresceu... Sua mãe tem muito orgulho
-> de você, sabia? Ela fala isso toda vez que passo lá em casa."
+- Seu Joaquim: setas, espaço e interação por `E`;
+- Cadu: `F` ou clique esquerdo para atacar, posicionado no platô anterior ao
+  primeiro slime;
+- Zeca: olhar para a direção desejada e apertar `Q` para a investida.
 
-**3. Tutorial — "Cadu"** (mais à frente no percurso, perto de um slime que
-bloqueia o caminho — ensina o ataque bem no ponto em que ela precisa dele)
-> "Psiu, Lia! Um bichinho de geleia fugiu do quintal do meu avô — não morde
-> forte, mas fica no meio do caminho. Se ele chegar perto, aperta o F que
-> ele se afasta rapidinho."
-
-**4. Tutorial — "Zeca"** (perto de um buraco largo — ensina o dash)
-> "Esse buraco aqui é largo demais pra pular normal, já tentei. Mas se você
-> apertar Q bem na hora de correr, sai disparada e passa reto por cima.
-> Confia."
-
-**5. Casual — "Bento"** (garoto sentado num banco, perto do parquinho)
-> "Lia! Depois eu te chamo pra jogar bola, tá? ...Ou você tá com pressa hoje?
-> Parece que tá indo em algum lugar importante."
-
-**6. Emocional — "Sra. Amélia"** (perto do fim da rua, antes da saída pra
-floresta — a fala-gatilho que você pediu, agora em 3 partes)
-> (1) "Lia, filha, vem cá um instantinho."
-> (2) "É chato de perguntar, mas... me falaram que sua mãe não anda bem. É
-> verdade, isso? Que ela tá com câncer?"
-> (3) "Eu sinto muito. Mas você tem uma cara decidida hoje — vai atrás de
-> alguma coisa, não vai? Então vai. E volta pra contar pra gente."
-
-Dá pra trocar/ajustar qualquer fala à vontade — é só texto, não trava nada
-tecnicamente.
+A Sra. Amélia é a primeira pessoa diante de quem Lia diz “câncer” em voz alta.
+O texto atual substitui os rascunhos históricos desta seção; futuras mudanças
+devem ser feitas na tabela do jogo para o site e os testes permanecerem
+alinhados.
 
 ## Código — já feito (ver "✅ Já implementado" no topo)
 
-Tudo que esta seção pedia já está no `level.py`/`game.py`: `VILLAGE` como
+Tudo que esta seção pedia já está em `jogo/level.py`, `jogo/game.py` e
+`jogo/interactions.py`: `VILLAGE` como
 índice especial fora de `PHASES` (não conta pra `fase_N_music` nem pro
-`COMPLETE` de fim de jogo), `NPC_DIALOGUES` aceitando tupla de falas em
-sequência (Sra. Amélia), e a transição INTRO→VILA→Fase 1. Não roda o jogo
-localmente pra testar de ponta a ponta (sandbox sem acesso a display), então
-vale um play-test seu — qualquer traceback, me manda que eu conserto rápido.
+`COMPLETE` de fim de jogo), sequência genérica com falantes alternados,
+compatibilidade com os formatos antigos e a transição INTRO→VILA→Fase 1.

@@ -59,7 +59,7 @@
     return { arquivo: 'items/items.png', q: [16, 16], linha: linha, quadros: [0], fps: 1 };
   }
 
-  var BASE = '../images/';
+  var BASE = '../jogo/images/';
   var cacheImagens = {};
 
   function carregarImagem(caminho) {

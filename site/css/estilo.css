@@ -22,12 +22,12 @@
    fonte pixelada em parágrafo longo é bonita e ilegível. */
 @font-face {
   font-family: 'Thaleah';
-  src: url('../../fonts/ThaleahFat.ttf') format('truetype');
+  src: url('../../jogo/fonts/ThaleahFat.ttf') format('truetype');
   font-display: swap;
 }
 @font-face {
   font-family: 'PressStart';
-  src: url('../../fonts/minha_fonte.ttf') format('truetype');
+  src: url('../../jogo/fonts/minha_fonte.ttf') format('truetype');
   font-display: swap;
 }
 
@@ -262,7 +262,7 @@ ul { padding-left: 1.1em; }
 }
 .capa__fundo {
   position: absolute; inset: 0;
-  background-image: url('../../images/backgrounds/ceu.png');
+  background-image: url('../../jogo/images/backgrounds/ceu.png');
   background-size: cover; background-position: center;
   opacity: 0.5;
   transform: scale(1.08);
