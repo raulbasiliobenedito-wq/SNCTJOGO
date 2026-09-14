@@ -417,8 +417,8 @@ class Librarian:
         if self.state_timer <= 0:
             self.state = self.WALK
 
-    def take_hit(self, damage=1):
-        if not self.alive or self.state == self.HURT:
+    def take_hit(self, damage=1, allow_hurt=False):
+        if not self.alive or (self.state == self.HURT and not allow_hurt):
             return False
         self.health -= damage
         if self.health <= 0:

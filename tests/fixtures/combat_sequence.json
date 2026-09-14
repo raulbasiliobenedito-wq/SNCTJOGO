@@ -1,27 +1,29 @@
 {
-  "source_commit": "aacce7c",
+  "contract": "lia_97_frames_single_click_combo",
   "sequence": {
     "ticks": 240,
-    "trace_sha256": "432d3eb71f178d91ed5cc104d66c635237051c3010823ab766f021f5a9034fb8",
+    "trace_sha256": "b553210b0c9c09d3ab84f58547d0182ecaaaeaae3807146a5ed6ed67a8f87370",
     "sounds": [
       "punch.punch_1",
-      "projectile_sound",
       "punch.punch_2",
       "punch.punch_3",
       "punch.punch_4",
       "projectile_sound",
-      "punch.punch_1",
       "projectile_sound",
-      "punch.punch_1"
+      "punch.punch_1",
+      "punch.punch_2",
+      "punch.punch_3",
+      "punch.punch_4"
     ],
     "final": [
       0,
-      0,
+      5,
       1,
-      1,
       0,
+      null,
+      null,
       0,
-      8,
+      67,
       []
     ]
   }

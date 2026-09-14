@@ -25,8 +25,8 @@
      aparecia cortado no lugar errado. Medindo o arquivo, reexportar a arte
      não quebra mais nada, desde que o tamanho do QUADRO continue o mesmo. */
   var FOLHAS = {
-    lia:        { arquivo: 'player/player_sheet.png',  q: [64, 96], linha: 0, quadros: [1, 2, 3, 4], fps: 8 },
-    lia_parada: { arquivo: 'player/player_sheet.png',  q: [64, 96], linha: 0, quadros: [0],          fps: 1 },
+    lia:        { arquivo: 'player/player_sheet.png',  q: [48, 48], linha: 0, quadros: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], fps: 12 },
+    lia_parada: { arquivo: 'player/player_sheet.png',  q: [48, 48], linha: 0, quadros: [0, 1, 2, 3, 4, 5, 6, 7],                          fps: 8 },
     joaquim:    { arquivo: 'npcs/seu_joaquim_idle.png', q: [48, 48], linha: 0, quadros: 6, fps: 8 },
 
     /* cientistas_idle.png: grade 8x5, 48x48, uma linha por cientista

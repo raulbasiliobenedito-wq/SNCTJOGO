@@ -18,7 +18,13 @@ configure_game_imports()
 
 import pygame
 from enemy import Librarian, Slime
-from game_data import PLAYING
+from game_data import (
+    ATTACK_COOLDOWN,
+    ATTACK_DURATION,
+    ATTACK_FRAME_TICKS,
+    GAME_OVER,
+    PLAYING,
+)
 from projectile import Projectile
 
 
@@ -52,7 +58,8 @@ def attack_sequence(game):
             call_combat(game, "apply_attack_frame")
             call_combat(game, "update_projectiles")
             state = [combat.attack_timer, combat.attack_cooldown, combat.attack_power,
-                     combat.combo_count, combat.combo_timer, combat.ranged_cooldown,
+                     combat.combo_count, combat.attack_animation_index(),
+                     combat.attack_hit_index(), combat.ranged_cooldown,
                      game.player.frame,
                      [[p.x, p.y, p.direction, p.traveled, p.alive] for p in combat.projectiles]]
             trace.update(json.dumps(state, separators=(",", ":")).encode())
@@ -93,34 +100,62 @@ class CombatTests(unittest.TestCase):
         self.game.level.enemies.append(actor)
         return actor
 
-    def test_attack_sequence_matches_original(self):
+    def test_attack_sequence_matches_current_contract(self):
         expected = json.loads((Path(__file__).with_name("fixtures") / "combat_sequence.json").read_text(encoding="utf-8"))
         self.assertEqual(attack_sequence(self.game), expected["sequence"])
 
-    def test_combo_cooldown_finisher_and_expiration(self):
-        counts, powers = [], []
-        for tick in range(81):
-            call_combat(self.game, "update_attack", tick % 20 == 0)
-            if tick % 20 == 0:
-                counts.append(self.combat.combo_count)
-                powers.append(self.combat.attack_power)
-                self.assertEqual(self.combat.attack_timer, 10)
-                self.assertEqual(self.combat.attack_cooldown, 20)
-        self.assertEqual(counts, [1, 2, 3, 4, 1])
-        self.assertEqual(powers, [1, 1, 1, 2, 1])
-        for _ in range(40):
+    def test_one_click_runs_four_hit_combo_then_half_second_cooldown(self):
+        frames = []
+        hit_powers = []
+        seen_hits = set()
+        with patch("audio.play_sfx") as sound:
+            call_combat(self.game, "update_attack", True)
+            self.assertEqual(self.combat.attack_timer, ATTACK_DURATION)
+            self.assertEqual(self.combat.attack_cooldown, 0)
+            for _ in range(ATTACK_DURATION):
+                call_combat(self.game, "apply_attack_frame")
+                frames.append(self.game.player.frame)
+                hit = self.combat.attack_hit_index()
+                if hit is not None and hit not in seen_hits:
+                    seen_hits.add(hit)
+                    hit_powers.append(self.combat.attack_power)
+                call_combat(self.game, "update_attack", False)
+
+        expected_frames = [
+            frame
+            for frame in self.game.player.ATTACK_FRAMES
+            for _ in range(ATTACK_FRAME_TICKS)
+        ]
+        self.assertEqual(frames, expected_frames)
+        self.assertEqual(seen_hits, {0, 1, 2, 3})
+        self.assertEqual(hit_powers, [1, 1, 1, 2])
+        self.assertEqual(
+            [call.args[0] for call in sound.call_args_list],
+            ["punch.punch_1", "punch.punch_2", "punch.punch_3", "punch.punch_4"],
+        )
+        self.assertEqual((self.combat.attack_timer, self.combat.attack_cooldown), (0, ATTACK_COOLDOWN))
+        for _ in range(ATTACK_COOLDOWN - 1):
             call_combat(self.game, "update_attack", False)
         call_combat(self.game, "update_attack", True)
-        self.assertEqual(self.combat.combo_count, 1)
+        self.assertTrue(self.combat.attacking)
 
     def test_attack_box_direction_and_dash(self):
         self.assertIsNone(call_combat(self.game, "attack_box"))
-        self.combat.attack_timer = 5
-        for facing, dash, expected in [(True, 0, (117, 99, 46, 58)), (False, 0, (47, 99, 46, 58)),
-                                       (True, 1, (110, 99, 60, 58)), (False, 1, (26, 99, 60, 58))]:
+        for facing, dash, expected in [(True, False, (117, 99, 46, 58)), (False, False, (47, 99, 46, 58)),
+                                       (True, True, (110, 99, 60, 58)), (False, True, (26, 99, 60, 58))]:
             self.game.player.facing_right = facing
-            self.game.player.dash_timer = dash
+            self.combat.attack_started_dashing = dash
+            impact_frame = 4 if dash else 14
+            self.combat.attack_timer = ATTACK_DURATION - impact_frame * ATTACK_FRAME_TICKS
             self.assertEqual(tuple(call_combat(self.game, "attack_box")), expected)
+
+    def test_each_punch_can_damage_same_target_once(self):
+        target = self.enemy(Librarian, x=140)
+        call_combat(self.game, "update_attack", True)
+        for _ in range(ATTACK_DURATION):
+            call_combat(self.game, "check_enemies")
+            call_combat(self.game, "update_attack", False)
+        self.assertEqual(target.health, target.HEALTH - 5)
 
     def test_ranged_unlock_direction_and_cooldown(self):
         call_combat(self.game, "update_ranged_attack", True)
@@ -130,6 +165,10 @@ class CombatTests(unittest.TestCase):
         call_combat(self.game, "update_ranged_attack", True)
         shot = self.combat.projectiles[0]
         self.assertEqual((shot.x, shot.y, shot.direction), (96, 120, -1))
+        self.assertEqual(
+            self.game.player.ranged_timer,
+            len(self.game.player.RANGED_FRAMES) * self.game.player.RANGED_FRAME_TICKS,
+        )
         call_combat(self.game, "update_ranged_attack", True)
         self.assertEqual(len(self.combat.projectiles), 1)
         self.assertEqual(self.combat.ranged_cooldown, 69)
@@ -219,6 +258,21 @@ class CombatTests(unittest.TestCase):
         update_level.assert_not_called()
         self.assertEqual((self.combat.attack_timer, self.combat.attack_cooldown), (5, 12))
         self.assertEqual((self.game.hitstop_timer, self.game.shake_timer), (1, 3))
+
+    def test_hurt_interrupts_combo_and_death_holds_last_frame(self):
+        call_combat(self.game, "update_attack", True)
+        self.assertTrue(self.combat.attacking)
+        self.game.take_damage(0.5)
+        self.assertFalse(self.combat.attacking)
+        self.assertEqual(self.combat.attack_cooldown, ATTACK_COOLDOWN)
+        self.assertEqual(self.game.player.frame, self.game.player.HURT_FRAMES[0])
+
+        self.game.lives = 0.5
+        self.game.take_damage(0.5)
+        self.assertEqual(self.game.state, GAME_OVER)
+        for _ in range(self.game.DEATH_POSE_DURATION + 3):
+            self.game._update_end_state(SimpleNamespace(r=False))
+        self.assertEqual(self.game.player.frame, self.game.player.DEATH_FRAMES[-1])
 
     def test_level_reset_clears_transient_combat_only(self):
         self.combat.attack_timer = 5

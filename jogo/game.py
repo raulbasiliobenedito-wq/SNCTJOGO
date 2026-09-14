@@ -315,10 +315,9 @@ class Game:
     # — parecendo "morte direta" mesmo cada toque só custando 1 vida.
     INVULN_FRAMES = 90
 
-    # Quadros dos 2 frames de morte (Player.DEATH_FRAMES, pedido do Raul)
-    # parada no lugar onde ela morreu, antes do reposicionamento de verdade
-    # (ver _finish_respawn) — metade do tempo em cada quadro.
-    DEATH_POSE_DURATION = 24
+    # A animação 75-82 toca uma vez; o último quadro fica no chão. Em queda
+    # não fatal ela permanece alguns ticks visível antes do respawn.
+    DEATH_POSE_DURATION = len(Player.DEATH_FRAMES) * Player.DEATH_FRAME_TICKS
 
     def _reset_status_state(self):
         self.invuln_timer = 0
@@ -365,12 +364,16 @@ class Game:
         # negativo, o que o HUD não sabe desenhar.
         self.lives = max(0, self.lives - amount)
         self.invuln_timer = self.INVULN_FRAMES
+        self.combat.cancel_attack()
         if self.lives <= 0:
             self.state = GAME_OVER
             self.game_over_fade = 0
             self.game_over_characters = 0
+            self.death_pose_timer = self.DEATH_POSE_DURATION
+            self.player.frame = self.player.DEATH_FRAMES[0]
             audio.play_sfx("death_sound")
             return False
+        self.player.start_hurt()
         return True
 
     def take_damage(self, amount=1):
@@ -393,10 +396,14 @@ class Game:
             # morte (Player.DEATH_FRAMES) aparecerem parada no lugar onde
             # ela morreu, em vez dela sumir/reaparecer instantaneamente.
             self.death_pose_timer = self.DEATH_POSE_DURATION
+            self.player.frame = self.player.DEATH_FRAMES[0]
 
     def _apply_death_frame(self):
         elapsed = self.DEATH_POSE_DURATION - self.death_pose_timer
-        index = 1 if elapsed >= self.DEATH_POSE_DURATION / 2 else 0
+        index = min(
+            len(self.player.DEATH_FRAMES) - 1,
+            elapsed // self.player.DEATH_FRAME_TICKS,
+        )
         self.player.frame = self.player.DEATH_FRAMES[index]
 
     def _finish_respawn(self):
@@ -678,6 +685,11 @@ class Game:
 
     def _update_end_state(self, keyboard):
         if self.state == GAME_OVER:
+            if self.death_pose_timer > 0:
+                self.death_pose_timer -= 1
+                self._apply_death_frame()
+            else:
+                self.player.frame = self.player.DEATH_FRAMES[-1]
             self.game_over_fade = min(60, self.game_over_fade + 1)
             if self.game_over_fade >= 18:
                 self.game_over_characters += 0.75
@@ -708,11 +720,14 @@ class Game:
                 self._finish_respawn()
             return
         self.player.update_abilities()
-        if dash_pressed and not self.player.swimming:
+        if dash_pressed and not self.player.swimming and not self.combat.attacking:
             if self.player.start_dash():
                 audio.play_sfx("dash_sound")
-        self.player.read_controls(keyboard)
+        self.player.read_controls(keyboard, movement_locked=self.combat.attacking)
         self.combat.update_attack(attack_pressed)
+        if self.combat.attacking:
+            self.player.facing_right = self.combat.attack_facing_right
+            self.player.lock_for_attack()
         self.combat.update_ranged_attack(ranged_pressed)
         self._maybe_wake_bosses()
         self._face_bosses_at_player()
@@ -959,7 +974,7 @@ class Game:
         landed = self._resolve_ramp_collisions(player, landed)
         # Pouso: só no quadro em que ela ENCOSTA (não enquanto fica parada).
         if landed and not self.player_grounded and not player.swimming:
-            player.start_squash("squash")
+            player.start_landing()
         self.player_grounded = landed
         # Espelha no próprio Player (pedido do Raul: pulo de 3 fases —
         # subindo/no ar/caindo — ver Player.animate) porque animate() roda
@@ -972,7 +987,6 @@ class Game:
         else:
             player.coyote_time = 7 if landed else max(0, player.coyote_time - 1)
         if player.try_jump():
-            player.start_squash("stretch")
             audio.play_sfx("jump")
 
     def _player_in_water(self, player):

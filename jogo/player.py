@@ -40,35 +40,45 @@ class Player:
     DECELERATION = 0.70
     JUMP_BUFFER_DURATION = 7
 
-    # Índices na sheet nova (14 quadros, ver player_sheet.png):
-    # 0 idle · 1-4 andar · 5-7 pulo (subindo/no ar/caindo) · 8-11 combo de
-    # ataque corpo a corpo (Game cuida de exibir esses, ver
-    # Game._apply_attack_frame) · 12-13 morte (ver Game._apply_death_frame).
-    FRAME_COUNT = 14
-    # O arquivo em disco vem 64x96 por quadro — o dobro do tamanho final em
-    # jogo (PLAYER_WIDTH/HEIGHT, ver settings.py). _load_frames recorta
-    # nesse tamanho e reduz pela metade, porque em tela ela ficava enorme
-    # (pedido do Raul) sem precisar mudar resolução nem hitbox.
-    SHEET_FRAME_WIDTH = 64
-    SHEET_FRAME_HEIGHT = 96
-    IDLE_FRAME = 0
-    # (WALK_FRAMES removido: animate() calcula 1 + (animation//7) % 4 direto.)
-    JUMP_RISE_FRAME = 5
-    JUMP_APEX_FRAME = 6
-    JUMP_FALL_FRAME = 7
+    # LIA_ALL_ANIMATIONS-Sheet.png: 97 quadros de 48x48 em uma única linha.
+    # As faixas abaixo usam índices Python (começam em zero); a numeração que
+    # aparece no arquivo de arte começa em 1. O quadro 97 é só referência.
+    FRAME_COUNT = 97
+    SHEET_FRAME_WIDTH = 48
+    SHEET_FRAME_HEIGHT = 48
+
+    IDLE_FRAMES = tuple(range(0, 8))            # arte 1-8
+    WALK_START_FRAMES = tuple(range(8, 22))     # arte 9-22
+    WALK_LOOP_FRAMES = tuple(range(12, 22))     # arte 13-22
+    JUMP_UP_FRAMES = tuple(range(22, 28))       # arte 23-28
+    JUMP_FALL_FRAMES = (27, 28)                 # arte 28-29
+    LAND_FRAMES = tuple(range(29, 34))          # arte 30-34
+    DASH_FRAMES = tuple(range(34, 42))          # arte 35-42
+    SWIM_START_FRAMES = tuple(range(42, 52))    # arte 43-52
+    SWIM_LOOP_FRAMES = tuple(range(47, 52))     # arte 48-52
+    ATTACK_FRAMES = tuple(range(52, 68))        # arte 53-68
+    HURT_FRAMES = tuple(range(68, 74))          # arte 69-74
+    DEATH_FRAMES = tuple(range(74, 82))         # arte 75-82
+    RANGED_FRAMES = tuple(range(82, 88))        # arte 83-88
+    SWIM_IDLE_FRAMES = tuple(range(88, 96))     # arte 89-96
+    REFERENCE_FRAME = 96                        # arte 97, nunca exibido
+
+    IDLE_FRAME_TICKS = 7
+    WALK_FRAME_TICKS = 5
+    JUMP_FRAME_TICKS = 3
+    FALL_FRAME_TICKS = 6
+    LAND_FRAME_TICKS = 4
+    SWIM_FRAME_TICKS = 6
+    HURT_FRAME_TICKS = 4
+    DEATH_FRAME_TICKS = 6
+    RANGED_FRAME_TICKS = 4
+
     # Zona "no ar" (quase parada verticalmente) em vez de só subindo/caindo
     # — abaixo desse módulo de vy ela tá perto do ápice do pulo.
     JUMP_APEX_VY_THRESHOLD = 1.5
-    # Índice = combo_count - 1 (Game._apply_attack_frame); 4 quadros, o
-    # último (combo_count==4) é o golpe de finalização com dano em dobro.
-    ATTACK_FRAMES = (8, 9, 10, 11)
-    # Índice = quantos quadros já se passaram desde a morte // (duração /
-    # len) (Game._apply_death_frame).
-    DEATH_FRAMES = (12, 13)
 
     def __init__(self):
         self.frames = self._load_frames()
-        self.squash_variants = self._build_squash_frames()
         self.facing_right = True
         self.frame = 0
         self.animation = 0
@@ -76,22 +86,24 @@ class Player:
 
     @staticmethod
     def _load_frames():
-        """Recorta cada quadro no tamanho real do arquivo (64x96) e reduz
-        pela metade pro tamanho final em jogo (PLAYER_WIDTH/HEIGHT,
-        32x48) — pygame.transform.scale (sem suavizar) mantém a arte
-        chapada, sem borrar; como é exatamente metade, não sobra pixel
-        quebrado."""
+        """Recorta os 97 quadros 48x48 sem redimensionar o pixel art."""
         sheet_path = ASSET_DIR / "player" / "player_sheet.png"
         sheet = pygame.image.load(sheet_path).convert_alpha()
+        expected_width = Player.FRAME_COUNT * Player.SHEET_FRAME_WIDTH
+        if sheet.get_size() != (expected_width, Player.SHEET_FRAME_HEIGHT):
+            raise ValueError(
+                "player_sheet.png deve ter "
+                f"{expected_width}x{Player.SHEET_FRAME_HEIGHT}px; "
+                f"recebido {sheet.get_width()}x{sheet.get_height()}px"
+            )
         frames = []
         for frame in range(Player.FRAME_COUNT):
-            raw = sheet.subsurface(
+            frames.append(sheet.subsurface(
                 pygame.Rect(
                     frame * Player.SHEET_FRAME_WIDTH, 0,
                     Player.SHEET_FRAME_WIDTH, Player.SHEET_FRAME_HEIGHT,
                 )
-            )
-            frames.append(pygame.transform.scale(raw, (PLAYER_WIDTH, PLAYER_HEIGHT)))
+            ).copy())
         return frames
 
     @property
@@ -124,13 +136,21 @@ class Player:
         self.swimming = False
         self.up_held = False
         self.oxygen = self.OXYGEN_MAX_FRAMES
-        # Squash & stretch (ver start_squash): kind é "stretch"/"squash".
-        self.squash_timer = 0
-        self.squash_kind = None
+        self.animation = 0
+        self.frame = self.IDLE_FRAMES[0]
+        self.idle_tick = 0
+        self.walk_tick = 0
+        self.was_walking = False
+        self.jump_tick = 0
+        self.fall_tick = 0
+        self.landing_tick = None
+        self.swim_phase = None
+        self.swim_tick = 0
+        self.hurt_timer = 0
+        self.ranged_timer = 0
 
     def update_abilities(self):
         """Atualiza recarga e duração do dash a cada quadro."""
-        self.squash_timer = max(0, self.squash_timer - 1)
         self.dash_cooldown = max(0, self.dash_cooldown - 1)
         if self.dash_timer:
             self.dash_timer -= 1
@@ -148,7 +168,13 @@ class Player:
     def cancel_dash(self):
         self.dash_timer = 0
 
-    def read_controls(self, keyboard):
+    def read_controls(self, keyboard, movement_locked=False):
+        if movement_locked:
+            self.vx = 0
+            self.up_held = False
+            self.jump_buffer = 0
+            return
+
         direction = int(keyboard.right or keyboard.d) - int(keyboard.left or keyboard.a)
         up_down = keyboard.space or keyboard.up or keyboard.w
         self.up_held = up_down
@@ -213,69 +239,172 @@ class Player:
             return False
         if self.coyote_time:
             self.vy, self.coyote_time, self.jump_buffer = JUMP_SPEED, 0, 0
+            self.jump_tick = 0
+            self.fall_tick = 0
+            self.landing_tick = None
             return True
         return False
 
     def animate(self):
-        """Sobreposto por fora quando ela ataca ou morre (ver
-        Game._apply_attack_frame/_apply_death_frame, chamados depois desse
-        método) — aqui só cobre parada/andando/pulando."""
+        """Escolhe a pose base; ataque e morte têm prioridade em Game."""
         self.animation += 1
+
+        if self.hurt_timer > 0:
+            self.frame = self._timed_frame(
+                self.HURT_FRAMES,
+                len(self.HURT_FRAMES) * self.HURT_FRAME_TICKS - self.hurt_timer,
+                self.HURT_FRAME_TICKS,
+            )
+            self.hurt_timer -= 1
+            return
+
+        if self.ranged_timer > 0:
+            self.frame = self._timed_frame(
+                self.RANGED_FRAMES,
+                len(self.RANGED_FRAMES) * self.RANGED_FRAME_TICKS - self.ranged_timer,
+                self.RANGED_FRAME_TICKS,
+            )
+            self.ranged_timer -= 1
+            return
+
+        if self.dashing and not self.swimming:
+            dash_index = min(len(self.DASH_FRAMES) - 1, self.DASH_DURATION - self.dash_timer)
+            self.frame = self.DASH_FRAMES[dash_index]
+            self._reset_ground_animation()
+            return
+
+        if self.swimming:
+            self._animate_swimming()
+            self._reset_ground_animation()
+            return
+        self.swim_phase = None
+        self.swim_tick = 0
+
         if not self.grounded:
-            # Pulo de 3 fases (pedido do Raul): subindo rápido, "flutuando"
-            # perto do ápice, e caindo — sem o `grounded` isso ia disparar
-            # também parada no chão, já que vy fica pertinho de 0 ali também
-            # (ver Player.grounded, atualizado por Game.move_player).
             if self.vy < -self.JUMP_APEX_VY_THRESHOLD:
-                self.frame = self.JUMP_RISE_FRAME
-            elif self.vy > self.JUMP_APEX_VY_THRESHOLD:
-                self.frame = self.JUMP_FALL_FRAME
+                self.frame = self._timed_frame(
+                    self.JUMP_UP_FRAMES, self.jump_tick, self.JUMP_FRAME_TICKS
+                )
+                self.jump_tick += 1
             else:
-                self.frame = self.JUMP_APEX_FRAME
-        elif self.vx:
-            self.frame = 1 + (self.animation // 7) % 4
+                self.frame = self._loop_frame(
+                    self.JUMP_FALL_FRAMES, self.fall_tick, self.FALL_FRAME_TICKS
+                )
+                self.fall_tick += 1
+            self.landing_tick = None
+            self._reset_ground_animation()
+        elif self.landing_tick is not None:
+            self.frame = self._timed_frame(
+                self.LAND_FRAMES, self.landing_tick, self.LAND_FRAME_TICKS
+            )
+            self.landing_tick += 1
+            if self.landing_tick >= len(self.LAND_FRAMES) * self.LAND_FRAME_TICKS:
+                self.landing_tick = None
+            self._reset_ground_animation()
+        elif abs(self.vx) > 0.2:
+            if not self.was_walking:
+                self.walk_tick = 0
+            intro_duration = len(self.WALK_START_FRAMES) * self.WALK_FRAME_TICKS
+            if self.walk_tick < intro_duration:
+                self.frame = self._timed_frame(
+                    self.WALK_START_FRAMES, self.walk_tick, self.WALK_FRAME_TICKS
+                )
+            else:
+                self.frame = self._loop_frame(
+                    self.WALK_LOOP_FRAMES,
+                    self.walk_tick - intro_duration,
+                    self.WALK_FRAME_TICKS,
+                )
+            self.walk_tick += 1
+            self.was_walking = True
+            self.idle_tick = 0
         else:
-            self.frame = self.IDLE_FRAME
+            self.was_walking = False
+            self.walk_tick = 0
+            self.frame = self._loop_frame(
+                self.IDLE_FRAMES, self.idle_tick, self.IDLE_FRAME_TICKS
+            )
+            self.idle_tick += 1
 
-    # Squash & stretch: alonga no impulso do pulo e achata no pouso. Os
-    # quadros deformados são PRÉ-CALCULADOS no carregamento (ver
-    # _build_squash_frames), então o efeito custa zero por quadro — só um
-    # índice diferente na hora de desenhar.
-    SQUASH_FRAMES = 5          # duração de cada pose, em quadros
-    STRETCH_SCALE = (0.86, 1.18)   # mais fina e mais alta (subindo)
-    SQUASH_SCALE = (1.18, 0.84)    # mais larga e mais baixa (pousando)
+    @staticmethod
+    def _timed_frame(frames, tick, ticks_per_frame):
+        index = min(len(frames) - 1, max(0, tick) // ticks_per_frame)
+        return frames[index]
 
-    def _build_squash_frames(self):
-        """Uma variante esticada e uma achatada por quadro da folha. São 28
-        Surfaces a mais (~0,3 MB) criadas uma vez, contra deformar em tempo
-        real 60x por segundo."""
-        variants = {}
-        for name, (sx, sy) in (("stretch", self.STRETCH_SCALE), ("squash", self.SQUASH_SCALE)):
-            size = (max(1, round(PLAYER_WIDTH * sx)), max(1, round(PLAYER_HEIGHT * sy)))
-            variants[name] = [pygame.transform.scale(f, size) for f in self.frames]
-        return variants
+    @staticmethod
+    def _loop_frame(frames, tick, ticks_per_frame):
+        return frames[(max(0, tick) // ticks_per_frame) % len(frames)]
 
-    def start_squash(self, kind):
-        """Chamado de fora no instante do pulo ("stretch") e do pouso
-        ("squash") — ver Game.move_player."""
-        self.squash_kind = kind
-        self.squash_timer = self.SQUASH_FRAMES
+    def _reset_ground_animation(self):
+        self.was_walking = False
+        self.walk_tick = 0
+        self.idle_tick = 0
 
-    def _squash_image(self):
-        """Quadro deformado da vez, ou None fora da janela do efeito."""
-        if not self.squash_timer or self.squash_kind is None:
-            return None
-        return self.squash_variants[self.squash_kind][self.frame]
+    def _animate_swimming(self):
+        moving = abs(self.vx) > 0.2 or self.up_held
+        if self.swim_phase is None:
+            self.swim_phase = "start" if moving else "idle"
+            self.swim_tick = 0
+
+        if moving and self.swim_phase not in ("start", "loop"):
+            self.swim_phase = "start"
+            self.swim_tick = 0
+        elif not moving and self.swim_phase in ("start", "loop"):
+            self.swim_phase = "stop"
+            self.swim_tick = 0
+
+        if self.swim_phase == "start":
+            self.frame = self._timed_frame(
+                self.SWIM_START_FRAMES, self.swim_tick, self.SWIM_FRAME_TICKS
+            )
+            self.swim_tick += 1
+            if self.swim_tick >= len(self.SWIM_START_FRAMES) * self.SWIM_FRAME_TICKS:
+                self.swim_phase = "loop"
+                self.swim_tick = 0
+        elif self.swim_phase == "loop":
+            self.frame = self._loop_frame(
+                self.SWIM_LOOP_FRAMES, self.swim_tick, self.SWIM_FRAME_TICKS
+            )
+            self.swim_tick += 1
+        elif self.swim_phase == "stop":
+            reverse_frames = self.SWIM_START_FRAMES[::-1]
+            self.frame = self._timed_frame(
+                reverse_frames, self.swim_tick, self.SWIM_FRAME_TICKS
+            )
+            self.swim_tick += 1
+            if self.swim_tick >= len(reverse_frames) * self.SWIM_FRAME_TICKS:
+                self.swim_phase = "idle"
+                self.swim_tick = 0
+        else:
+            self.frame = self._loop_frame(
+                self.SWIM_IDLE_FRAMES, self.swim_tick, self.SWIM_FRAME_TICKS
+            )
+            self.swim_tick += 1
+
+    def start_landing(self):
+        self.landing_tick = 0
+
+    def start_hurt(self):
+        self.hurt_timer = len(self.HURT_FRAMES) * self.HURT_FRAME_TICKS
+        self.ranged_timer = 0
+        self.frame = self.HURT_FRAMES[0]
+
+    def start_ranged_attack(self):
+        if self.hurt_timer <= 0:
+            self.ranged_timer = len(self.RANGED_FRAMES) * self.RANGED_FRAME_TICKS
+
+    def lock_for_attack(self):
+        """Trava apenas o controle; a gravidade continua agindo no ar."""
+        self.vx = 0
+        self.up_held = False
+        self.jump_buffer = 0
+        self.cancel_dash()
 
     def draw(self, surface, camera_x, camera_y):
         """Sem contorno gerado por máscara (a arte nova já vem com contorno
         desenhado à mão — ver player_sheet.png/LEIA-ME correspondente —,
         dobrar por cima ficaria com uma borda grossa/errada)."""
-        # A pose deformada é ancorada pelo PÉ e pelo CENTRO horizontal:
-        # esticar a partir do canto superior esquerdo faria a Lia parecer
-        # afundar no chão ao pousar.
-        squashed = self._squash_image()
-        image = squashed if squashed is not None else self.frames[self.frame]
+        image = self.frames[self.frame]
         if not self.facing_right:
             # Espelho cacheado (sprites.flipped): antes era um Surface novo por
             # quadro só pra virar a Lia pra esquerda.

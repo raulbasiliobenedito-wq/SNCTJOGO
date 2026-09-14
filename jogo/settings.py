@@ -16,11 +16,9 @@ GRAVITY = 0.6
 MAX_FALL_SPEED = 9
 MOVE_SPEED = 5
 JUMP_SPEED = -13
-# Sheet nova da Lia (player_sheet.png) vem em 64x96 por quadro no arquivo,
-# mas isso ficava enorme em jogo (pedido do Raul) — Player._load_frames
-# reduz cada quadro pela metade ao carregar (ver Player.SHEET_FRAME_WIDTH/
-# HEIGHT lá), então esses dois aqui já são o tamanho final em tela/hitbox,
-# de volta aos mesmos 32x48 de antes da troca de sheet.
+# A nova sheet da Lia usa quadros visuais de 48x48. Estes valores continuam
+# descrevendo o corpo lógico usado pela física: Player.draw centraliza o
+# quadro de 48px sobre esta largura de 32px sem alterar a colisão existente.
 PLAYER_WIDTH = 32
 PLAYER_HEIGHT = 48
 

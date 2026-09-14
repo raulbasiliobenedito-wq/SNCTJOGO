@@ -43,12 +43,6 @@ leve variação de x (poeira/entulho, não um efeito de impacto).
   — não tem como voltar por onde veio na Fase 3 (`fase3_pesquisa.tmx`, o
   túnel comprido e praticamente só de ida). Decidir se é plataforma extra,
   atalho, ou outra solução.
-- **Animação de ataque à distância da Lia**: hoje `Game._update_ranged_attack`
-  dispara o projétil mas `Player` não tem nenhum frame dedicado pra isso
-  (só idle/andar/pulo/combo corpo a corpo/morte, ver `Player.ATTACK_FRAMES`
-  etc. em `player.py`) — precisa desenhar e mapear um frame (ou uma
-  sequência) novo pro ataque à distância, do mesmo jeito que
-  `Game._apply_attack_frame` faz pro combo corpo a corpo.
 - **Dificultar um pouco os bosses** (sem detalhes específicos ainda —
   perguntar ao Raul o que exatamente quando for começar: dano, vida,
   velocidade de ataque, etc.).
@@ -114,37 +108,16 @@ leve variação de x (poeira/entulho, não um efeito de impacto).
   aberto: cair no vazio ainda volta pro checkpoint fixo (não mudou); se um
   dia quiser trocar pra "última plataforma pisada", é só mexer em
   `_finish_respawn`.
-- **Sprite nova da Lia + combo + pulo de 3 fases + morte animada**: troca
-  completa (pedido do Raul, sheet desenhada por ele no Aseprite a partir de
-  uma referência gerada por IA) — `images/player/player_sheet.png` agora
-  tem 14 quadros de 64x96 (o dobro do 32x48 antigo, `settings.py` ajustado
-  junto: `PLAYER_WIDTH/HEIGHT/HITBOX_WIDTH/HITBOX_OFFSET_X` todos
-  dobraram). Como a arte nova já vem com contorno desenhado à mão,
-  `Player` não gera mais contorno em tempo real (removido
-  `_make_outline`/`OUTLINE_COLOR`/`OUTLINE_OFFSETS`, dobraria a borda).
-  Novo em `Player.animate()`: pulo de 3 fases (subindo/no ar/caindo,
-  frames 5-7) usando o novo `Player.grounded` (espelhado por
-  `Game.move_player` a cada quadro, ver comentário lá) em vez de só o sinal
-  de `vy`. Novo em `game.py`: combo de 4 hits corpo a corpo
-  (`combo_count`/`combo_timer`, frames 8-11 — `Game._apply_attack_frame`
-  sobrepõe o frame calculado por `animate()` enquanto `attack_timer` tá
-  ativo) que reseta se ficar mais que `COMBO_RESET_WINDOW` sem atacar de
-  novo (pedido do Raul, era a opção "recomendada" nas 3 que perguntei); o
-  4º hit da `COMBO_FINISHER_POWER = 2` de dano, igual o ataque de dash. O
-  círculo genérico que representava o ataque (`draw_attack`) foi removido
-  — os frames de verdade já mostram o golpe. Morte também ganhou pose:
-  `Game.death_pose_timer` (`DEATH_POSE_DURATION = 24` quadros) congela a
-  simulação — mesmo padrão do hit-stop do parry — mostrando os frames
-  12-13 parada no lugar onde ela morreu, só reposicionando (checkpoint ou
-  saída de sala) depois, via `Game._finish_respawn` (a parte antiga de
-  `respawn()` que fazia isso na hora).
-  **Não verificado ainda (preciso rodar o jogo, que não dá daqui):** a
-  cutscene de abertura (`cutscene.py`) escala o frame da Lia por 3x
-  dinamicamente a partir do tamanho real do frame — com o dobro do tamanho
-  de sprite, ela deve aparecer bem maior lá agora; se ficar grande demais,
-  o ajuste é só trocar esse `* 3` por algo menor. Também vale playtestar o
-  tamanho da hitbox nova (48px) contra vãos/inimigos apertados que foram
-  calibrados pro hitbox antigo de 24px.
+- **Spritesheet completa da Lia**: `images/player/player_sheet.png` tem 97
+  quadros de 48x48 com Idle, Walk, Jump/Fall/Landing, Dash, Swimming,
+  combo de quatro socos, Hurt, Death, ataque à distância e Idle Swimming.
+  `Player` recorta a arte sem redimensionar e mantém a colisão lógica antiga
+  de 24x48 centralizada no quadro. O Walk toca 9-22 na entrada e repete
+  13-22; a natação entra por 43-52, repete 48-52 e, ao parar, volta por
+  52-43 antes do Idle Swimming 89-96. Um clique executa todo o combo 53-68
+  com quatro janelas de impacto, trava horizontal e 0,5s de recarga extra.
+  Hurt interrompe o combo; Death toca 75-82 uma vez e permanece caída no
+  último quadro. O frame 97 é apenas referência e nunca aparece no jogo.
 - **Feedback do parry**: hit-stop (`Game.hitstop_timer`, 3 quadros — a
   simulação inteira congela em `_update_playing`, ver o `if
   self.hitstop_timer` logo no topo) + screen shake genérico

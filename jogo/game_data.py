@@ -97,8 +97,12 @@ ENEMY_DROP_TABLE = {
     "DarkWraith": ("dark_crystal", 0.30),
 }
 DROP_PICKUP_RADIUS = 22
-ATTACK_DURATION = 11
-ATTACK_COOLDOWN = 20
+# Um clique reproduz os 16 quadros do combo inteiro. Cada quadro da arte
+# permanece por 4 updates (aprox. 16 fps), totalizando pouco mais de 1s.
+# Depois da animação há mais 0,5s em que só um novo ataque fica bloqueado.
+ATTACK_FRAME_TICKS = 4
+ATTACK_DURATION = 16 * ATTACK_FRAME_TICKS
+ATTACK_COOLDOWN = 30
 # Dano base do golpe corpo a corpo. Calibrado contra enemy.HEALTH:
 # Slime(2)=2 golpes, CrystalStag(3)=3, JanitorGuardian(4)=4, chefes(12)=12
 # golpes normais ou 6 finalizadores de combo.
@@ -120,14 +124,9 @@ DASH_ATTACK_REACH = 36
 MOB_CONTACT_DAMAGE = 0.5
 BOSS_CONTACT_DAMAGE = 1
 
-# Combo de 4 hits corpo a corpo (pedido do Raul, ver frames 8-11 de
-# player_sheet.png): cada ataque dentro da janela de COMBO_RESET_WINDOW
-# quadros depois do anterior avança o combo; parar de atacar por mais que
-# isso volta pro hit 1 (ver _update_attack). Maior que ATTACK_COOLDOWN de
-# propósito — se fosse igual, cliques no ritmo mais rápido permitido ainda
-# perderiam a janela por pouco.
+# Combo de 4 hits corpo a corpo dentro da animação 53-68 da Lia. Os três
+# primeiros socos dão dano normal; o quarto mantém o finalizador mais forte.
 COMBO_HIT_COUNT = 4
-COMBO_RESET_WINDOW = 40
 COMBO_FINISHER_POWER = 2
 
 # Parry: acertar o ataque corpo a corpo [F] num hazard "aparável" de chefe

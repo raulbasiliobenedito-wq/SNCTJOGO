@@ -16,11 +16,11 @@ from settings import PLAYER_HEIGHT, PLAYER_HITBOX_WIDTH
 from game_data import (
     ATTACK_COOLDOWN,
     ATTACK_DURATION,
+    ATTACK_FRAME_TICKS,
     BOSS_CONTACT_DAMAGE,
     BOSS_DROP_TABLE,
     COMBO_FINISHER_POWER,
     COMBO_HIT_COUNT,
-    COMBO_RESET_WINDOW,
     DASH_ATTACK_POWER,
     DASH_ATTACK_REACH,
     HIT_STOP_FRAMES,
@@ -45,6 +45,10 @@ if TYPE_CHECKING:
 class CombatSystem:
     """Estado transitório do combate pertencente a uma única sessão."""
 
+    # Quadros relativos dentro da sequência 53-68 em que o punho está
+    # estendido de verdade. Cada um abre uma janela curta de colisão.
+    ATTACK_IMPACT_FRAMES = (4, 9, 11, 14)
+
     def __init__(self, game: "Game"):
         self.game = game
         self.reset()
@@ -54,40 +58,85 @@ class CombatSystem:
         self.attack_cooldown = 0
         self.attack_power = STANDARD_ATTACK_POWER
         self.combo_count = 0
-        self.combo_timer = 0
+        self.attack_started_dashing = False
+        self.attack_facing_right = True
+        self._sounded_hit = None
+        self._hit_targets = [set() for _ in range(COMBO_HIT_COUNT)]
         self.ranged_cooldown = 0
         self.projectiles = []
 
     def update_attack(self, attack_pressed):
-        self.attack_cooldown = max(0, self.attack_cooldown - 1)
-        self.combo_timer = max(0, self.combo_timer - 1)
-        if attack_pressed and self.attack_cooldown == 0:
-            self.attack_timer = ATTACK_DURATION
-            self.attack_cooldown = ATTACK_COOLDOWN
-            # Combo (pedido do Raul): ainda dentro da janela do golpe
-            # anterior avança pro próximo hit (ciclando 1-4); passou da
-            # janela, volta pro 1 — ver COMBO_RESET_WINDOW.
-            if self.combo_timer > 0:
-                self.combo_count += 1
-                if self.combo_count > COMBO_HIT_COUNT:
-                    self.combo_count = 1
-            else:
-                self.combo_count = 1
-            self.combo_timer = COMBO_RESET_WINDOW
-            # 4 variações gravadas (sounds/punch/punch_1..4, ver
-            # PLANO_AUDIO.md) — uma pra cada hit do combo, em vez de tocar
-            # sempre o mesmo som de soco.
-            audio.play_sfx(f"punch.punch_{self.combo_count}")
-            if self.game.player.dashing:
-                self.attack_power = DASH_ATTACK_POWER
-            elif self.combo_count == COMBO_HIT_COUNT:
-                self.attack_power = COMBO_FINISHER_POWER
-            else:
-                self.attack_power = STANDARD_ATTACK_POWER
-        if self.attack_timer:
+        if self.attack_timer > 0:
             self.attack_timer -= 1
             if self.attack_timer == 0:
+                self.attack_cooldown = ATTACK_COOLDOWN
                 self.attack_power = STANDARD_ATTACK_POWER
+                self.combo_count = 0
+                self.attack_started_dashing = False
+            else:
+                self._update_attack_phase()
+            return
+
+        self.attack_cooldown = max(0, self.attack_cooldown - 1)
+        if (
+            attack_pressed
+            and self.attack_cooldown == 0
+            and self.game.player.hurt_timer <= 0
+        ):
+            self.attack_timer = ATTACK_DURATION
+            self.attack_started_dashing = self.game.player.dashing
+            self.attack_facing_right = self.game.player.facing_right
+            self._sounded_hit = None
+            self._hit_targets = [set() for _ in range(COMBO_HIT_COUNT)]
+            self._update_attack_phase()
+
+    @property
+    def attacking(self):
+        return self.attack_timer > 0
+
+    def cancel_attack(self):
+        """Hurt/death interrompem o combo, mas preservam a recarga."""
+        if self.attack_timer > 0:
+            self.attack_timer = 0
+            self.attack_cooldown = max(self.attack_cooldown, ATTACK_COOLDOWN)
+        self.attack_power = STANDARD_ATTACK_POWER
+        self.combo_count = 0
+        self.attack_started_dashing = False
+        self._sounded_hit = None
+
+    def attack_animation_index(self):
+        if not self.attack_timer:
+            return None
+        elapsed = ATTACK_DURATION - self.attack_timer
+        return min(len(self.game.player.ATTACK_FRAMES) - 1, elapsed // ATTACK_FRAME_TICKS)
+
+    def attack_hit_index(self):
+        animation_index = self.attack_animation_index()
+        if animation_index is None:
+            return None
+        try:
+            return self.ATTACK_IMPACT_FRAMES.index(animation_index)
+        except ValueError:
+            return None
+
+    def _update_attack_phase(self):
+        animation_index = self.attack_animation_index()
+        if animation_index is None:
+            return
+        self.combo_count = min(COMBO_HIT_COUNT, animation_index // 4 + 1)
+        hit_index = self.attack_hit_index()
+        if hit_index is None:
+            self.attack_power = STANDARD_ATTACK_POWER
+            return
+        if hit_index == COMBO_HIT_COUNT - 1:
+            self.attack_power = COMBO_FINISHER_POWER
+        elif hit_index == 0 and self.attack_started_dashing:
+            self.attack_power = DASH_ATTACK_POWER
+        else:
+            self.attack_power = STANDARD_ATTACK_POWER
+        if self._sounded_hit != hit_index:
+            audio.play_sfx(f"punch.punch_{hit_index + 1}")
+            self._sounded_hit = hit_index
 
     def apply_attack_frame(self):
         """Sobrepõe o frame calculado por Player.animate() enquanto o golpe
@@ -96,13 +145,22 @@ class CombatSystem:
         Fora daí Player.animate() decide sozinho (parado/andando/pulando)."""
         if not self.attack_timer:
             return
-        self.game.player.frame = self.game.player.ATTACK_FRAMES[self.combo_count - 1]
+        animation_index = self.attack_animation_index()
+        if animation_index is not None:
+            self.game.player.frame = self.game.player.ATTACK_FRAMES[animation_index]
 
     def update_ranged_attack(self, ranged_pressed):
         self.ranged_cooldown = max(0, self.ranged_cooldown - 1)
-        if not (ranged_pressed and self.game.ranged_unlocked and self.ranged_cooldown == 0):
+        if not (
+            ranged_pressed
+            and self.game.ranged_unlocked
+            and self.ranged_cooldown == 0
+            and not self.attacking
+            and self.game.player.hurt_timer <= 0
+        ):
             return
         self.ranged_cooldown = RANGED_ATTACK_COOLDOWN
+        self.game.player.start_ranged_attack()
         audio.play_sfx("projectile_sound")
         direction = 1 if self.game.player.facing_right else -1
         # Nasce um pouco à frente da hitbox, na altura do peito — assim o
@@ -250,7 +308,15 @@ class CombatSystem:
                 and getattr(enemy, "melee_vulnerable", True)
             )
             if melee_hit:
-                if enemy.take_hit(self.attack_power):
+                hit_index = self.attack_hit_index()
+                target_key = id(enemy)
+                already_hit = (
+                    hit_index is None or target_key in self._hit_targets[hit_index]
+                )
+                if already_hit:
+                    continue
+                self._hit_targets[hit_index].add(target_key)
+                if enemy.take_hit(self.attack_power, allow_hurt=True):
                     self.game.hitstop_timer = max(self.game.hitstop_timer, HIT_STOP_FRAMES)
                     self.game.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
@@ -264,13 +330,15 @@ class CombatSystem:
             self.game.take_damage(contact_damage)
 
     def attack_box(self):
-        if not self.attack_timer:
+        hit_index = self.attack_hit_index()
+        if hit_index is None:
             return None
         # Comparar poderes (`attack_power > STANDARD_ATTACK_POWER`) acoplava
         # "alcance" a "dano": bastou STANDARD_ATTACK_POWER virar 100 pra o
         # golpe de dash perder o alcance estendido sem ninguém notar. Agora
         # o alcance vem do que está acontecendo de fato.
-        reach = DASH_ATTACK_REACH if self.game.player.dashing else STANDARD_ATTACK_REACH
+        dash_impact = self.attack_started_dashing and hit_index == 0
+        reach = DASH_ATTACK_REACH if dash_impact else STANDARD_ATTACK_REACH
         offset = (
             PLAYER_HITBOX_WIDTH
             if self.game.player.facing_right

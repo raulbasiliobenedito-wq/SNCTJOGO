@@ -132,8 +132,8 @@ class DarkWraith:
             self.state = self.FLOAT
             self.state_timer = self._next_attack_delay()
 
-    def take_hit(self, damage=1):
-        if not self.alive or self.state == self.HURT:
+    def take_hit(self, damage=1, allow_hurt=False):
+        if not self.alive or (self.state == self.HURT and not allow_hurt):
             return False
         self.health -= damage
         if self.health <= 0:
