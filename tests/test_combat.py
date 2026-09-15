@@ -17,7 +17,7 @@ from test_support import GAME_DIR, configure_game_imports, isolated_game_data, s
 configure_game_imports()
 
 import pygame
-from enemy import Librarian, Slime
+from enemy import AncientGolem, Librarian, Slime
 from game_data import (
     ATTACK_COOLDOWN,
     ATTACK_DURATION,
@@ -156,6 +156,15 @@ class CombatTests(unittest.TestCase):
             call_combat(self.game, "check_enemies")
             call_combat(self.game, "update_attack", False)
         self.assertEqual(target.health, target.HEALTH - 5)
+
+    def test_golem_uses_its_own_damage_debris_without_generic_impact(self):
+        target = self.enemy(AncientGolem, x=140)
+        self.combat.attack_timer = 5
+        with patch.object(self.game.vfx, "spawn") as spawn:
+            call_combat(self.game, "check_enemies")
+        self.assertEqual(target.health, target.HEALTH - 1)
+        self.assertEqual(target.effects[0]["kind"], "damage_debris")
+        spawn.assert_not_called()
 
     def test_ranged_unlock_direction_and_cooldown(self):
         call_combat(self.game, "update_ranged_attack", True)

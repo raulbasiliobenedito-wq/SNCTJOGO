@@ -111,6 +111,15 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(game.items.drops, [dict(item=key, x=50, y=70) for key in BOSS_DROP_TABLE.values()])
         self.assertEqual([c.args[0] for c in sound.call_args_list], ["boss_death_sound"] * 3)
 
+    def test_golem_is_a_boss_but_does_not_create_an_extra_quest_item(self):
+        game = self.game
+        with patch("random.random") as chance, patch("audio.play_sfx") as sound:
+            game.items.on_enemy_defeated(self.enemy("AncientGolem"))
+        chance.assert_not_called()
+        sound.assert_called_once_with("boss_death_sound")
+        self.assertEqual(game.items.drops, [])
+        self.assertEqual(game.message, "O caminho para a escola foi liberado!")
+
     def test_common_drop_thresholds_and_unlisted_enemy(self):
         game = self.game
         with patch("audio.play_sfx") as sound:

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="220" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="22">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="220" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="23">
  <tileset firstgid="1" source="chao_vila.tsx"/>
  <tileset firstgid="17" source="casas_vila.tsx"/>
  <tileset firstgid="25" source="aderecos_vila.tsx"/>
@@ -169,5 +169,6 @@
     <property name="nome" value="Zeca"/>
    </properties>
   </object>
+  <object id="22" name="Golem Ancião" type="golem_anciao" x="5600" y="480" width="576" height="32"/>
  </objectgroup>
 </map>

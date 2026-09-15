@@ -1,6 +1,6 @@
 import pygame
 from enemy import (
-    CrystalStag, DarkWraith, JanitorGuardian, Librarian, PossessedStudent,
+    AncientGolem, CrystalStag, DarkWraith, JanitorGuardian, Librarian, PossessedStudent,
     Slime, SlimeKing, SmallSlime, Specimen,
 )
 from fog import FogBarrier
@@ -727,6 +727,22 @@ class Level:
                 self.world_width = max(
                     self.world_width, zone_rect.right + self.SLIME_KING_ARENA_MARGIN
                 )
+        # Golem Ancião: chefe intermediário do campo (ainda identificado
+        # internamente como VILLAGE). O retângulo do objeto define ao mesmo
+        # tempo a patrulha sobre o trecho plano e o miolo da arena.
+        if self.index == VILLAGE and not self.room and self.tiled_map:
+            item = self.tiled_map.entity("golem_anciao")
+            if item:
+                zone_rect = self._rect_from_object(item)
+                boss = AncientGolem(_StaticZone(zone_rect))
+                self.enemies.append(boss)
+                zone = pygame.Rect(
+                    zone_rect.left - 32,
+                    0,
+                    zone_rect.width + 64,
+                    self.world_height,
+                )
+                arenas.append({"zone": zone, "enemy": boss})
         # Fase 3 (index == 2) fica sem chefe de arena por enquanto — o
         # Dragão foi removido (será substituído por uma Caveira, ainda não
         # implementada). O objeto "dragao" pode continuar existindo no
@@ -979,6 +995,8 @@ class Level:
                 enemy.draw(surface, camera_x, camera_y, assets.librarian_sprites)
             elif isinstance(enemy, SlimeKing):
                 enemy.draw(surface, camera_x, camera_y, assets.slime_king_sprites)
+            elif isinstance(enemy, AncientGolem):
+                enemy.draw(surface, camera_x, camera_y, assets.ancient_golem_sprites)
             elif isinstance(enemy, SmallSlime):
                 enemy.draw(surface, camera_x, camera_y, assets.small_slime_sprites)
             else:

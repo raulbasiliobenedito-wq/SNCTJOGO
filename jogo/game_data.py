@@ -74,19 +74,22 @@ BOSS_DROP_TABLE = {
     "Librarian": "livro_magico",
     "Specimen": "amostra_especime",
 }
-# Nome de exibição de cada chefe, usado só pela barra de vida (ver
-# Game._draw_boss_health_bar) — mesmas chaves de BOSS_DROP_TABLE.
+# Nome de exibição e registro canônico dos chefes. BOSS_DROP_TABLE é um
+# subconjunto: o Golem libera a estrada, mas não precisa criar outro item.
 BOSS_NAMES = {
     "SlimeKing": "Rei Slime",
     "Librarian": "Bibliotecário",
     "Specimen": "Espécime",
+    "AncientGolem": "Golem Ancião",
 }
 # Nome da faixa em music/ (ver PLANO_AUDIO.md) tocada enquanto cada chefe
-# está acordado — mesmas chaves de BOSS_DROP_TABLE/BOSS_NAMES.
+# está acordado. Se a faixa do Golem ainda não existir, a fachada de áudio
+# mantém o jogo funcional e volta a tentar quando o arquivo for adicionado.
 BOSS_MUSIC = {
     "SlimeKing": "rei_slime_music",
     "Librarian": "bibliotecario_music",
     "Specimen": "especime_music",
+    "AncientGolem": "golem_anciao_music",
 }
 # Drop por chance dos inimigos comuns de cada fase (item, probabilidade).
 ENEMY_DROP_TABLE = {

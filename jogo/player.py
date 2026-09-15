@@ -18,6 +18,12 @@ from settings import (
 class Player:
     """Estado, movimentação e animação da Lia."""
 
+    # A física continua usando o corpo lógico 32x48 de settings.py. Só os
+    # quadros desenhados no mundo são ampliados, ancorados pelo centro e
+    # pelos pés, para a Lia ficar mais legível sem alterar colisões, salto,
+    # alcance ou passagens estreitas.
+    RENDER_SCALE = 1.25
+
     DASH_SPEED = 12.0
     DASH_DURATION = 8
     DASH_COOLDOWN = 10
@@ -79,6 +85,13 @@ class Player:
 
     def __init__(self):
         self.frames = self._load_frames()
+        render_size = (
+            round(self.SHEET_FRAME_WIDTH * self.RENDER_SCALE),
+            round(self.SHEET_FRAME_HEIGHT * self.RENDER_SCALE),
+        )
+        self.render_frames = [
+            pygame.transform.scale(frame, render_size) for frame in self.frames
+        ]
         self.facing_right = True
         self.frame = 0
         self.animation = 0
@@ -404,7 +417,7 @@ class Player:
         """Sem contorno gerado por máscara (a arte nova já vem com contorno
         desenhado à mão — ver player_sheet.png/LEIA-ME correspondente —,
         dobrar por cima ficaria com uma borda grossa/errada)."""
-        image = self.frames[self.frame]
+        image = self.render_frames[self.frame]
         if not self.facing_right:
             # Espelho cacheado (sprites.flipped): antes era um Surface novo por
             # quadro só pra virar a Lia pra esquerda.

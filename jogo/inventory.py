@@ -13,6 +13,7 @@ import pygame
 import audio
 from game_data import (
     BOSS_DROP_TABLE,
+    BOSS_NAMES,
     DROP_PICKUP_RADIUS,
     ENEMY_DROP_TABLE,
     ITEM_DEFS,
@@ -77,15 +78,17 @@ class InventorySystem:
     def on_enemy_defeated(self, enemy):
         """Chamado uma única vez, no quadro exato em que um inimigo morre
         (stomp() sempre mata; take_hit() só às vezes — ver CombatSystem.check_enemies).
-        Chefe larga o item de pesquisa garantido (BOSS_DROP_TABLE); inimigo
-        comum sorteia contra ENEMY_DROP_TABLE. Slimes pequenos da Cisão e
-        os dois chefes de sala antigos sem entrada em nenhuma tabela não
-        largam nada."""
+        Chefes com item em BOSS_DROP_TABLE largam pesquisa garantida; o
+        Golem Ancião é chefe, mas libera a saída sem criar item. Inimigos
+        comuns sorteiam contra ENEMY_DROP_TABLE."""
         name = type(enemy).__name__
         quest_item = BOSS_DROP_TABLE.get(name)
-        if quest_item:
+        if name in BOSS_NAMES:
             audio.play_sfx("boss_death_sound")
-            self.spawn_drop(quest_item, enemy.rect.centerx, enemy.rect.centery)
+            if quest_item:
+                self.spawn_drop(quest_item, enemy.rect.centerx, enemy.rect.centery)
+            elif name == "AncientGolem":
+                self.game.show_message("O caminho para a escola foi liberado!")
             return
         audio.play_sfx("enemy_death_sound")
         entry = ENEMY_DROP_TABLE.get(name)

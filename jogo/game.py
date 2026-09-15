@@ -47,7 +47,6 @@ from game_data import (
     ITEM_DEFS,
     ITEM_ORDER,
     PHASE_REQUIRED_ITEMS,
-    BOSS_DROP_TABLE,
     BOSS_NAMES,
     BOSS_MUSIC,
     ATTACK_COOLDOWN,
@@ -769,7 +768,7 @@ class Game:
     def _maybe_wake_bosses(self):
         """Confere todo inimigo vivo da fase (não só os de boss_arenas —
         Librarian/Specimen não têm arena gerada por código, só a sala fixa
-        do Tiled, então checar self.level.enemies direto cobre os 4 chefes
+        do Tiled, então checar self.level.enemies direto cobre os chefes
         com o mesmo código). Uma vez acordado (wake_up), o chefe nunca volta
         a dormir, mesmo que a Lia se afaste — combina com o resto do jogo,
         onde nenhum chefe "reseta" sozinho."""
@@ -780,7 +779,8 @@ class Game:
                 continue
             dx = enemy.rect.centerx - player_center[0]
             dy = enemy.rect.centery - player_center[1]
-            if dx * dx + dy * dy <= self.BOSS_WAKE_RADIUS * self.BOSS_WAKE_RADIUS:
+            wake_radius = getattr(enemy, "WAKE_RADIUS", self.BOSS_WAKE_RADIUS)
+            if dx * dx + dy * dy <= wake_radius * wake_radius:
                 wake_up()
                 audio.play_sfx("boss_wake_sound")
                 self._boss_wake_impact(enemy)
@@ -1697,7 +1697,7 @@ class Game:
         decidir se a barra de vida aparece.
         """
         for enemy in self.level.enemies:
-            if type(enemy).__name__ not in BOSS_DROP_TABLE:
+            if type(enemy).__name__ not in BOSS_NAMES:
                 continue
             if not enemy.alive:
                 continue

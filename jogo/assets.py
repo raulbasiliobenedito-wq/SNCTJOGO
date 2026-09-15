@@ -11,6 +11,9 @@ from sprites import load_optional
 class Assets:
     """Recursos de uma sessão, incluindo quadros de névoa sob demanda."""
 
+    ANCIENT_GOLEM_SCALE = 1.5
+    ANCIENT_GOLEM_VFX_SCALE = 1.5
+
     def __init__(self):
         self.tiles = self._load_platform_tiles()
         self._load_backgrounds()
@@ -29,6 +32,7 @@ class Assets:
         self.librarian_sprites = self._load_librarian_sprites()
         self.small_slime_sprites = self._load_small_slime_sprites()
         self.slime_king_sprites = self._load_slime_king_sprites()
+        self.ancient_golem_sprites = self._load_ancient_golem_sprites()
         self.item_icons = self._load_item_icons()
         self.energy_box_sprites = self._load_energy_box_sprites()
         # Elevador secreto do laboratório escondido (ver
@@ -566,6 +570,57 @@ class Assets:
             "idle": rows[0], "walk": rows[1],
             "attack_a": rows[2], "attack_b": rows[3],
             "hurt": rows[4], "dead": rows[5],
+        }
+
+    def _load_ancient_golem_sprites(self):
+        """Corpo-base 92x92 ampliado a 1,5x e VFX dedicados do Golem.
+
+        As folhas ficam separadas para que cada animação possa ter sua
+        própria quantidade de quadros. O PNG mestre em ``spritesheets`` é
+        somente a fonte de edição; o jogo carrega as folhas horizontais.
+        """
+        root = ASSET_DIR / "enemies" / "golem"
+        animations = root / "golem_animations" / "spritesheets"
+        vfx = root / "golem_vfx" / "spritesheets"
+
+        def row(path, frame_size, count, scale=1.0):
+            return self._load_grid_sheet(
+                path, frame_size, frame_size, [count], scale=scale
+            )[0]
+
+        def body(filename, count):
+            return row(
+                animations / filename,
+                92,
+                count,
+                self.ANCIENT_GOLEM_SCALE,
+            )
+
+        def effect(filename, frame_size, count):
+            return row(
+                vfx / filename,
+                frame_size,
+                count,
+                self.ANCIENT_GOLEM_VFX_SCALE,
+            )
+
+        return {
+            "idle": body("golem_idle_sheet.png", 11),
+            "walk": body("golem_walking_sheet.png", 8),
+            "charge": body("golem_charge_run_sheet.png", 16),
+            "slam": body("golem_ground_crash_sheet.png", 17),
+            "throw": body("golem_boulder_throwing_sheet.png", 16),
+            "hurt": body("golem_taking_damage_sheet.png", 7),
+            "dead": body("golem_death_sheet.png", 17),
+            "vfx": {
+                "rock_shockwave": effect("rock_shockwave_sheet.png", 64, 9),
+                "ground_slam_impact": effect("ground_slam_impact_sheet.png", 64, 7),
+                "charge_dust": effect("charge_dust_sheet.png", 48, 7),
+                "charge_impact": effect("charge_impact_sheet.png", 64, 9),
+                "projectile": effect("projectile_sheet.png", 64, 9),
+                "boulder_explosion": effect("boulder_explosion_sheet.png", 64, 9),
+                "damage_debris": effect("damage_debris_sheet.png", 64, 8),
+            },
         }
 
     # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se

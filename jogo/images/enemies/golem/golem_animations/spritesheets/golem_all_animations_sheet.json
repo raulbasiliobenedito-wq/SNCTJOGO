@@ -1,0 +1,17 @@
+{
+  "image": "golem_all_animations_sheet.png",
+  "frame_width": 92,
+  "frame_height": 92,
+  "columns": 17,
+  "rows": 7,
+  "safe_downward_shift_px": 13,
+  "animations": [
+    { "row": 1, "name": "golem_idle", "frames": 11 },
+    { "row": 2, "name": "golem_walking", "frames": 8 },
+    { "row": 3, "name": "golem_charge_run", "frames": 16 },
+    { "row": 4, "name": "golem_ground_crash", "frames": 17 },
+    { "row": 5, "name": "golem_boulder_throwing", "frames": 16 },
+    { "row": 6, "name": "golem_taking_damage", "frames": 7 },
+    { "row": 7, "name": "golem_death", "frames": 17 }
+  ]
+}

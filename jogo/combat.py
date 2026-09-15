@@ -18,7 +18,7 @@ from game_data import (
     ATTACK_DURATION,
     ATTACK_FRAME_TICKS,
     BOSS_CONTACT_DAMAGE,
-    BOSS_DROP_TABLE,
+    BOSS_NAMES,
     COMBO_FINISHER_POWER,
     COMBO_HIT_COUNT,
     DASH_ATTACK_POWER,
@@ -190,7 +190,8 @@ class CombatSystem:
                 if not projectile.rect.colliderect(enemy.rect):
                     continue
                 if enemy.take_hit(projectile.power):
-                    self.game.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+                    if not getattr(enemy, "uses_custom_hit_vfx", False):
+                        self.game.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
                         self.game.items.on_enemy_defeated(enemy)
                 projectile.alive = False
@@ -199,12 +200,12 @@ class CombatSystem:
 
     def stomp_enemy_if_possible(self, player, previous_bottom):
         for enemy in self.game.level.enemies:
-            # Chefes (BOSS_DROP_TABLE = SlimeKing/Librarian/Specimen)
+            # Chefes (BOSS_NAMES) ficam de fora do pulo-que-mata:
             # ficam de fora do pulo-que-mata: pousar na cabeça deles não pode
             # ser um jeito de matar em um golpe só uma luta pensada pra durar
             # vários acertos — pisar neles agora não faz nada de especial,
             # cai no contato normal (dano) tratado por check_enemies.
-            if type(enemy).__name__ in BOSS_DROP_TABLE:
+            if type(enemy).__name__ in BOSS_NAMES:
                 continue
             if (
                 enemy.alive
@@ -301,7 +302,7 @@ class CombatSystem:
         for enemy in self.game.level.enemies:
             if not enemy.alive:
                 continue
-            is_boss = type(enemy).__name__ in BOSS_DROP_TABLE
+            is_boss = type(enemy).__name__ in BOSS_NAMES
             melee_hit = (
                 attack_box
                 and attack_box.colliderect(enemy.rect)
@@ -318,7 +319,8 @@ class CombatSystem:
                 self._hit_targets[hit_index].add(target_key)
                 if enemy.take_hit(self.attack_power, allow_hurt=True):
                     self.game.hitstop_timer = max(self.game.hitstop_timer, HIT_STOP_FRAMES)
-                    self.game.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
+                    if not getattr(enemy, "uses_custom_hit_vfx", False):
+                        self.game.vfx.spawn("impact", enemy.rect.centerx, enemy.rect.centery)
                     if not enemy.alive:
                         self.game.items.on_enemy_defeated(enemy)
                     else:

@@ -32,6 +32,10 @@ class PlayerAnimationTests(unittest.TestCase):
     def test_sheet_has_97_unscaled_frames_and_reference_is_excluded(self):
         self.assertEqual(len(self.player.frames), 97)
         self.assertEqual({frame.get_size() for frame in self.player.frames}, {(48, 48)})
+        self.assertEqual(
+            {frame.get_size() for frame in self.player.render_frames},
+            {(60, 60)},
+        )
         used = set().union(
             self.player.IDLE_FRAMES,
             self.player.WALK_START_FRAMES,

@@ -1,6 +1,7 @@
 """Inimigos de chão e reexports das classes específicas."""
 
 from enemy_common import GroundEnemy, PausingGroundEnemy
+from enemy_ancient_golem import AncientGolem
 from enemy_librarian import Librarian
 from enemy_slime_king import SlimeKing
 from enemy_specimen import Specimen
