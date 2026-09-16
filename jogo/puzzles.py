@@ -31,9 +31,6 @@ class PuzzleSystem:
         self.sequence_progress = 0
         self.microscope_collected = set()
         self.microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
-        self.lab_microscope_collected = set()
-        self.lab_microscope_assembled = False
-        self.lab_microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
         self.energy_box_state = {"screws_removed": False, "wired": False}
         self.energy_box_wires = dict.fromkeys(WIRE_COLORS, False)
 
@@ -44,7 +41,7 @@ class PuzzleSystem:
         """Chamado por update() enquanto self.game.minigame.active — ver
         minigame.py. ESC fecha sem terminar (progresso já mora num
         atributo deste PuzzleSystem, passado por referência ao abrir, ver
-        open_microscope_minigame), com o mesmo debounce que Configurações
+        open_lab_microscope_minigame), com o mesmo debounce que Configurações
         usa (_escape_was_down) só que numa flag própria, pra não interferir
         com o ESC do menu."""
         escape_down = getattr(keyboard, "escape", False)
@@ -66,22 +63,9 @@ class PuzzleSystem:
         if key == "microscope" and result == "completed":
             self.microscope_assembled = True
             audio.play_sfx("microscope_sound")
-            self.game.level.activate_return_route()
-            self.game.dialogue.start(
-                "Lia",
-                "Microscópio montado! As plataformas de retorno foram liberadas; preciso voltar pelo caminho acima.",
-            )
-        elif key == "lab_microscope" and result == "completed":
-            self.lab_microscope_assembled = True
-            audio.play_sfx("microscope_sound")
             libera = (self.game.level.lab_bench or {}).get("libera")
             if libera:
                 self.game._release_fog_barrier(libera)
-            # O laboratório escondido virou O microscópio da Fase 1 (ver
-            # _advance_level_if_ready/needs_microscope) — o antigo puzzle
-            # subterrâneo (parte_microscopio/bancada) saiu do .tmx, então
-            # é aqui, e não mais lá, que a Rota Retorno é liberada.
-            self.game.level.activate_return_route()
             self.game.dialogue.start(
                 "Lia",
                 "Microscópio montado! Acho que isso acabou de abrir alguma coisa lá fora.",
@@ -100,39 +84,32 @@ class PuzzleSystem:
                     "Uma faísca! Melhor conferir o diagrama de novo antes de tentar outra vez.",
                 )
 
-    def collect_microscope_parts(self, player):
-        if not (self.game.level.is_underground and self.sequence_solved):
-            return
-        for index, (item, _) in enumerate(self.game.level.microscope_parts):
+    def collect_lab_microscope_parts(self, player):
+        """Coleta as peças do único microscópio obrigatório da Fase 1.
+
+        Elas ficam no laboratório acessado pelo elevador; o progresso usa
+        os atributos canônicos ``microscope_*`` para que HUD, conclusão da
+        fase, desenho da bancada e minigame nunca consultem puzzles
+        diferentes por engano.
+        """
+        for index, (item, _name) in enumerate(self.game.level.lab_microscope_parts):
             if index not in self.microscope_collected and player.rect.colliderect(item):
                 self.microscope_collected.add(index)
                 audio.play_sfx("item_sound")
 
-    def collect_lab_microscope_parts(self, player):
-        """Peças do microscópio do laboratório ESCONDIDO (ver
-        Level._make_lab_microscope_parts) — sem nenhuma condição prévia
-        (ao contrário de collect_microscope_parts, que exige a
-        sequência antiga resolvida): a sala em si só é alcançável depois
-        do elevador liberado, isso já é gate suficiente."""
-        for index, (item, _name) in enumerate(self.game.level.lab_microscope_parts):
-            if index not in self.lab_microscope_collected and player.rect.colliderect(item):
-                self.lab_microscope_collected.add(index)
-                audio.play_sfx("item_sound")
-
     def use_lab_microscope_bench(self, player):
         """Bancada do laboratório escondido (ver Level._make_lab_bench) —
-        mesmo formato de use_microscope_bench, mas totalmente
-        independente: progresso próprio (lab_microscope_*) e libera uma
-        fog.FogBarrier (propriedade "libera" do objeto "bancada_
-        microscopio"). Ao concluir, também ativa a rota de retorno."""
+        É a bancada do único microscópio obrigatório da Fase 1 e libera
+        uma fog.FogBarrier (propriedade "libera" do objeto
+        "bancada_microscopio") ao ser concluída."""
         if self.game.level.lab_bench is None:
             return False
         if not player.rect.colliderect(self.game.level.lab_bench["rect"].inflate(70, 60)):
             return False
-        if len(self.lab_microscope_collected) < len(self.game.level.lab_microscope_parts):
+        if len(self.microscope_collected) < len(self.game.level.lab_microscope_parts):
             self.game.dialogue.start("Lia", "Ainda faltam peças para montar o microscópio.")
             return True
-        if not self.lab_microscope_assembled:
+        if not self.microscope_assembled:
             self.open_lab_microscope_minigame()
         return True
 
@@ -150,8 +127,7 @@ class PuzzleSystem:
                 HEIGHT,
                 self.microscope_sprites_by_identity(),
                 complete_sprite,
-                self.lab_microscope_slots,
-                key="lab_microscope",
+                self.microscope_slots,
             )
         )
 
@@ -245,33 +221,6 @@ class PuzzleSystem:
             return True
         return False
 
-    def use_microscope_bench(self, player):
-        # Puzzle antigo (área subterrânea) — objetos "parte_microscopio"/
-        # "bancada" saíram do fase1_escola.tmx, então sem peça nenhuma
-        # cadastrada não tem bancada de verdade pra usar (sem essa guarda,
-        # "0 peças coletadas < 0 peças no mapa" dá False e abriria o
-        # minigame à toa perto do retângulo de fallback de Level.bench).
-        if not self.game.level.microscope_parts:
-            return
-        if not player.rect.colliderect(self.game.level.bench.inflate(70, 60)):
-            return
-        if len(self.microscope_collected) < len(self.game.level.microscope_parts):
-            self.game.dialogue.start("Lia", "Ainda faltam peças para montar o microscópio.")
-        elif not self.microscope_assembled:
-            self.open_microscope_minigame()
-
     def microscope_sprites_by_identity(self):
         sprites = self.game.assets.puzzle_sprites["microscope_parts"]
         return dict(zip(self.MICROSCOPE_SPRITE_IDENTITY_ORDER, sprites))
-
-    def open_microscope_minigame(self):
-        self.game.minigame.open(
-            MicroscopeMinigame(
-                WIDTH,
-                HEIGHT,
-                self.microscope_sprites_by_identity(),
-                self.game.assets.puzzle_sprites["microscope_complete"],
-                self.microscope_slots,
-                body_sprite=self.game.assets.puzzle_sprites.get("microscope_body"),
-            )
-        )

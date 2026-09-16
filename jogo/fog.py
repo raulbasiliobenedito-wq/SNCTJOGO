@@ -75,11 +75,10 @@ class FogBarrier:
 
     #: Fração (0..1) da largura NATIVA (480px, ver build_pixel_anim.py) em
     #: que fica a "linha de base" da curva ondulada da borda (constante 89
-    #: em edge_x()). NÃO é mais usada por _draw_animated (que passou a
-    #: desenhar uma cópia só alinhada com a câmera, sem ladrilhar numa
-    #: grade fixa a partir de rect.x — ver docstring de _draw_animated) —
-    #: mantida só de referência caso a arte volte a precisar de um
-    #: alinhamento fino num X específico do mundo.
+    #: em edge_x()). A arte anterior a esse ponto é justamente a franja
+    #: transparente/irregular que deve vazar para o lado livre. Portanto,
+    #: _draw_animated ancora esse ponto no rect.x da COLISÃO, sem cortar a
+    #: parte mais bonita da fumaça nem adiantar o bloqueio físico.
     FRAME_EDGE_ANCHOR_FRACTION = 89 / 480
 
     #: Quadros por segundo do loop de verdade (ver animacao.json/"fps").
@@ -175,7 +174,14 @@ class FogBarrier:
         # a névoa começando em x=6800 ela ainda ampliava e blitava DOIS
         # quadros de tela cheia por quadro de jogo, invisíveis. (_draw_procedural
         # já recortava sozinho via draw_rect.clip, mas sair aqui é mais barato.)
-        if not self.rect.colliderect(
+        draw_bounds = self.rect.copy()
+        visual_bleed = (
+            round(surface.get_width() * self.FRAME_EDGE_ANCHOR_FRACTION)
+            if self.frames else self.EDGE_BLEED
+        )
+        draw_bounds.x -= visual_bleed
+        draw_bounds.width += visual_bleed
+        if not draw_bounds.colliderect(
             pygame.Rect(camera_x, camera_y, surface.get_width(), surface.get_height())
         ):
             return
@@ -227,7 +233,11 @@ class FogBarrier:
         da tela (ver _scaled_frame) e é blitado alinhado com a câmera, não
         com uma grade fixa — cobre exatamente a parte visível, sem
         precisar de nenhuma outra cópia acima/abaixo/do lado pra completar
-        nada. Só mostra os ROSTOS quando a câmera está mesmo olhando pra
+        nada. A coordenada horizontal, porém, é ancorada na borda real da
+        barreira: a região transparente que existe antes da linha-base do
+        desenho fica visível do lado livre, em vez de o recorte começar no
+        meio da ilustração e produzir uma parede perfeitamente vertical.
+        Só mostra os ROSTOS quando a câmera está mesmo olhando pra
         perto da entrada de verdade (y=0, o topo real do mapa); fora
         dessa faixa usa `frames_corpo` (a mesma massa sem rosto, pensada
         pra não repetir cara nenhuma)."""
@@ -235,7 +245,11 @@ class FogBarrier:
         screen_w, screen_h = surface.get_size()
         view = pygame.Rect(camera_x, camera_y, screen_w, screen_h)
 
-        visible = self.rect.clip(view)
+        edge_anchor = max(1, round(frame_w * self.FRAME_EDGE_ANCHOR_FRACTION))
+        visual_rect = self.rect.copy()
+        visual_rect.x -= edge_anchor
+        visual_rect.width += edge_anchor
+        visible = visual_rect.clip(view)
         if visible.width <= 0 or visible.height <= 0:
             return
 
@@ -248,17 +262,51 @@ class FogBarrier:
         # Faixa (em coordenadas de mundo) onde a arte da cara faz sentido:
         # perto do topo real do mapa. Se a câmera não estiver olhando pra
         # ali agora, usa a massa sem rosto.
-        face_band = pygame.Rect(self.rect.x, 0, self.rect.width, frame_h)
+        face_band = pygame.Rect(self.rect.x - edge_anchor, 0, frame_w, frame_h)
         source = self.frames if view.colliderect(face_band) else (self.frames_corpo or self.frames)
         frame_img = self._scaled_frame(source, idx, (frame_w, frame_h))
         frame_img.set_alpha(alpha)
 
-        # Só a parte do quadro (já do tamanho da tela) que cai dentro do
-        # pedaço realmente visível da barreira — evita pintar fog além do
-        # rect de verdade quando ele é mais estreito que a tela (perto da
-        # borda direita do mapa, por exemplo).
-        area = pygame.Rect(visible.x - view.x, visible.y - view.y, visible.width, visible.height)
-        surface.blit(frame_img, (area.x, area.y), area=area)
+        screen_rect = surface.get_rect()
+        allowed = pygame.Rect(
+            visible.x - view.x, visible.y - view.y, visible.width, visible.height
+        )
+        frame_left = self.rect.x - camera_x - edge_anchor
+        frame_bounds = pygame.Rect(frame_left, 0, frame_w, frame_h)
+
+        # Quando a câmera já avançou mais de uma tela para dentro da
+        # barreira, a ilustração ancorada na entrada pode não alcançar a
+        # borda direita visível. Completa apenas essa faixa restante com
+        # a massa sem rostos, alinhada à câmera e sem costura vertical.
+        actual = self.rect.clip(view)
+        if actual.width > 0 and actual.height > 0:
+            actual_screen = pygame.Rect(
+                actual.x - view.x, actual.y - view.y, actual.width, actual.height
+            )
+            body_left = max(actual_screen.left, frame_bounds.right)
+            if body_left < actual_screen.right:
+                body_area = pygame.Rect(
+                    body_left, actual_screen.top,
+                    actual_screen.right - body_left, actual_screen.height,
+                ).clip(screen_rect)
+                if body_area.width > 0 and body_area.height > 0:
+                    body_source = self.frames_corpo or self.frames
+                    body_img = self._scaled_frame(body_source, idx, (frame_w, frame_h))
+                    body_img.set_alpha(alpha)
+                    surface.blit(body_img, body_area.topleft, area=body_area)
+
+        # Desenha o quadro a partir de seu início verdadeiro. O ponto 89
+        # (escalado) coincide com rect.x; os pixels anteriores, inclusive
+        # as transparências e saliências da fumaça, deixam de ser cortados.
+        draw_area = frame_bounds.clip(allowed).clip(screen_rect)
+        if draw_area.width > 0 and draw_area.height > 0:
+            source_area = pygame.Rect(
+                draw_area.x - frame_left,
+                draw_area.y,
+                draw_area.width,
+                draw_area.height,
+            )
+            surface.blit(frame_img, draw_area.topleft, area=source_area)
 
     def _draw_procedural(self, surface, camera_x, camera_y):
         # Só monta/desenha o pedaço que cabe na tela — o retângulo real

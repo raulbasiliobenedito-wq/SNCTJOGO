@@ -347,6 +347,12 @@ MICROSCOPE_BODY_OFFSET = (3, 8)
 #: painel de 1080x680 do minigame.
 MICROSCOPE_COMPOSE_SCALE = 4
 
+# As peças recortadas têm tamanho nativo minúsculo (a objetiva, por
+# exemplo, mede só 14x17). No cenário isso é correto; num painel de
+# arrastar em 1920x1080 elas praticamente somem. A ampliação inteira e
+# nearest-neighbor preserva cada pixel sem borrar a arte.
+MICROSCOPE_DRAG_SCALE = 3
+
 
 def _compose_microscope(sprites_by_identity, body_sprite):
     """Recompõe o microscópio "montado" a partir de microscope_body.png +
@@ -401,6 +407,16 @@ class MicroscopeMinigame(_BaseMinigame):
         self.width = width
         self.height = height
         self.sprites = sprites_by_identity
+        self.drag_sprites = {
+            identity: pygame.transform.scale(
+                sprite,
+                (
+                    sprite.get_width() * MICROSCOPE_DRAG_SCALE,
+                    sprite.get_height() * MICROSCOPE_DRAG_SCALE,
+                ),
+            )
+            for identity, sprite in sprites_by_identity.items()
+        }
         if body_sprite is not None:
             # Recompõe do corpo + as 4 peças de verdade (ver
             # _compose_microscope) em vez da imagem solta
@@ -427,9 +443,9 @@ class MicroscopeMinigame(_BaseMinigame):
         self._all_filled = all(self.slots_state.values())
 
     def _build_slots(self):
-        slot_w, slot_h, gap = 220, 120, 22
-        top = self.panel_rect.y + 60
-        x = self.panel_rect.x + 90
+        slot_w, slot_h, gap = 230, 108, 18
+        top = self.panel_rect.y + 74
+        x = self.panel_rect.x + 70
         # De cima pra baixo: ocular, objetiva, iluminador, base — a
         # ordem visual "de montagem" é o inverso (MICROSCOPE_ORDER é de
         # baixo pra cima).
@@ -439,15 +455,17 @@ class MicroscopeMinigame(_BaseMinigame):
             if self.slots_state.get(identity):
                 # Já estava encaixada de uma sessão anterior (ESC no meio) —
                 # entra direto como peça "placed", sem ficar arrastável.
-                self.field.add_piece(identity, rect, self.sprites[identity], MICROSCOPE_DISPLAY_NAME[identity])
+                self.field.add_piece(
+                    identity, rect, self.drag_sprites[identity], MICROSCOPE_DISPLAY_NAME[identity]
+                )
                 self.field.pieces[-1]["placed"] = True
                 self.field.slot(identity)["filled"] = True
 
     def _build_pieces(self):
         pending = [identity for identity in MICROSCOPE_ORDER if not self.slots_state.get(identity)]
-        piece_w, piece_h, gap = 130, 130, 24
-        start_x = self.panel_rect.right - 90 - piece_w
-        start_y = self.panel_rect.y + 90
+        piece_w, piece_h, gap = 180, 108, 18
+        start_x = self.panel_rect.right - 70 - piece_w
+        start_y = self.panel_rect.y + 74
         # Embaralha visualmente (não por sorteio de verdade: a ordem em
         # MICROSCOPE_ORDER já não é a ordem de leitura de Level.
         # microscope_parts, então já sai "fora de ordem" sozinha; inverter
@@ -458,7 +476,9 @@ class MicroscopeMinigame(_BaseMinigame):
             rect = pygame.Rect(
                 start_x, start_y + index * (piece_h + gap), piece_w, piece_h
             )
-            self.field.add_piece(identity, rect, self.sprites[identity], MICROSCOPE_DISPLAY_NAME[identity])
+            self.field.add_piece(
+                identity, rect, self.drag_sprites[identity], MICROSCOPE_DISPLAY_NAME[identity]
+            )
 
     def _missing_prereq(self, identity):
         index = MICROSCOPE_ORDER.index(identity)
@@ -532,12 +552,22 @@ class MicroscopeMinigame(_BaseMinigame):
         for slot in self.field.slots:
             if not slot["filled"]:
                 draw_dashed_rect(surface, slot["rect"], (120, 120, 140))
+
+        # Cada peça solta ganha uma área visual clara. O retângulo também
+        # é toda a área clicável, então a objetiva deixa de exigir que o
+        # jogador acerte um sprite de poucos pixels com o mouse.
+        for piece in self.field.pieces:
+            if piece["placed"]:
+                continue
+            pygame.draw.rect(surface, (34, 38, 54), piece["home"], border_radius=10)
+            pygame.draw.rect(surface, (92, 102, 126), piece["home"], 2, border_radius=10)
         self.field.draw(surface)
         for slot in self.field.slots:
             if slot["filled"]:
                 text_fn(
                     surface, slot["label"],
-                    (slot["rect"].right + 70, slot["rect"].centery), 18, "#e7edf5", True,
+                    (slot["rect"].right + 26, slot["rect"].centery),
+                    18, "#e7edf5", False,
                 )
 
         text_fn(

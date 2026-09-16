@@ -1,3 +1,5 @@
+import math
+
 import pygame
 from enemy import (
     AncientGolem, CrystalStag, DarkWraith, JanitorGuardian, Librarian, PossessedStudent,
@@ -60,7 +62,7 @@ PHASES = [
 # game._draw_background/_advance_level_if_ready/_desired_music_track).
 VILLAGE = "vila"
 VILLAGE_DATA = {
-    "name": "Vila", "subtitle": "Antes da estrada — a vila onde Lia cresceu.",
+    "name": "Campo", "subtitle": "Antes da estrada — o campo onde Lia cresceu.",
     # world/world_height só valem se maps/vila.tmx sumir (fallback sem
     # Tiled) — com o mapa presente, _configure_world_dimensions troca os
     # dois pelo tamanho real do .tmx (220x20 tiles de 32px = 7040x640).
@@ -216,9 +218,10 @@ class Level:
             # "laboratorio_secreto", ver a conversa sobre o elevador
             # secreto/fog.FogBarrier) também tem index==0 (mesma fase),
             # mas não deve herdar nada do corredor antigo — o laboratório
-            # escondido usa seu próprio sistema genérico
+            # escondido usa seus objetos próprios de cenário
             # (self.lab_bench/self.lab_microscope_parts/
-            # self.secret_elevators), independente deste.
+            # self.secret_elevators); o progresso deles, porém, é o
+            # microscópio oficial e obrigatório da Fase 1.
             self._build_underground_lab()
 
     def _configure_world_dimensions(self):
@@ -244,6 +247,9 @@ class Level:
         self.return_route_active = False
         # Ver _draw_lab: cache das peças do microscópio esmaecidas.
         self._dimmed_microscope_parts = None
+        # As peças soltas do microscópio obrigatório são ampliadas uma vez
+        # e reutilizadas; nunca há transform.scale dentro do loop de desenho.
+        self._scaled_lab_microscope_parts = None
 
     def _load_tiled_map(self):
         if self.room:
@@ -593,10 +599,8 @@ class Level:
 
     def _build_tiled_underground_lab(self):
         """Lê os objetos especiais da camada Entidades do mapa do Tiled
-        (Fase 1 subterránea). Os elevadores móviles (elevador_principal/
-        elevador_superior) e as alavancas ligadas a eles saíram — resta o
-        quebra-cabeza do painel (painel, botões, peças, bancada) e a Rota
-        Retorno."""
+        (Fase 1 subterrânea). A bancada antiga e a rota de retorno foram
+        retiradas do mapa; as listas continuam vazias até a substituição."""
         self.return_route_platforms = [
             self._platform_from_object(item)
             for item in self.tiled_map.objects("Rota Retorno")
@@ -617,7 +621,10 @@ class Level:
             for item in sorted(parts, key=lambda item: int(item["properties"].get("ordem", 0)))
         ]
         bench = self.tiled_map.entity("bancada")
-        self.bench = self._rect_from_object(bench) if bench else pygame.Rect(4940, 870, 110, 80)
+        # Sem fallback desenhado por código: se não há objeto no Tiled, não
+        # existe bancada no corredor. A única bancada funcional e
+        # obrigatória fica no laboratório acessado pelo elevador.
+        self.bench = self._rect_from_object(bench) if bench else None
         return_point = self.tiled_map.entity("retorno_superficie")
         if return_point:
             self.surface_return = (return_point["x"], return_point["y"] - PLAYER_HEIGHT)
@@ -959,8 +966,8 @@ class Level:
                 camera_x,
                 camera_y,
                 state.lab_microscope_sprites,
-                state.lab_microscope_collected or set(),
-                state.lab_microscope_assembled,
+                state.microscope_collected or set(),
+                state.microscope_assembled,
             )
         if assets.npc_frames:
             self._draw_npcs(surface, camera_x, camera_y, assets.npc_frames)
@@ -1143,6 +1150,15 @@ class Level:
                 pygame.draw.rect(surface, (46, 68, 82), draw_rect, border_radius=6)
                 pygame.draw.rect(surface, (120, 176, 196), draw_rect, 3, border_radius=6)
 
+    LAB_MICROSCOPE_PART_SCALE = 2
+    LAB_MICROSCOPE_BOB_AMPLITUDE = 6
+    LAB_MICROSCOPE_BOB_SPEED = 0.09
+
+    def _lab_microscope_bob(self, index):
+        """Oscilação curta que identifica uma peça coletável no cenário."""
+        phase = self.npc_animation * self.LAB_MICROSCOPE_BOB_SPEED + index * 0.8
+        return round(math.sin(phase) * self.LAB_MICROSCOPE_BOB_AMPLITUDE)
+
     def _draw_lab_microscope(self, surface, camera_x, camera_y, sprites, collected, assembled):
         """Peças + bancada do microscópio do laboratório ESCONDIDO (ver
         _make_lab_microscope_parts/_make_lab_bench e a conversa sobre o
@@ -1152,12 +1168,29 @@ class Level:
         PuzzleSystem.microscope_sprites_by_identity), só que como sistema
         independente de _draw_lab, pra não herdar nada da área
         subterrânea que está saindo de uso."""
-        parts = sprites["parts"]
+        source_parts = sprites["parts"]
+        if self._scaled_lab_microscope_parts is None:
+            scale = self.LAB_MICROSCOPE_PART_SCALE
+            self._scaled_lab_microscope_parts = [
+                pygame.transform.scale(
+                    image,
+                    (image.get_width() * scale, image.get_height() * scale),
+                )
+                for image in source_parts
+            ]
+        parts = self._scaled_lab_microscope_parts
         for index, (item, _name) in enumerate(self.lab_microscope_parts):
             if index in collected:
                 continue
             image = parts[index % len(parts)]
-            surface.blit(image, (item.x - camera_x, item.y - camera_y))
+            bob_y = self._lab_microscope_bob(index)
+            surface.blit(
+                image,
+                (
+                    item.centerx - image.get_width() // 2 - camera_x,
+                    item.centery - image.get_height() // 2 - camera_y + bob_y,
+                ),
+            )
 
         if self.lab_bench is None:
             return
@@ -1280,6 +1313,9 @@ class Level:
             if index in microscope_collected:
                 continue
             surface.blit(parts[index], (item.x-camera_x, item.y-camera_y))
+
+        if self.bench is None:
+            return
 
         bench_color = (102, 220, 160) if microscope_assembled else (168, 112, 67)
         pygame.draw.rect(surface, bench_color, (self.bench.x-camera_x, self.bench.y-camera_y, self.bench.width, self.bench.height), border_radius=8)

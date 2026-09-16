@@ -150,6 +150,21 @@ class Assets:
     # o fundo da escola nem deixar a vila preta.
     VILLAGE_PLACEHOLDER_SKY = (144, 197, 230)
 
+    # O Campo ganhou cinco planos próprios, alinhados no mesmo canvas. As
+    # velocidades crescem com a proximidade da câmera para criar profundidade
+    # sem fazer o cenário "escorregar" depressa demais durante a fase.
+    CAMPO_BACKGROUND_DIR = "backgrounds/campo"
+    CAMPO_PARALLAX_LAYERS = (
+        ("campo_01_ceu.png", 0.00, False),
+        ("campo_02_montanhas.png", 0.06, True),
+        ("campo_03_plantacao.png", 0.12, True),
+        ("campo_04_cerca.png", 0.22, True),
+        ("campo_05_gramado.png", 0.32, True),
+    )
+    # A composição estática aprovada continua disponível como fallback caso
+    # uma das cinco camadas esteja ausente ou incompleta.
+    CAMPO_BACKGROUND_PATH = "backgrounds/campo/campo_background_final.png"
+
     # Cores de cena. Antes cada uma virava um Surface SRCALPHA de tela cheia
     # blitado por cima do fundo TODO QUADRO — medido em ~4,7 ms/quadro, a
     # operação mais cara do jogo inteiro. Agora são só dados: a cor é
@@ -172,26 +187,35 @@ class Assets:
         dela (que também têm index 1) levam o filtro "university", e o resto
         leva só o básico."""
         self.backgrounds = {}
-        # Pack novo do GrassLand (5 camadas de parallax de verdade) — ver
-        # _load_village_parallax_layers. Só cai no ceu.png liso (uma camada
-        # só) se esse pack não estiver instalado.
-        self.village_layers = self._load_village_parallax_layers()
+        self.campo_layers = self._load_campo_parallax_layers()
+        campo_static_exists = (
+            not self.campo_layers
+            and (ASSET_DIR / self.CAMPO_BACKGROUND_PATH).exists()
+        )
+        campo_exists = bool(self.campo_layers) or campo_static_exists
+        # O pack GrassLand antigo agora é apenas fallback: carregar seus
+        # cinco fundos gigantes junto das cinco faixas do Campo desperdiçava
+        # memória sem que eles fossem desenhados.
+        self.village_layers = (
+            [] if campo_exists else self._load_village_parallax_layers()
+        )
         village_flat_exists = (
-            not self.village_layers and (ASSET_DIR / "backgrounds" / "ceu.png").exists()
+            not campo_exists
+            and not self.village_layers
+            and (ASSET_DIR / "backgrounds" / "ceu.png").exists()
         )
         specs = [
             ("university", "backgrounds/university_background.png", True),
             ("cave", "backgrounds/cave_background_v2.png", False),
             ("lab", "backgrounds/lab_background.png", True),
             ("library", "backgrounds/library_background.png", True),
+            # A escola e o Campo têm identidades visuais independentes. O
+            # arquivo antigo continua sendo o fallback da Fase 1 até a arte
+            # escolar definitiva chegar.
+            ("school", "backgrounds/background_school.png", False),
         ]
         if village_flat_exists:
             specs.append(("village", "backgrounds/ceu.png", False))
-        elif not self.village_layers:
-            # Fallback histórico da Fase 1. Só é carregado quando nem o pack
-            # novo nem o ceu.png existem — com um dos dois no lugar, eram
-            # ~15 MB de imagem escalada que nunca chegava a ser desenhada.
-            specs.append(("school", "backgrounds/background_school.png", False))
         for key, path, is_university in specs:
             if not (ASSET_DIR / path).exists():
                 continue
@@ -200,10 +224,69 @@ class Assets:
                 variant: self._scale_to_screen(self._tinted(raw, color))
                 for variant, color in self._scene_tints(is_university).items()
             }
+        if campo_static_exists:
+            raw = self._load_image(self.CAMPO_BACKGROUND_PATH, alpha=False)
+            # A referência tem praticamente a mesma proporção de 1920x1080.
+            # Escalar direto preserva a composição completa, sem recortar as
+            # casas das extremidades nem abrir faixas entre os planos.
+            campo = pygame.transform.scale(raw, (WIDTH, HEIGHT)).convert()
+            self.backgrounds["campo"] = {
+                "normal": campo,
+                "underground": campo,
+            }
         self.background_mirror = {
             variant: pygame.transform.flip(image, True, False)
             for variant, image in self.backgrounds.get("university", {}).items()
         }
+
+    def _load_campo_parallax_layers(self):
+        """Carrega os cinco planos do Campo já alinhados no mesmo canvas.
+
+        O céu é opaco e sempre cobre a tela. Os demais PNGs preservam alpha;
+        depois de escalados, suas margens transparentes são recortadas para
+        reduzir o custo de blit. ``tile_width`` e ``draw_offset`` mantêm tanto
+        o alinhamento aprovado quanto o período horizontal da repetição.
+        """
+        layers = []
+        for filename, parallax, has_alpha in self.CAMPO_PARALLAX_LAYERS:
+            path = f"{self.CAMPO_BACKGROUND_DIR}/{filename}"
+            if not (ASSET_DIR / path).exists():
+                return []
+            raw = self._load_image(path, alpha=has_alpha)
+            if has_alpha:
+                scaled = pygame.transform.scale(raw, (WIDTH, HEIGHT)).convert_alpha()
+                tile_width = WIDTH
+                # Alpha 1–7 é ruído praticamente invisível deixado pela
+                # exportação da IA, longe do desenho real de algumas camadas.
+                content_rect = scaled.get_bounding_rect(min_alpha=8)
+                if content_rect:
+                    # Recortamos só verticalmente: manter a largura inteira
+                    # permite espelhar o ladrilho sem deslocar suas bordas.
+                    vertical_rect = pygame.Rect(
+                        0, content_rect.y, WIDTH, content_rect.height
+                    )
+                    visible = scaled.subsurface(vertical_rect).copy().convert_alpha()
+                    draw_offset = (0, content_rect.y)
+                else:
+                    visible = pygame.Surface((1, 1), pygame.SRCALPHA).convert_alpha()
+                    draw_offset = (0, 0)
+            else:
+                visible = pygame.transform.scale(raw, (WIDTH, HEIGHT)).convert()
+                tile_width = WIDTH
+                draw_offset = (0, 0)
+            layer = {
+                "variants": {"normal": visible, "underground": visible},
+                "parallax": parallax,
+                "tile_width": tile_width,
+                "draw_offset": draw_offset,
+            }
+            # O céu fica fixo e nunca alcança uma segunda repetição; não
+            # mantemos uma cópia espelhada de tela cheia sem necessidade.
+            if parallax:
+                mirror = pygame.transform.flip(visible, True, False)
+                layer["mirrors"] = {"normal": mirror, "underground": mirror}
+            layers.append(layer)
+        return layers
 
     # Cada item é (arquivo, velocidade de parallax, tem transparência de
     # verdade) — nessa ordem, do mais distante (céu) pro mais próximo (mato

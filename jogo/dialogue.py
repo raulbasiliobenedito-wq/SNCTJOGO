@@ -10,42 +10,35 @@ class DialogueBox:
 
     CHARACTERS_PER_FRAME = 0.65
     WIDTH_RATIO = 0.64
-    # HEIGHT_RATIO removido: a altura vem da proporção do cartucho recortado.
     BOTTOM_MARGIN = 15
-    HORIZONTAL_PADDING = 140
     TEXT_SIZE = 17
+    TEXT_COLOR = "#e94f48"
+    PORTRAIT_FRAME_TICKS = 8
 
-    # dialogue_box.png é 1536x1024, mas o cartucho DESENHADO é só uma faixa
-    # de 1492x386 (proporção 3.865) no meio — o resto do arquivo é
-    # transparente. O código antigo esticava o arquivo INTEIRO pra
-    # 1228x540: dentro disso a faixa virava 1193x204, proporção 5.85, ou
-    # seja, o cartucho aparecia 51% mais achatado do que foi desenhado.
-    # Agora a moldura é recortada no carregamento (_crop_to_content) e
-    # escalada mantendo a proporção dela — sem distorção e sem carregar
-    # 64% de pixel transparente pra tela.
-    #
-    # As posições de texto eram pixels absolutos calibrados em cima da
-    # caixa achatada. Viraram frações da faixa RECORTADA, convertidas a
-    # partir de onde caíam dentro da faixa antiga (que ia de y=164 a y=367
-    # dentro dos 540px): 210 -> 0.224, 225 -> 0.298, 280 -> 0.569,
-    # 350 -> 0.914. O texto continua no mesmo ponto DO DESENHO.
-    SPEAKER_Y_RATIO = 0.224
-    BODY_TOP_RATIO = 0.298
-    BODY_BOTTOM_RATIO = 0.569
-    # 0.914 caía em cima da moldura escura do rodapé (baixo contraste — o
-    # mesmo defeito existia na versão antiga, com o valor absoluto 350).
-    # 0.84 põe a instrução dentro do miolo bege, abaixo do texto.
-    INSTRUCTION_Y_RATIO = 0.84
+    # Proporções medidas na nova dialogue_box.png de 1536x420. O espaço à
+    # esquerda fica reservado ao personagem e o texto ocupa somente o
+    # painel claro, sem atravessar a divisória.
+    PORTRAIT_X_RATIO = 0.035
+    PORTRAIT_Y_RATIO = 0.15
+    PORTRAIT_WIDTH_RATIO = 0.185
+    PORTRAIT_HEIGHT_RATIO = 0.65
+    TEXT_LEFT_RATIO = 0.255
+    TEXT_RIGHT_RATIO = 0.955
+    SPEAKER_Y_RATIO = 0.27
+    BODY_TOP_RATIO = 0.30
+    BODY_BOTTOM_RATIO = 0.66
+    INSTRUCTION_Y_RATIO = 0.79
     # Se o texto revelado até agora não couber no tamanho padrão dentro
     # dessa faixa, cai pra um preset menor (nessa ordem) até caber — em vez
     # de simplesmente vazar por baixo da moldura (issue original: falas de
     # 4 linhas furavam a borda inferior do cartucho).
     SIZE_PRESETS = ((17, 23), (15, 19), (13, 16), (11, 14))
 
-    def __init__(self):
+    def __init__(self, portraits=None):
         self.current = None
         self.visible_characters = 0.0
         self.characters_per_frame = self.CHARACTERS_PER_FRAME
+        self.portrait_tick = 0
 
         raw_background = pygame.image.load(
             ASSET_DIR / "ui" / "dialogue_box.png"
@@ -57,16 +50,25 @@ class DialogueBox:
         self.overlay_height = round(self.overlay_width * aspect)
         self.overlay_x = (WIDTH - self.overlay_width) // 2
         self.overlay_y = HEIGHT - self.overlay_height - self.BOTTOM_MARGIN
-        self.background = pygame.transform.smoothscale(
+        self.background = pygame.transform.scale(
             raw_background,
             (self.overlay_width, self.overlay_height),
         )
-        # Posições de texto derivadas da altura real da caixa (ver *_RATIO).
+        self.portrait_rect = pygame.Rect(
+            round(self.overlay_width * self.PORTRAIT_X_RATIO),
+            round(self.overlay_height * self.PORTRAIT_Y_RATIO),
+            round(self.overlay_width * self.PORTRAIT_WIDTH_RATIO),
+            round(self.overlay_height * self.PORTRAIT_HEIGHT_RATIO),
+        )
+        self.text_left = round(self.overlay_width * self.TEXT_LEFT_RATIO)
+        self.text_right = round(self.overlay_width * self.TEXT_RIGHT_RATIO)
+        self.text_center_x = (self.text_left + self.text_right) // 2
         self.speaker_y = round(self.overlay_height * self.SPEAKER_Y_RATIO)
         self.body_top = round(self.overlay_height * self.BODY_TOP_RATIO)
         self.body_bottom = round(self.overlay_height * self.BODY_BOTTOM_RATIO)
         self.instruction_y = round(self.overlay_height * self.INSTRUCTION_Y_RATIO)
-        self.text_max_width = self.overlay_width - self.HORIZONTAL_PADDING
+        self.text_max_width = self.text_right - self.text_left
+        self.portraits = self._prepare_portraits(portraits or {})
         # Medir com hud.get_font (em vez de instanciar a fonte na mão) é
         # essencial: é o mesmo helper que desconto o texto de verdade (via
         # text_fn=draw_text), com o mesmo FONT_SCALE aplicado — se a medição
@@ -105,6 +107,7 @@ class DialogueBox:
     def start(self, speaker, text):
         self.current = (speaker, text)
         self.visible_characters = 0.0
+        self.portrait_tick = 0
 
     def close(self):
         self.current = None
@@ -118,6 +121,8 @@ class DialogueBox:
         """Avança a fala em etapas, como o texto de Undertale. A velocidade
         vem das Configurações (audio.text_speed) — 0 revela a fala inteira
         de uma vez, pra quem prefere ler no próprio ritmo."""
+        if self.active:
+            self.portrait_tick += 1
         if self.active and not self.finished:
             speed = audio.text_speed
             if speed <= 0:
@@ -127,6 +132,40 @@ class DialogueBox:
                 len(self.current[1]),
                 self.visible_characters + speed,
             )
+
+    def _prepare_portraits(self, portraits):
+        """Recorta a margem vazia do idle e o amplia sem suavização.
+
+        O mesmo retângulo de recorte é usado em todos os quadros de cada
+        personagem; assim a animação não fica pulando dentro da janela.
+        """
+        prepared = {}
+        available_width = max(1, self.portrait_rect.width - 20)
+        available_height = max(1, self.portrait_rect.height - 14)
+        for speaker, source_frames in portraits.items():
+            frames = [frame for frame in source_frames if frame is not None]
+            if not frames:
+                continue
+            bounds = [frame.get_bounding_rect(min_alpha=8) for frame in frames]
+            bounds = [rect for rect in bounds if rect.width and rect.height]
+            if not bounds:
+                continue
+            content = bounds[0].copy()
+            for rect in bounds[1:]:
+                content.union_ip(rect)
+            scale = min(
+                available_width / content.width,
+                available_height / content.height,
+            )
+            size = (
+                max(1, round(content.width * scale)),
+                max(1, round(content.height * scale)),
+            )
+            prepared[speaker] = [
+                pygame.transform.scale(frame.subsurface(content), size)
+                for frame in frames
+            ]
+        return prepared
 
     def wrap_text(self, text, font=None):
         """Quebra a fala por palavras sem exceder a área interna da caixa."""
@@ -172,11 +211,19 @@ class DialogueBox:
 
         speaker, text = self.current
         visible_text = text[:int(self.visible_characters)]
-        center_x = self.overlay_x + self.overlay_width // 2
+        center_x = self.overlay_x + self.text_center_x
         lines, text_size, line_height = self._fit_text(visible_text)
 
         surface.blit(self.background, (self.overlay_x, self.overlay_y))
-        text_fn(surface, speaker, (center_x, self.overlay_y + self.speaker_y), 18, "#173a62", True)
+        self._draw_portrait(surface, speaker)
+        text_fn(
+            surface,
+            speaker,
+            (center_x, self.overlay_y + self.speaker_y),
+            18,
+            self.TEXT_COLOR,
+            True,
+        )
 
         block_height = (len(lines) - 1) * line_height
         available = self.body_bottom - self.body_top
@@ -187,7 +234,7 @@ class DialogueBox:
                 line,
                 (center_x, first_line_y + line_number * line_height),
                 text_size,
-                "#2b1a12",
+                self.TEXT_COLOR,
                 True,
             )
 
@@ -196,4 +243,23 @@ class DialogueBox:
             if self.finished
             else "Aguarde a fala terminar..."
         )
-        text_fn(surface, instruction, (center_x, self.overlay_y + self.instruction_y), 12, "#3b281b", True)
+        text_fn(
+            surface,
+            instruction,
+            (center_x, self.overlay_y + self.instruction_y),
+            12,
+            self.TEXT_COLOR,
+            True,
+        )
+
+    def _draw_portrait(self, surface, speaker):
+        rect = self.portrait_rect.move(self.overlay_x, self.overlay_y)
+        frames = self.portraits.get(speaker)
+        if not frames:
+            return
+        frame = frames[(self.portrait_tick // self.PORTRAIT_FRAME_TICKS) % len(frames)]
+        frame_rect = frame.get_rect(midbottom=(rect.centerx, rect.bottom - 4))
+        previous_clip = surface.get_clip()
+        surface.set_clip(rect)
+        surface.blit(frame, frame_rect)
+        surface.set_clip(previous_clip)

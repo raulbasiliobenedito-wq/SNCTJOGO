@@ -41,9 +41,9 @@ class InteractionTests(unittest.TestCase):
         game.level = SimpleNamespace(
             room=None, is_underground=True, doors=[], secret_elevators=[], npcs=[],
             fog_barriers=[], energy_box=rect.copy(), panel_lever=rect.copy(),
-            buttons=[rect.move(i * 200, 0) for i in range(4)], bench=rect.copy(),
+            buttons=[rect.move(i * 200, 0) for i in range(4)],
             lab_bench={"rect": rect.copy(), "libera": "laboratorio"},
-            microscope_parts=[(rect.copy(), "parte")], lab_microscope_parts=[(rect.copy(), "parte")],
+            lab_microscope_parts=[(rect.copy(), "parte")],
             set_lever_active=Mock(), activate_return_route=Mock(), update_lever_animations=Mock(),
         )
         game.interact_pressed = True
@@ -53,11 +53,8 @@ class InteractionTests(unittest.TestCase):
         game.puzzles.sequence_solved = False
         game.puzzles.sequence_progress = 0
         game.puzzles.microscope_assembled = False
-        game.puzzles.lab_microscope_assembled = False
         game.puzzles.microscope_collected = set()
-        game.puzzles.lab_microscope_collected = set()
         game.puzzles.microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
-        game.puzzles.lab_microscope_slots = dict.fromkeys(MICROSCOPE_ORDER, False)
         game.puzzles.energy_box_state = {"screws_removed": False, "wired": False}
         game.puzzles.energy_box_wires = dict.fromkeys(WIRE_COLORS, False)
         self.sound = self.enterContext(patch("audio.play_sfx"))
@@ -65,7 +62,7 @@ class InteractionTests(unittest.TestCase):
     def test_interaction_priority_stops_at_first_handler(self):
         game = self.game
         names = ["_use_doors", "_use_secret_elevator", "_talk_to_npc",
-                 "_use_panel_lever", "_use_sequence_button", "_use_microscope_bench"]
+                 "_use_panel_lever", "_use_sequence_button"]
         for stop in range(len(names)):
             calls = []
             with self.subTest(stop=names[stop]), ExitStack() as stack:
@@ -225,62 +222,41 @@ class InteractionTests(unittest.TestCase):
         game.puzzles.use_sequence_button(game.player)
         self.assertEqual(game.puzzles.sequence_progress, 4)
 
-    def test_microscope_part_gates_and_lab_independence(self):
+    def test_elevator_lab_parts_are_the_phase_one_microscope_parts(self):
         game = self.game
-        game.puzzles.collect_microscope_parts(game.player)
-        self.assertEqual(game.puzzles.microscope_collected, set())
         game.puzzles.collect_lab_microscope_parts(game.player)
-        self.assertEqual(game.puzzles.lab_microscope_collected, {0})
-        game.puzzles.sequence_solved = True
-        for _ in range(2):
-            game.puzzles.collect_microscope_parts(game.player)
-            game.puzzles.collect_lab_microscope_parts(game.player)
         self.assertEqual(game.puzzles.microscope_collected, {0})
-        self.assertEqual(self.sound.call_count, 2)
+        game.puzzles.collect_lab_microscope_parts(game.player)
+        self.assertEqual(self.sound.call_count, 1)
 
-    def test_benches_wait_for_parts_and_do_not_reopen_completed_puzzle(self):
+    def test_elevator_lab_bench_waits_for_parts_and_does_not_reopen(self):
         game = self.game
-        with patch.object(game.puzzles, "open_microscope_minigame") as old, patch.object(game.puzzles, "open_lab_microscope_minigame") as lab:
-            game.puzzles.use_microscope_bench(game.player)
+        with patch.object(game.puzzles, "open_lab_microscope_minigame") as lab:
             self.assertTrue(game.puzzles.use_lab_microscope_bench(game.player))
-            old.assert_not_called()
             lab.assert_not_called()
             game.puzzles.microscope_collected.add(0)
-            game.puzzles.lab_microscope_collected.add(0)
-            game.puzzles.use_microscope_bench(game.player)
             game.puzzles.use_lab_microscope_bench(game.player)
-            old.assert_called_once_with()
             lab.assert_called_once_with()
-            game.puzzles.microscope_assembled = game.puzzles.lab_microscope_assembled = True
-            game.puzzles.use_microscope_bench(game.player)
+            game.puzzles.microscope_assembled = True
             game.puzzles.use_lab_microscope_bench(game.player)
-            self.assertEqual((old.call_count, lab.call_count), (1, 1))
+            self.assertEqual(lab.call_count, 1)
 
-    def test_absent_or_distant_benches_do_not_open(self):
+    def test_absent_or_distant_elevator_lab_bench_does_not_open(self):
         game = self.game
-        game.level.microscope_parts = []
         game.level.lab_bench = None
-        with patch.object(game.puzzles, "open_microscope_minigame") as old:
-            game.puzzles.use_microscope_bench(game.player)
-        old.assert_not_called()
         self.assertFalse(game.puzzles.use_lab_microscope_bench(game.player))
         game.level.lab_bench = {"rect": game.player.rect.move(500, 0)}
         self.assertFalse(game.puzzles.use_lab_microscope_bench(game.player))
 
-    def test_microscope_constructors_share_progress_but_use_independent_slots(self):
+    def test_elevator_lab_minigame_uses_canonical_phase_one_progress(self):
         game = self.game
         with patch("puzzles.MicroscopeMinigame") as constructor:
-            game.puzzles.open_microscope_minigame()
+            game.puzzles.open_lab_microscope_minigame()
             args, kwargs = constructor.call_args
             self.assertIs(args[4], game.puzzles.microscope_slots)
             self.assertEqual(args[2], {"objetiva": "lens", "base": "base", "iluminador": "light", "ocular": "ocular"})
-            self.assertEqual(kwargs, {"body_sprite": "body"})
-            game.puzzles.open_lab_microscope_minigame()
-            args, kwargs = constructor.call_args
-            self.assertIs(args[4], game.puzzles.lab_microscope_slots)
-            self.assertIsNot(args[4], game.puzzles.microscope_slots)
             self.assertEqual(args[3], "bench")
-            self.assertEqual(kwargs, {"key": "lab_microscope"})
+            self.assertEqual(kwargs, {})
 
     def test_energy_box_requires_tool_unless_lid_removed_and_reuses_progress(self):
         game = self.game
@@ -315,32 +291,28 @@ class InteractionTests(unittest.TestCase):
 
     def test_escape_closes_without_updating_and_preserves_slots(self):
         game = self.game
-        game.puzzles.lab_microscope_slots["base"] = True
+        game.puzzles.microscope_slots["base"] = True
         game.puzzles.update_minigame(SimpleNamespace(escape=True), 1 / 60)
         game.minigame.close.assert_called_once_with()
         game.minigame.update.assert_not_called()
-        self.assertTrue(game.puzzles.lab_microscope_slots["base"])
+        self.assertTrue(game.puzzles.microscope_slots["base"])
         game.minigame.drain_sfx.return_value = []
         game.minigame.pop_result.return_value = None
         game.puzzles.update_minigame(SimpleNamespace(escape=True), 1 / 60)
         game.minigame.update.assert_called_once_with(1 / 60)
         self.assertEqual(game.minigame.close.call_count, 1)
 
-    def test_minigame_sounds_precede_completion_and_release_routes(self):
+    def test_minigame_sounds_precede_completion_without_removed_return_route(self):
         game = self.game
         calls = []
         self.sound.side_effect = lambda name: calls.append(name)
         game.minigame.drain_sfx.return_value = ["piece_sound"]
-        game.minigame.pop_result.return_value = ("lab_microscope", "completed")
+        game.minigame.pop_result.return_value = ("microscope", "completed")
         with patch.object(game, "_release_fog_barrier", side_effect=lambda key: calls.append(key)):
             game.puzzles.update_minigame(SimpleNamespace(escape=False), 0.1)
-        self.assertTrue(game.puzzles.lab_microscope_assembled)
-        self.assertEqual(calls, ["piece_sound", "microscope_sound", "laboratorio"])
-        game.level.activate_return_route.assert_called_once_with()
-        self.assertFalse(game.puzzles.microscope_assembled)
-        game.puzzles.finish_minigame("microscope", "completed")
         self.assertTrue(game.puzzles.microscope_assembled)
-        self.assertEqual(game.level.activate_return_route.call_count, 2)
+        self.assertEqual(calls, ["piece_sound", "microscope_sound", "laboratorio"])
+        game.level.activate_return_route.assert_not_called()
 
     def test_energy_results_do_not_open_routes_or_mark_unfinished_puzzles(self):
         game = self.game
@@ -348,5 +320,5 @@ class InteractionTests(unittest.TestCase):
             game.puzzles.finish_minigame("energy_box", result)
         self.assertEqual(game.dialogue.start.call_count, 2)
         game.level.activate_return_route.assert_not_called()
-        game.puzzles.finish_minigame("lab_microscope", "cancelled")
-        self.assertFalse(game.puzzles.lab_microscope_assembled)
+        game.puzzles.finish_minigame("microscope", "cancelled")
+        self.assertFalse(game.puzzles.microscope_assembled)

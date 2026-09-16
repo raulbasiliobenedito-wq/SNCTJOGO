@@ -80,11 +80,15 @@ class Game:
         self._load_assets()
         self.player = Player()
         self.combat = CombatSystem(self)
-        self.dialogue = DialogueBox()
+        dialogue_portraits = dict(self.assets.npc_frames)
+        dialogue_portraits["Lia"] = [
+            self.player.frames[index] for index in self.player.IDLE_FRAMES
+        ]
+        self.dialogue = DialogueBox(dialogue_portraits)
         self.interactions = InteractionSystem(self)
-        # Cutscene inicial (mãe de Lia no hospital) — reaproveita a mesma
-        # DialogueBox acima pro texto e o quadro parado de Lia pro retrato,
-        # ver cutscene.IntroCutscene. Só toca entre TITLE e PLAYING.
+        # Prólogo ilustrado de Ciência Delas — reaproveita a mesma
+        # DialogueBox acima pro texto. Depois das falas, os quadros de
+        # energia conduzem Lia ao Campo (ver cutscene.IntroCutscene).
         self.intro = IntroCutscene(self.dialogue, self.player.frames[0])
         # Cutscene curta do elevador secreto do laboratório (Fase 1, ver
         # elevator_cutscene.ElevatorCutscene e Level._make_secret_elevators)
@@ -121,6 +125,15 @@ class Game:
         # Surface intermediária pro zoom da câmera (ver _blit_zoomed_world) —
         # criada só uma vez (não a cada quadro) e reaproveitada.
         self._world_surface = None
+        # Filtro visual compartilhado pela natação e pelo fôlego. É criado
+        # sob demanda uma única vez; recriar uma Surface 1920x1080 em cada
+        # quadro submerso causaria alocações desnecessárias.
+        self._underwater_overlay = None
+        # A sequência de energia termina em preto. Este overlay começa
+        # opaco no primeiro quadro do Campo e some rapidamente, completando
+        # a transição sem manter a cutscene carregada durante o gameplay.
+        self._intro_exit_fade_alpha = 0
+        self._intro_exit_fade_surface = None
         # Pano de fundo estático do menu (ver draw/_render_world_snapshot).
         # Invalidado em load_level, pra o menu nunca mostrar o mundo de uma
         # fase anterior depois de um reinício.
@@ -425,6 +438,14 @@ class Game:
         self._update_music()
         dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed = self._read_input(keyboard)
 
+        if self.state != INTRO and self._intro_exit_fade_alpha:
+            self._intro_exit_fade_alpha = max(
+                0,
+                self._intro_exit_fade_alpha - IntroCutscene.FADE_STEP,
+            )
+            if self._intro_exit_fade_alpha == 0:
+                self._intro_exit_fade_surface = None
+
         if self.state == TITLE:
             self._update_title(keyboard)
         elif self.state == SETTINGS:
@@ -494,6 +515,8 @@ class Game:
     def _start_game(self):
         audio.play_sfx("select_sound")
         self.lives = STARTING_LIVES
+        self._intro_exit_fade_alpha = 0
+        self._intro_exit_fade_surface = None
         self.state = INTRO
         self.intro.start()
 
@@ -670,17 +693,18 @@ class Game:
         self.minigame.on_release(pos)
 
     def _update_intro(self, keyboard, dialogue_advance_pressed):
-        """A mãe de Lia no hospital (ver cutscene.IntroCutscene) — ESC pula
-        direto pra vila, senão a cena avança do mesmo jeito que qualquer
-        outro diálogo do jogo (E/Enter/Espaço). Dali ela vai pra vila (ver
-        PLANO_VILA.md/level.VILLAGE) antes da Fase 1 — não direto pra
-        Fase 1 como antes."""
+        """Prólogo de Ciência Delas — ESC pula direto pro Campo; seguindo
+        normalmente, as falas terminam na sequência de energia e o último
+        preto vira o fade de entrada da fase."""
         if getattr(keyboard, "escape", False):
             self.intro.skip()
         else:
             self.intro.update(dialogue_advance_pressed)
         if not self.intro.active:
+            finished_on_black = self.intro.finished_on_black
             self.load_level(VILLAGE)
+            if finished_on_black:
+                self._intro_exit_fade_alpha = 255
 
     def _update_end_state(self, keyboard):
         if self.state == GAME_OVER:
@@ -1237,7 +1261,6 @@ class Game:
         self._check_checkpoints(player)
         if self._collect_research(player):
             return
-        self.puzzles.collect_microscope_parts(player)
         if self._start_pending_dialogue(player):
             return
         self._advance_level_if_ready(player)
@@ -1260,9 +1283,7 @@ class Game:
         cabeça só limpa a zona onde o teto tem uma folga acima da superfície
         (bolsão de ar), isso já implementa naturalmente os bolsões de ar da
         caverna submersa sem precisar de geometria especial por bolsão."""
-        head = player.head_rect
-        breathing = not any(head.colliderect(zone) for zone in self.level.water_zones)
-        if breathing:
+        if not self._player_head_submerged(player):
             player.oxygen = min(player.OXYGEN_MAX_FRAMES, player.oxygen + player.OXYGEN_REFILL_PER_FRAME)
             return False
         # Sem esse guard, ela tomaria dano TODO quadro parada embaixo
@@ -1280,6 +1301,18 @@ class Game:
             self.take_damage(MOB_CONTACT_DAMAGE)
             return True
         return False
+
+    def _player_head_submerged(self, player=None):
+        """Verdadeiro somente enquanto a cabeça ainda toca uma zona d'água.
+
+        Tanto o oxigênio quanto o filtro azul consultam este método para a
+        imagem voltar ao normal no mesmo quadro em que a Lia volta a respirar.
+        """
+        player = player or self.player
+        return any(
+            player.head_rect.colliderect(zone)
+            for zone in self.level.water_zones
+        )
 
     def _check_hazards(self, player):
         if self.invuln_timer > 0:
@@ -1335,15 +1368,21 @@ class Game:
             return
 
         needs_microscope = (
-            self.level.is_underground and not self.level.room and not self.puzzles.lab_microscope_assembled
+            self.level.index == 0 and not self.level.room and not self.puzzles.microscope_assembled
         )
         missing_items = [
             key for key in PHASE_REQUIRED_ITEMS.get(self.level.index, ())
             if self.items.counts.get(key, 0) <= 0
         ]
-        if len(self.collected) < len(self.level.research) or needs_microscope:
+        if len(self.collected) < len(self.level.research):
             self.show_message(
                 "Encontre todas as partes da pesquisa antes de avançar.",
+                MESSAGE_DURATION_LONG,
+            )
+            player.x = self.level.world_width - 160
+        elif needs_microscope:
+            self.show_message(
+                "Monte o microscópio no laboratório acessado pelo elevador antes de avançar.",
                 MESSAGE_DURATION_LONG,
             )
             player.x = self.level.world_width - 160
@@ -1435,10 +1474,12 @@ class Game:
         self.camera_y -= shake_y
         if surface is not real_surface:
             self._blit_zoomed_world(real_surface, surface)
+        self._draw_underwater_overlay(real_surface)
         self._draw_interface(real_surface)
         self._draw_state_overlay(real_surface)
         self.hint.draw(real_surface, draw_text)
         self.minigame.draw(real_surface, draw_text)
+        self._draw_intro_exit_fade(real_surface)
 
     def _render_world_snapshot(self):
         """Desenha o mundo uma única vez numa Surface própria, pro menu usar
@@ -1456,8 +1497,41 @@ class Game:
         self._draw_world_foreground(world)
         if world is not snapshot:
             self._blit_zoomed_world(snapshot, world)
+        self._draw_underwater_overlay(snapshot)
         self._draw_interface(snapshot)
         return snapshot
+
+    UNDERWATER_OVERLAY_COLOR = (25, 118, 184, 82)
+
+    def _draw_intro_exit_fade(self, surface):
+        """Revela o Campo a partir do preto deixado pelo último quadro."""
+        if not self._intro_exit_fade_alpha:
+            return
+        if (
+            self._intro_exit_fade_surface is None
+            or self._intro_exit_fade_surface.get_size() != surface.get_size()
+        ):
+            self._intro_exit_fade_surface = pygame.Surface(
+                surface.get_size()
+            ).convert()
+            self._intro_exit_fade_surface.fill("black")
+        self._intro_exit_fade_surface.set_alpha(self._intro_exit_fade_alpha)
+        surface.blit(self._intro_exit_fade_surface, (0, 0))
+
+    def _draw_underwater_overlay(self, surface):
+        """Tinge o mundo enquanto a cabeça da Lia ainda toca a água."""
+        if not self._player_head_submerged():
+            return
+        if (
+            self._underwater_overlay is None
+            or self._underwater_overlay.get_size() != surface.get_size()
+        ):
+            self._underwater_overlay = pygame.Surface(
+                surface.get_size(),
+                pygame.SRCALPHA,
+            ).convert_alpha()
+            self._underwater_overlay.fill(self.UNDERWATER_OVERLAY_COLOR)
+        surface.blit(self._underwater_overlay, (0, 0))
 
     def _blit_zoomed_world(self, real_surface, world_surface):
         """Recorta uma janela CAMERA_ZOOM vezes menor que a tela, centrada
@@ -1489,7 +1563,7 @@ class Game:
 
     # Fator de parallax por fundo (<1.0 anda mais devagar que a câmera).
     PARALLAX = {
-        "school": 0.3, "village": 0.3, "cave": 0.35,
+        "school": 0.3, "village": 0.3, "campo": 0.0, "cave": 0.35,
         "university": 1.0, "lab": 1.0, "library": 1.0,
     }
 
@@ -1498,14 +1572,16 @@ class Game:
         cor de cena já veio composta na imagem (ver _load_backgrounds)."""
         variant = self._background_variant()
         key = self._background_key()
+        if key == "campo" and self.assets.campo_layers:
+            self._draw_campo_parallax(surface, variant)
+            return
         if key == "village" and self.assets.village_layers:
             self._draw_village_parallax(surface, variant)
             return
         images = self.assets.backgrounds.get(key)
         if images is None:
-            # Nenhuma arte de fundo disponível pra este contexto (hoje só a
-            # vila sem ceu.png nem o pack GrassLand) — céu liso, que também
-            # cobre a tela toda.
+            # Nenhuma arte de fundo disponível pra este contexto — céu liso,
+            # que também cobre a tela toda.
             surface.fill(self.assets.VILLAGE_PLACEHOLDER_SKY)
             return
         image = images[variant]
@@ -1516,13 +1592,21 @@ class Game:
                 surface, image, parallax=self.PARALLAX.get(key, 1.0)
             )
 
+    def _draw_campo_parallax(self, surface, variant):
+        """Desenha os cinco planos rurais, do céu até o gramado frontal."""
+        self._draw_parallax_layers(surface, self.assets.campo_layers, variant)
+
     def _draw_village_parallax(self, surface, variant):
         """5 camadas do GrassLand, cada uma ladrilhada na sua própria
         velocidade de parallax (ver VILLAGE_PARALLAX_LAYERS) — a 1 (céu,
         opaca) cobre a tela inteira primeiro, então as de cima já blitam
         transparência sobre um fundo opaco, sem risco de "vazar" cor onde
         deveria ficar vazio (ver _load_village_parallax_layers)."""
-        for layer in self.assets.village_layers:
+        self._draw_parallax_layers(surface, self.assets.village_layers, variant)
+
+    def _draw_parallax_layers(self, surface, layers, variant):
+        """Desenha uma pilha de planos com repetição e velocidades próprias."""
+        for layer in layers:
             image = layer["variants"][variant]
             self._draw_repeating_background(
                 surface,
@@ -1530,6 +1614,7 @@ class Game:
                 parallax=layer["parallax"],
                 tile_width=layer["tile_width"],
                 draw_offset=layer["draw_offset"],
+                mirror=layer.get("mirrors", {}).get(variant),
             )
 
     def _background_key(self):
@@ -1547,12 +1632,20 @@ class Game:
             return "university"
         if self.level.index == 2:
             return "cave"
-        # Fase 1 e vila compartilham o céu novo (pedido do Raul: "vai ficar
-        # melhor"); sem as camadas do GrassLand nem ceu.png, a Fase 1 cai no
-        # fundo antigo da escola e a vila no preenchimento liso.
+        # O prólogo Campo tem arte própria. Mantemos os fundos antigos só
+        # como fallback caso algum PNG novo esteja ausente.
+        if self.level.index == VILLAGE:
+            if self.assets.campo_layers or "campo" in self.assets.backgrounds:
+                return "campo"
+            if self.assets.village_layers or "village" in self.assets.backgrounds:
+                return "village"
+            return None
+        # A escola não compartilha mais o cenário rural do prólogo.
+        if self.level.index == 0 and "school" in self.assets.backgrounds:
+            return "school"
         if self.assets.village_layers or "village" in self.assets.backgrounds:
             return "village"
-        return "school" if self.level.index == 0 else None
+        return None
 
     # Salas que são subterrâneas por definição, independente do y da Lia: o
     # teste de UNDERGROUND_Y foi feito pro corredor da Fase 1 (que é o mesmo
@@ -1567,20 +1660,26 @@ class Game:
         return "underground" if self.player.y > self.UNDERGROUND_Y else "normal"
 
     def _draw_repeating_background(
-        self, surface, background, parallax=1.0, tile_width=None, draw_offset=(0, 0)
+        self, surface, background, parallax=1.0, tile_width=None,
+        draw_offset=(0, 0), mirror=None,
     ):
         """Ladrilha o fundo horizontalmente. Com parallax<1.0 o fundo anda
         mais devagar que a câmera, dando sensação de profundidade.
 
         ``tile_width`` pode ser maior que a imagem quando suas margens
         transparentes foram recortadas no carregamento. ``draw_offset`` a
-        recoloca na posição original, mantendo a repetição pixel a pixel."""
+        recoloca na posição original, mantendo a repetição pixel a pixel.
+        Quando ``mirror`` existe, ladrilhos alternados são espelhados para
+        unir bordas idênticas e evitar uma emenda vertical no cenário."""
         repeat_width = tile_width or background.get_width()
         offset_x, offset_y = draw_offset
         offset = int(self.camera_x * parallax)
         start_x = -(offset % repeat_width)
-        for x in range(start_x, WIDTH, repeat_width):
-            surface.blit(background, (x + offset_x, offset_y))
+        tile_number = offset // repeat_width
+        for index, x in enumerate(range(start_x, WIDTH, repeat_width)):
+            use_mirror = mirror is not None and (tile_number + index) % 2
+            image = mirror if use_mirror else background
+            surface.blit(image, (x + offset_x, offset_y))
 
     def _draw_world(self, surface):
         state = WorldDrawState(
@@ -1595,8 +1694,6 @@ class Game:
             tools_collected=self.tools_collected,
             energy_box_state=self.puzzles.energy_box_state,
             lab_microscope_sprites=self.puzzles.lab_microscope_sprites(),
-            lab_microscope_collected=self.puzzles.lab_microscope_collected,
-            lab_microscope_assembled=self.puzzles.lab_microscope_assembled,
         )
         self.level.draw(surface, self.camera_x, self.camera_y, self.assets, state, draw_text)
 
@@ -1778,6 +1875,7 @@ class Game:
         oxygen_ratio = (
             self.player.oxygen / self.player.OXYGEN_MAX_FRAMES if show_oxygen else None
         )
+        microscope_total = len(self.puzzles.MICROSCOPE_SPRITE_IDENTITY_ORDER) if self.level.index == 0 else 0
         draw_hud(
             surface,
             self.level.data["name"],
@@ -1787,7 +1885,7 @@ class Game:
             self.message,
             self.message_timer,
             len(self.puzzles.microscope_collected),
-            len(self.level.microscope_parts),
+            microscope_total,
             self.puzzles.microscope_assembled,
             oxygen_ratio,
             self.shield,

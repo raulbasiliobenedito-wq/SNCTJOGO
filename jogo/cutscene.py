@@ -1,17 +1,10 @@
-"""Cutscene inicial: Lia e a mãe no hospital, antes da Fase 1.
+"""Prólogo de Lia e sua mãe sobre o projeto escolar ``Ciência Delas``.
 
-Usa uma ilustração única (images/cutscenes/hospital.png) como cenário —
-ela já traz cama, monitor e as duas personagens desenhadas, então o código
-só entra pra dar um pouco de vida em cima disso (o brilho coral pulsante)
-e pra tocar as falas na mesma DialogueBox ornamentada usada pelas
-cientistas-NPC (mesmo cartucho, mesma revelação gradual de texto, mesmo
-"[E/ENTER para continuar]").
-
-Se o arquivo da ilustração não existir ainda, cai num cenário simples
-desenhado por código (gradiente + formas), só pra não travar o jogo.
+O diálogo usa uma ilustração estática. Depois da última fala, seis quadros
+mostram o caderno reagindo à energia coral. Cada troca acontece no preto
+total: isso dá ritmo de história ilustrada e também esconde as diferenças
+pequenas que a IA deixou entre uma imagem completa e outra.
 """
-
-import math
 
 import pygame
 
@@ -38,51 +31,55 @@ def _scale_cover(image, target_size):
 
 
 class IntroCutscene:
-    """Toca uma vez, entre a tela de título e a Fase 1: a mãe de Lia conta
-    que está com câncer, e Lia decide sair atrás de respostas — as "pistas"
-    que ela persegue nas três fases são, a partir daqui, literalmente isso:
-    uma pesquisa por algo que possa ajudar. A frase "Todo experimento pode
-    falhar. Levante-se e tente novamente" (settings.MOTIVATION, reaproveitada
-    na tela de derrota) nasce aqui como algo que a própria mãe diz pra ela."""
+    """Apresenta o tema central antes de Lia atravessar o Campo.
+
+    A doença da mãe continua sendo a motivação emocional, mas o objetivo de
+    Lia nasce de seu projeto sobre mulheres na ciência. As páginas do caderno
+    conectam o prólogo aos itens de pesquisa e às cientistas encontradas nas
+    fases seguintes.
+    """
 
     BEATS = (
-        ("Mãe", "Lia. Vem cá, senta aqui um pouquinho comigo."),
-        ("Lia", "Sua voz tá esquisita."),
+        ("Mãe", "Ainda acordada por causa da feira de ciências?"),
+        ("Lia", "Meu trabalho chama Ciência Delas. Só não sei como terminar."),
         (
             "Mãe",
-            "Tá, né. Os médicos acharam uma coisa em mim, filha. Chama câncer.",
+            "Talvez com uma pergunta. É assim que toda pesquisa começa.",
         ),
-        ("Lia", "..."),
+        (
+            "Lia",
+            "Então me ajuda: por que essas cientistas precisaram lutar tanto para serem ouvidas?",
+        ),
         (
             "Mãe",
-            "Vou fazer tratamento. E vão ter dias em que eu não vou estar muito boa. "
-            "Preferi você saber por mim.",
+            "Porque muita gente usou as descobertas delas e esqueceu de contar quem abriu o caminho.",
         ),
-        ("Lia", "Mas vai passar, né, mãe?"),
+        ("Lia", "Eu não vou esquecer."),
         (
             "Mãe",
-            "Eu não sei. Ninguém sabe ainda. Tem gente estudando isso agora, nesse "
-            "minuto — em laboratório, em universidade, em centro de pesquisa.",
+            "Tem outra coisa que você precisa saber. Os médicos encontraram um câncer em mim.",
         ),
-        ("Lia", "Então alguém pode descobrir."),
+        ("Lia", "Mas existe tratamento, não existe?"),
         (
             "Mãe",
-            "Pode. E muita gente vai tentar e errar antes. Todo experimento pode "
-            "falhar, Lia. Levanta e tenta de novo — isso vale pra ciência e vale pra vida.",
+            "Existe porque muita gente continuou pesquisando, errando, registrando e compartilhando.",
         ),
-        ("Lia", "Então é isso que eu vou fazer. Vou atrás de cada pista que existir por aí."),
-        ("Mãe", "Você não precisa carregar isso sozinha."),
-        ("Lia", "Você também não."),
+        ("Lia", "Então eu quero descobrir quem tornou esse caminho possível."),
+        (
+            "Mãe",
+            "Comece por quem quase ficou fora dos livros. E lembre: ciência nunca se faz sozinha.",
+        ),
+        ("Lia", "Vou levar o caderno para a escola. Cada pista vai entrar nessa pesquisa."),
     )
 
-    CORAL_GLOW = (216, 134, 166)
-    # Posição do brilho, em fração (0..1) da ILUSTRAÇÃO original — perto do
-    # rosto/ombro de Lia, bem acima de onde a caixa de diálogo cobre a tela
-    # (ela começa em y=435 de 900, ver dialogue.py). Ajuste fino aqui se a
-    # posição não bater com a arte depois de ver rodando de verdade.
-    GLOW_ANCHOR = (0.70, 0.32)
-
-    BACKGROUND_PATH = ASSET_DIR / "cutscenes" / "hospital.png"
+    BACKGROUND_PATH = ASSET_DIR / "cutscenes" / "prologo_ciencia_delas.png"
+    ENERGY_FRAME_PATHS = tuple(
+        ASSET_DIR / "cutscenes" / f"energia_{index:02}.png"
+        for index in range(1, 7)
+    )
+    FADE_STEP = 24
+    FRAME_HOLD_TICKS = 8
+    FINAL_HOLD_TICKS = 45
 
     def __init__(self, dialogue_box, lia_frame):
         # Reaproveita a MESMA DialogueBox usada pelos diálogos de NPC —
@@ -92,20 +89,25 @@ class IntroCutscene:
         self.index = -1
         self.done = True
         self.timer = 0
+        self.sequence_active = False
+        self.energy_frame_index = -1
+        self.energy_frame = None
+        self.energy_frame_offset = (0, 0)
+        self.transition_phase = None
+        self.fade_alpha = 0
+        self.hold_timer = 0
+        self.finished_on_black = False
+        self.fade_surface = pygame.Surface((WIDTH, HEIGHT)).convert()
+        self.fade_surface.fill("black")
 
         self.background = None
         self.background_offset = (0, 0)
-        self.glow_pos = (WIDTH * self.GLOW_ANCHOR[0], HEIGHT * self.GLOW_ANCHOR[1])
-        raw = load_optional(self.BACKGROUND_PATH)
+        raw = load_optional(self.BACKGROUND_PATH, alpha=False)
         if raw is not None:
             self.background, self.background_offset = _scale_cover(raw, (WIDTH, HEIGHT))
-            self.glow_pos = (
-                self.background_offset[0] + self.background.get_width() * self.GLOW_ANCHOR[0],
-                self.background_offset[1] + self.background.get_height() * self.GLOW_ANCHOR[1],
-            )
         else:
             # Fallback só pra não travar o jogo caso a ilustração ainda não
-            # tenha sido colocada em images/cutscenes/hospital.png.
+            # tenha sido colocada em images/cutscenes/.
             self.lia_frame = pygame.transform.scale(
                 lia_frame, (lia_frame.get_width() * 3, lia_frame.get_height() * 3)
             )
@@ -118,25 +120,39 @@ class IntroCutscene:
         self.index = -1
         self.done = False
         self.timer = 0
+        self.sequence_active = False
+        self.energy_frame_index = -1
+        self.energy_frame = None
+        self.transition_phase = None
+        self.fade_alpha = 0
+        self.hold_timer = 0
+        self.finished_on_black = False
         self._advance()
 
     def _advance(self):
         self.index += 1
         if self.index >= len(self.BEATS):
-            self.done = True
             self.dialogue_box.close()
+            self._start_energy_sequence()
             return
         speaker, text = self.BEATS[self.index]
         self.dialogue_box.start(speaker, text)
 
     def skip(self):
         self.done = True
+        self.sequence_active = False
+        self.energy_frame = None
+        self.fade_alpha = 0
+        self.finished_on_black = False
         self.dialogue_box.close()
 
     def update(self, advance_pressed):
         if not self.active:
             return
         self.timer += 1
+        if self.sequence_active:
+            self._update_energy_sequence()
+            return
         if advance_pressed:
             if not self.dialogue_box.finished:
                 self.dialogue_box.reveal_all()
@@ -145,31 +161,82 @@ class IntroCutscene:
         else:
             self.dialogue_box.update()
 
+    def _start_energy_sequence(self):
+        self.sequence_active = True
+        self.energy_frame_index = -1
+        self.energy_frame = None
+        self.transition_phase = "fade_out"
+        self.fade_alpha = 0
+        self.hold_timer = 0
+
+    def _load_energy_frame(self, index):
+        """Mantém somente o quadro atual escalado, evitando ~50 MB extras."""
+        raw = load_optional(self.ENERGY_FRAME_PATHS[index], alpha=False)
+        if raw is None:
+            self.energy_frame = self.background
+            self.energy_frame_offset = self.background_offset
+            return
+        self.energy_frame, self.energy_frame_offset = _scale_cover(
+            raw, (WIDTH, HEIGHT)
+        )
+
+    def _update_energy_sequence(self):
+        if self.transition_phase == "fade_out":
+            self.fade_alpha = min(255, self.fade_alpha + self.FADE_STEP)
+            if self.fade_alpha < 255:
+                return
+            next_index = self.energy_frame_index + 1
+            if next_index >= len(self.ENERGY_FRAME_PATHS):
+                self.done = True
+                self.sequence_active = False
+                self.energy_frame = None
+                self.finished_on_black = True
+                return
+            self.energy_frame_index = next_index
+            self._load_energy_frame(next_index)
+            self.transition_phase = "fade_in"
+            return
+
+        if self.transition_phase == "fade_in":
+            self.fade_alpha = max(0, self.fade_alpha - self.FADE_STEP)
+            if self.fade_alpha == 0:
+                self.transition_phase = "hold"
+                self.hold_timer = (
+                    self.FINAL_HOLD_TICKS
+                    if self.energy_frame_index == len(self.ENERGY_FRAME_PATHS) - 1
+                    else self.FRAME_HOLD_TICKS
+                )
+            return
+
+        if self.transition_phase == "hold":
+            self.hold_timer -= 1
+            if self.hold_timer <= 0:
+                self.transition_phase = "fade_out"
+
     def draw(self, surface, text_fn):
-        if self.background is not None:
-            surface.blit(self.background, self.background_offset)
+        image = self.energy_frame or self.background
+        image_offset = (
+            self.energy_frame_offset if self.energy_frame is not None
+            else self.background_offset
+        )
+        if image is not None:
+            surface.blit(image, image_offset)
         else:
             self._draw_fallback_room(surface)
             self._draw_lia(surface)
-        if self.index == len(self.BEATS) - 1:
-            self._draw_coral_glow(surface)
-        self.dialogue_box.draw(surface, text_fn)
-        text_fn(surface, "[ESC pula a introdução]", (WIDTH - 190, 30), 14, "#cbd6e6", True)
-
-    def _draw_coral_glow(self, surface):
-        """Um brilho coral discreto que pulsa perto de Lia na última fala —
-        a mesma cor reservada à anomalia no resto do jogo (ver
-        LEIA-ME_bosses_e_itens.md §4), plantada aqui como o primeiro sinal
-        de que a pesquisa dela vai cruzar com algo maior."""
-        pulse = (math.sin(self.timer * 0.05) + 1) / 2
-        radius = int(10 + pulse * 6)
-        size = radius * 6
-        glow = pygame.Surface((size, size), pygame.SRCALPHA)
-        center = (size // 2, size // 2)
-        for r, alpha in ((radius * 3, 30), (radius * 2, 70), (radius, 160)):
-            pygame.draw.circle(glow, (*self.CORAL_GLOW, alpha), center, r)
-        x, y = self.glow_pos
-        surface.blit(glow, (x - size // 2, y - size // 2))
+        if not self.sequence_active:
+            self.dialogue_box.draw(surface, text_fn)
+        text_fn(
+            surface,
+            "[ESC pula a introdução]",
+            (WIDTH - 190, 30),
+            14,
+            "#cbd6e6",
+            True,
+        )
+        if self.fade_alpha:
+            self.fade_surface.set_alpha(self.fade_alpha)
+            surface.blit(self.fade_surface, (0, 0))
 
     # --- Fallback (só usado se images/cutscenes/hospital.png não existir) ---
 

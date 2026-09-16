@@ -167,33 +167,126 @@ class GameRegressionTests(unittest.TestCase):
         self.assertEqual(mini.result, "completed")
         self.assertTrue(all(state.values()))
 
+    def test_microscope_drag_art_is_scaled_and_columns_are_separated(self):
+        from minigame import MICROSCOPE_DRAG_SCALE, MICROSCOPE_ORDER, MicroscopeMinigame
+        game = self.game
+        mini = MicroscopeMinigame(
+            1920, 1080,
+            game.puzzles.microscope_sprites_by_identity(),
+            game.assets.puzzle_sprites["microscope_complete"],
+            dict.fromkeys(MICROSCOPE_ORDER, False),
+        )
+        for piece in mini.field.pieces:
+            original = mini.sprites[piece["key"]]
+            self.assertEqual(
+                piece["image"].get_size(),
+                (
+                    original.get_width() * MICROSCOPE_DRAG_SCALE,
+                    original.get_height() * MICROSCOPE_DRAG_SCALE,
+                ),
+            )
+        self.assertGreater(
+            min(piece["home"].left for piece in mini.field.pieces),
+            max(slot["rect"].right for slot in mini.field.slots) + 300,
+        )
+
+    def test_animated_fog_keeps_visual_fringe_outside_collision(self):
+        from fog import FogBarrier
+        frame = pygame.Surface((480, 270), pygame.SRCALPHA).convert_alpha()
+        frame.fill((90, 40, 120, 255))
+        barrier = FogBarrier(pygame.Rect(210, 0, 400, 100), "teste")
+        barrier.frames = [frame]
+        surface = pygame.Surface((200, 100), pygame.SRCALPHA).convert_alpha()
+
+        barrier.draw(surface, 0, 0)
+
+        self.assertEqual(surface.get_at((170, 50)).a, 0)
+        self.assertGreater(surface.get_at((180, 50)).a, 0)
+        self.assertEqual(barrier.rect.x, 210)
+        self.assertTrue(barrier.solid())
+
     def test_puzzle_progress_survives_rooms_and_resets_on_new_phase(self):
         game = self.game
         puzzles = game.puzzles
-        old_slots = puzzles.lab_microscope_slots
+        old_slots = puzzles.microscope_slots
         old_wires = puzzles.energy_box_wires
-        puzzles.lab_microscope_slots["base"] = True
-        puzzles.lab_microscope_collected.add(0)
+        puzzles.microscope_slots["base"] = True
+        puzzles.microscope_collected.add(0)
         puzzles.energy_box_state["screws_removed"] = True
         puzzles.lever_on = True
         game.interactions._dialogue_queue = [("Lia", "próxima fala")]
         game.enter_room("laboratorio_secreto")
         game.exit_room()
-        self.assertIs(puzzles.lab_microscope_slots, old_slots)
+        self.assertIs(puzzles.microscope_slots, old_slots)
         self.assertIs(puzzles.energy_box_wires, old_wires)
-        self.assertTrue(puzzles.lab_microscope_slots["base"])
-        self.assertEqual(puzzles.lab_microscope_collected, {0})
+        self.assertTrue(puzzles.microscope_slots["base"])
+        self.assertEqual(puzzles.microscope_collected, {0})
         self.assertTrue(puzzles.energy_box_state["screws_removed"])
         self.assertEqual(game.interactions._dialogue_queue, [("Lia", "próxima fala")])
         game.load_level(1)
         self.assertIs(game.puzzles, puzzles)
-        self.assertIsNot(puzzles.lab_microscope_slots, old_slots)
+        self.assertIsNot(puzzles.microscope_slots, old_slots)
         self.assertIsNot(puzzles.energy_box_wires, old_wires)
-        self.assertFalse(any(puzzles.lab_microscope_slots.values()))
-        self.assertEqual(puzzles.lab_microscope_collected, set())
+        self.assertFalse(any(puzzles.microscope_slots.values()))
+        self.assertEqual(puzzles.microscope_collected, set())
         self.assertEqual(puzzles.energy_box_state, {"screws_removed": False, "wired": False})
         self.assertFalse(puzzles.lever_on)
         self.assertEqual(game.interactions._dialogue_queue, [])
+
+    def test_elevator_lab_microscope_is_the_phase_one_requirement(self):
+        from minigame import MICROSCOPE_ORDER
+        game = self.game
+        game.load_level(0)
+        base_level = game.level
+        game.collected = set(range(len(base_level.research)))
+        game.player.x = base_level.world_width - 90
+
+        game._advance_level_if_ready(game.player)
+
+        self.assertEqual(game.level.index, 0)
+        self.assertIn("laboratório acessado pelo elevador", game.message)
+
+        game.enter_room("laboratorio_secreto")
+        release_key = game.level.lab_bench["libera"]
+        barrier = next(item for item in base_level.fog_barriers if item.chave == release_key)
+        for item, _name in game.level.lab_microscope_parts:
+            game.player.reset(item.x, item.y)
+            game.puzzles.collect_lab_microscope_parts(game.player)
+
+        self.assertEqual(len(game.puzzles.microscope_collected), len(MICROSCOPE_ORDER))
+        game.puzzles.finish_minigame("microscope", "completed")
+        self.assertTrue(game.puzzles.microscope_assembled)
+        self.assertTrue(barrier._dissipating)
+
+    def test_elevator_lab_loose_parts_are_enlarged_and_bob(self):
+        game = self.game
+        game.load_level(0)
+        game.enter_room("laboratorio_secreto")
+        level = game.level
+        pickup_rects = [item.copy() for item, _name in level.lab_microscope_parts]
+        surface = pygame.Surface((1920, 1080), pygame.SRCALPHA).convert_alpha()
+
+        game._draw_world(surface)
+
+        for original, scaled in zip(
+            game.assets.puzzle_sprites["microscope_parts"],
+            level._scaled_lab_microscope_parts,
+        ):
+            self.assertEqual(
+                scaled.get_size(),
+                (
+                    original.get_width() * level.LAB_MICROSCOPE_PART_SCALE,
+                    original.get_height() * level.LAB_MICROSCOPE_PART_SCALE,
+                ),
+            )
+        self.assertEqual(
+            [item for item, _name in level.lab_microscope_parts],
+            pickup_rects,
+        )
+        level.npc_animation = 0
+        first_y = level._lab_microscope_bob(0)
+        level.npc_animation = 18
+        self.assertNotEqual(level._lab_microscope_bob(0), first_y)
 
     def test_web_entrypoint_dispatches_events_and_exits(self):
         import asyncio
@@ -223,7 +316,7 @@ class GameRegressionTests(unittest.TestCase):
     def test_new_phase_save_contains_ranged_unlock(self):
         game = self.game
         game.collected = set(range(len(game.level.research)))
-        game.puzzles.lab_microscope_assembled = True
+        game.puzzles.microscope_assembled = True
         game.items.counts = {"essencia_slime": 1}
         game.player.x = game.level.world_width - 90
         game._advance_level_if_ready(game.player)
@@ -248,11 +341,14 @@ class GameRegressionTests(unittest.TestCase):
 
         game = self.game
         game.load_level("vila")
+        # Com a arte nova instalada, o GrassLand não fica residente; ainda
+        # validamos aqui o carregador que serve de fallback se ela faltar.
+        fallback_layers = game.assets._load_village_parallax_layers()
         game.camera_x = 937
         reference = pygame.Surface((WIDTH, HEIGHT)).convert()
         optimized = pygame.Surface((WIDTH, HEIGHT)).convert()
 
-        for spec, layer in zip(Assets.VILLAGE_PARALLAX_LAYERS, game.assets.village_layers):
+        for spec, layer in zip(Assets.VILLAGE_PARALLAX_LAYERS, fallback_layers):
             filename, parallax, has_alpha = spec
             if has_alpha:
                 path = ASSET_DIR / Assets.VILLAGE_BACKGROUND_DIR / filename
@@ -265,14 +361,56 @@ class GameRegressionTests(unittest.TestCase):
                 image = layer["variants"]["normal"]
             game._draw_repeating_background(reference, image, parallax=parallax)
 
-        game._draw_village_parallax(optimized, "normal")
+        resident_layers = game.assets.village_layers
+        game.assets.village_layers = fallback_layers
+        try:
+            game._draw_village_parallax(optimized, "normal")
+        finally:
+            game.assets.village_layers = resident_layers
         self.assertEqual(
             pygame.image.tostring(optimized, "RGBA"),
             pygame.image.tostring(reference, "RGBA"),
         )
-        for layer in game.assets.village_layers[1:]:
+        for layer in fallback_layers[1:]:
             self.assertLess(layer["variants"]["normal"].get_height(), HEIGHT)
             self.assertGreater(layer["draw_offset"][1], 0)
+
+    def test_campo_uses_the_approved_parallax_composition(self):
+        from settings import HEIGHT, WIDTH
+
+        game = self.game
+        game.load_level("vila")
+        self.assertEqual(game._background_key(), "campo")
+        self.assertEqual(len(game.assets.campo_layers), 5)
+        self.assertEqual(
+            [layer["parallax"] for layer in game.assets.campo_layers],
+            [spec[1] for spec in game.assets.CAMPO_PARALLAX_LAYERS],
+        )
+        # As velocidades aumentam conforme o plano se aproxima da câmera.
+        speeds = [layer["parallax"] for layer in game.assets.campo_layers]
+        self.assertEqual(speeds, sorted(speeds))
+
+        start = pygame.Surface((WIDTH, HEIGHT)).convert()
+        end = pygame.Surface((WIDTH, HEIGHT)).convert()
+        game.camera_x = 0
+        game._draw_background(start)
+        game.camera_x = game.level.world_width - WIDTH
+        game._draw_background(end)
+
+        # O céu opaco mantém a tela coberta, enquanto os outros quatro planos
+        # mudam de posição em velocidades diferentes durante o percurso.
+        self.assertEqual(start.get_at((0, 0)).a, 255)
+        self.assertEqual(end.get_at((WIDTH - 1, HEIGHT - 1)).a, 255)
+        self.assertNotEqual(
+            pygame.image.tostring(start, "RGB"),
+            pygame.image.tostring(end, "RGB"),
+        )
+
+    def test_school_does_not_reuse_campo_background(self):
+        game = self.game
+        game.load_level(0)
+        self.assertEqual(game._background_key(), "school")
+        self.assertIn("school", game.assets.backgrounds)
 
     def test_zoom_one_draws_directly_without_allocating_world_buffer(self):
         import game as game_module
@@ -345,6 +483,35 @@ class GameRegressionTests(unittest.TestCase):
         self.assertIn("F", cadu_text)
         self.assertIn("clique esquerdo", cadu_text)
 
+    def test_intro_energy_frames_share_one_canvas_and_swap_at_black(self):
+        from cutscene import IntroCutscene
+
+        paths = (IntroCutscene.BACKGROUND_PATH, *IntroCutscene.ENERGY_FRAME_PATHS)
+        self.assertTrue(all(path.is_file() for path in paths))
+        self.assertEqual(
+            {pygame.image.load(path).get_size() for path in paths},
+            {(1672, 941)},
+        )
+
+        intro = self.game.intro
+        intro.done = False
+        intro._start_energy_sequence()
+        swapped_at = []
+        previous_index = -1
+        with patch.object(intro, "_load_energy_frame") as load_frame:
+            for _tick in range(1000):
+                intro.update(False)
+                if intro.energy_frame_index != previous_index:
+                    swapped_at.append(intro.fade_alpha)
+                    previous_index = intro.energy_frame_index
+                if not intro.active:
+                    break
+
+        self.assertEqual(load_frame.call_count, 6)
+        self.assertEqual(swapped_at, [255] * 6)
+        self.assertTrue(intro.finished_on_black)
+        self.assertEqual(intro.fade_alpha, 255)
+
     def test_cadu_teaches_attack_before_the_first_village_slime(self):
         from level import VILLAGE
 
@@ -361,6 +528,13 @@ class GameRegressionTests(unittest.TestCase):
                 for ground in game.level.grounds
             )
         )
+
+    def test_phase_one_has_no_legacy_bench_or_return_route(self):
+        game = self.game
+        game.load_level(0)
+        self.assertIsNone(game.level.bench)
+        self.assertEqual(game.level.return_route_platforms, [])
+        self.assertFalse(game.level.return_route_active)
 
     def test_research_and_room_lore_use_the_shared_dialogue_queue(self):
         from game_data import ROOM_LORE, SCIENCE_FACTS, SCIENCE_REACTIONS

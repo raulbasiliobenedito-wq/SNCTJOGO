@@ -18,7 +18,7 @@
  </layer>
  <layer id="8" name="Colisão" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt241ugyAUhmHutN5Mt3TLtma74WlaIiH0yM9REN4nOVm6VEXlK1KrMQAAAACg5zrX11zfG/Uz13ulNgJYLZl98+ojsfzlpSL3gL6bSc9tSX0es1tAV9zxNjQWkmPg/MgxcH7kGACA423NlwEAAFoRuq/ONQxqGPUaOpTB2P23y0pGO56A5NWYV/LbsKuwPSl/MflNWR/giu3rWv3J396e/fSmsA63fVKGpWVS8yutrxUl1yRYaRzHZR0p92ZLzpNtb+zvpzX6hEaOF7ZNey+ztb7aOXH7XMiR9+5jn7XRLM3jL+XBZiJme6kZLsnykdtyaeW4JXvnWbo+2xLKcencpqXvArU+p1LyIO1rbq6k8VOq0m3lnrcec7zYY9zTuP4Ptaunc6Bx3HOy92ce5+b3+de+zslTqZR1aY3NPfUhl2aONfJrjZDj0uuLkjFNo2ooGZvt516PtMYFzfn7YoQcH/28QA85ttx2xPZhe7x7pJHjPfI1Qo5r5/DMObbu5tGWmDGZHMvIcTpyXO5u1hxL/dj/Pr9HWvNj7YyR4/arFVs59ucvPSLHdfBsO1rUU8aAUZFj1Dbqs1YAxnN5FoBzWvI7PQvAudgxeDLkGOcy8nz54tVkyC/65vf5luaOobbF1BQooFev+ryU5a0M5SyTksfUAnoi5cRl/5ebrb3ymFpAj6YXFfu+WgVgNWUuE6rU9+dsGwAAAAAAAAAAAAAAAMBx/gFDkPsX
+   eJzt241ugyAUhmHutN5Mt3TLtma74dW0RELwyM9REN4nOVnW1J8qn4CtxgAAAACAnuujvh71vVE/j3qvtI8AFnNm37z6SCx/eanIPaDvZtJzW1Kfx3wsoCtufxvqC8kxcH7kGDg/cgwAwPG25ssAAACtCH2vzhgGNYw6hg5lMPbz22Ulox1PQLLW55X8NuwqbE/KX0x+U9YHuGLbulZ78re3Zzu9KazD3T8pw9IyqfmV1teKkjEJFhrHcV5HynezJefJ7m/s76c12oRGjmd2n/ZeZmt9tXPitrmQI7+7j33WRrM0j7+UB5uJmO2lZrgky0duy6WV45bsnWdpfLYllOPSuU1L9wK1rlMpeZA+a26upP5TqtJt5Z63HnM8c8+B9nynRKid93QONHKck70/8zw3v6+/9v+cPJVKWZdW39xTG3Jp/g5VI7/WCDkuHV+U9GkaVUNJ32yvez3SynHsfbtYI+T46OcFesixldNu7fHukXQ8bH+xdb3TzrAJ7MustxzXzuGZc2zdzXNfYvrkUXN8W3ndt0e+yHH7VdvdLDmW2qh/P79HOeMT3x7XOXLcfrViq+3685ce5eTYH2+T43Q8247a/PF2z/MOYBTkGC0Y9VkrAOO5vArAOc35nV4F4FxsHzwZcoxzGXm+fPFqMuQXffPbfEtzx9C+xdQUKKBXa21eyvJWhnKWScljagE9kXLisq/lZmuvPKYW0KNppWLfV6sALKbMZUKV+v6cbQMAAAAAAAAAAAAAAAA4zj9KKA5q
   </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
@@ -33,11 +33,6 @@
  </layer>
  <objectgroup id="1" name="Plataformas"/>
  <objectgroup id="2" name="Paredes"/>
- <objectgroup id="3" name="Rota Retorno">
-  <object id="36" type="plataforma" x="5120.67" y="833.166" width="128.5" height="32"/>
-  <object id="37" type="plataforma" x="4958.5" y="703.5" width="130" height="32"/>
-  <object id="39" type="plataforma" x="4767" y="608.5" width="160" height="32"/>
- </objectgroup>
  <objectgroup id="4" name="Entidades">
   <object id="40" type="spawn" x="44.6667" y="640" width="32" height="48"/>
   <object id="41" type="checkpoint" x="2351.33" y="423.667" width="35" height="90"/>

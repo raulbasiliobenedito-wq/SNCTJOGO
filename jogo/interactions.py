@@ -82,12 +82,6 @@ class InteractionSystem:
         if self.game.level.room == "laboratorio_secreto" and self.game.puzzles.use_lab_microscope_bench(self.game.player):
             return
         if not self.game.level.is_underground or self.game.level.room:
-            # "or self.game.level.room": o laboratório escondido tem
-            # index==0 (is_underground True) mas não usa NADA do sistema
-            # antigo abaixo (painel/botões/bancada do corredor) — sem
-            # este corte, use_microscope_bench quebraria tentando usar
-            # self.game.level.bench, que fica None numa sala
-            # (ver Level._reset_lab_state).
             return
 
         player = self.game.player
@@ -95,7 +89,6 @@ class InteractionSystem:
             return
         if self.game.puzzles.use_sequence_button(player):
             return
-        self.game.puzzles.use_microscope_bench(player)
 
     def use_doors(self):
         player = self.game.player

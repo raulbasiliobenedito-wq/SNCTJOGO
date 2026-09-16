@@ -16,5 +16,3 @@ class WorldDrawState:
     tools_collected: set
     energy_box_state: dict
     lab_microscope_sprites: dict
-    lab_microscope_collected: set
-    lab_microscope_assembled: bool
