@@ -88,7 +88,7 @@ class InventorySystem:
             if quest_item:
                 self.spawn_drop(quest_item, enemy.rect.centerx, enemy.rect.centery)
             elif name == "AncientGolem":
-                self.game.show_message("O caminho para a escola foi liberado!")
+                self.game.show_message("O caminho para o Bosque do Conhecimento foi liberado!")
             return
         audio.play_sfx("enemy_death_sound")
         entry = ENEMY_DROP_TABLE.get(name)

@@ -75,8 +75,7 @@ class PuzzleSystem:
                 audio.play_sfx("correct_sequence_sound")
                 self.game.dialogue.start(
                     "Lia",
-                    "A caixa de energia está ligada! Bom saber que funciona — ainda preciso descobrir o que"
-                    " isso destrava por aqui.",
+                    "A caixa de energia está ligada! Agora o laboratório está estável e eu posso seguir em frente.",
                 )
             elif result == "closed_mistakes":
                 self.game.dialogue.start(
@@ -202,7 +201,7 @@ class PuzzleSystem:
             elif self.sequence_solved:
                 self.game.dialogue.start(
                     "Painel",
-                    "Sequência concluída. As peças do microscópio foram liberadas.",
+                    "Sequência concluída. O elevador está liberado.",
                 )
             elif index == self.sequence_progress:
                 audio.play_sfx("button_sound")
@@ -212,7 +211,7 @@ class PuzzleSystem:
                     audio.play_sfx("correct_sequence_sound")
                     self.game.dialogue.start(
                         "Painel",
-                        "Sequência correta! As peças do microscópio foram liberadas.",
+                        "Sequência correta! O elevador foi ativado.",
                     )
             else:
                 audio.play_sfx("wrong_sequence_sound")

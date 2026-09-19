@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="80">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="242" height="46" tilewidth="32" tileheight="32" infinite="0" nextlayerid="11" nextobjectid="81">
  <properties>
   <property name="plataformas_automaticas" value="true"/>
  </properties>
@@ -8,7 +8,7 @@
  <tileset firstgid="133" source="chao_vila.tsx"/>
  <layer id="6" name="Fundo" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt20FOAkEQheG+gp7FhQv3utXovvZcQTSSqAFW3tg2gYQgM/TMVE11Nf+XvGgM9BQ9/dBETQkAAAAApllOfP6ryhQAAAAAAAAAAAAAAAAArHzm/OR8deTbbzSg16Ynl+Svw+vUvx/bRJdLve0+rg6+9uExSABT+td3XiP0+UZxrX2HS3pMl4dZnX+IOsu/nR7Sm5Iuje2f5gye7pTWOexwaY9b6jL/LzDM1B5vRq6lef25u/ycc5tzlXO9+/zY1BnXaVyPW+oyymn1qJZYeSl4TE3vNR57v5jlleEU795F6nIymst7v7R7HPln4hrO3vuI53jfe4tYsJzLe7+00sL349rOXSnve28RTXPM5b1fWrnkHnvzvvcWqXVv5rqOV+ixH+97b5Fa92au63iFHvvxvvcWqXVvus65935Zv75IvM/cGOd+Lxk1WhbKc50659rX8EwLPUZ7xnZs6zEsgE70GAAAAAAAABHILgBSesx58h5iADkKgPPucx68h0j/+7sP0BJJ7Z1vKQjQCulITcQoQFQyMEPX0by2dYCIhNBjhCeEHiM8IfQY4QmhxwhPCD1GeELoMcKTAdFcq2Rtj7UAAABa8QtjlnrV
+   eJztm0tuE0EURb0FWAsDBtkECOY1hYyY8xGRACUMEDvGlrolC8qu6u773q3G50hXHSVxut7n2JaSHA4AAAAAAADb+LTx8R8lpwAAAAAAAAAAAAAAAAAAAADI4XslP6wnAojn2zG/D/X936MDT5X8tJ4IoqjNes4tcXL4Wi/mjO7yqY75ecfp8efp+nD2ua9J994bW/zr2dlb8bnX4T24/Hhonz/zvcVD+1vkRP7t9JI96XFprX/KM+yZF9N1qcOju9zj8fnrMv8vsIytHj+t/FnK+2e7/ObK115O1yVnfHbM8+nju+nau/eXPBiNpR7DMlQejZII5tfIt43vG+m5puc86txfOQsex+L2bg8u3519HHEud7/UHtfeE/d67GaE3fuy4jHu2UckgshzufulyrXX470w2t714p59RJRknMvdL1Vu2WM37tlHZNTeZN3HlZPHjx19HRn3zq3FPfuIjNqbrPu4gsc+3LOPyKi9ufS+090vZX14nM/a31GOHhX34nPVPFbfw5nZY/c5/peABrVjl3Dvi7I+PNb2EzRkzMW9L8r68FjbT9hO1lzc+6KsD4+1/YTtZM3FvS/K+vBY20/YTtZc3PuirA+Ptf2E7WTNxb0vyvrwWNtP6KNMqZE1F/e+KOvDY20/s3l1zGvTvddQ/kqNrLm490VZHx5r+zkK7475cJb33uP84++cGllzce+Lsj481vZzKb+mazm093tvlI7UyJqLe1+U9eGxtp9rKBcyEiUoNbLm4t4XZX14rO1nD2Vhlv4c5b2jUyNrLu59UdaHx9p+tigEjwPqw2NtP1sUgscB9eGxtp8tCsHjgPrwWNvPFoXgcUB9eKztZ4tC8DigPjzW9rNFIXgcUB8ea/vZohA8DqgPj7X9bFEIHgfUh8fafrYoBI8D6vsD/TWT6A==
   </data>
  </layer>
  <layer id="7" name="Perigos" width="242" height="46">
@@ -18,7 +18,7 @@
  </layer>
  <layer id="8" name="Colisão" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt241ugyAUhmHutN5Mt3TLtma74dW0RELwyM9REN4nOVnW1J8qn4CtxgAAAACAnuujvh71vVE/j3qvtI8AFnNm37z6SCx/eanIPaDvZtJzW1Kfx3wsoCtufxvqC8kxcH7kGDg/cgwAwPG25ssAAACtCH2vzhgGNYw6hg5lMPbz22Ulox1PQLLW55X8NuwqbE/KX0x+U9YHuGLbulZ78re3Zzu9KazD3T8pw9IyqfmV1teKkjEJFhrHcV5HynezJefJ7m/s76c12oRGjmd2n/ZeZmt9tXPitrmQI7+7j33WRrM0j7+UB5uJmO2lZrgky0duy6WV45bsnWdpfLYllOPSuU1L9wK1rlMpeZA+a26upP5TqtJt5Z63HnM8c8+B9nynRKid93QONHKck70/8zw3v6+/9v+cPJVKWZdW39xTG3Jp/g5VI7/WCDkuHV+U9GkaVUNJ32yvez3SynHsfbtYI+T46OcFesixldNu7fHukXQ8bH+xdb3TzrAJ7MustxzXzuGZc2zdzXNfYvrkUXN8W3ndt0e+yHH7VdvdLDmW2qh/P79HOeMT3x7XOXLcfrViq+3685ce5eTYH2+T43Q8247a/PF2z/MOYBTkGC0Y9VkrAOO5vArAOc35nV4F4FxsHzwZcoxzGXm+fPFqMuQXffPbfEtzx9C+xdQUKKBXa21eyvJWhnKWScljagE9kXLisq/lZmuvPKYW0KNppWLfV6sALKbMZUKV+v6cbQMAAAAAAAAAAAAAAAA4zj9KKA5q
+   eJzt24tO4zAQhWG/KXkZWJXVsmj3hWlELSLLsT2ek0ud/5NGCEQunc5pkjYNAQAAAAB0Xu/1514flfp7r18H7SOAH3Nm35J6N1a6fKnIPaB3C/bceur3Pg8LGMryeJs7FpJj4PmRY+D5kWMAAPZXu14GAAA4i9zn6pzD4AhXPYfOZbD18cdlS67WT6Bk7ZjnuTfstbC9Uv5a8mtZH7DUOuuqeUq3t+Wc3gTrWO5fKcOlZaz5La0PY/Gc2y3XYfls1jNPcX9b759WzK4ix7O4T1svU1vfmfK89vq/5/ZbvmujLGX/S3mImWjZnjXDnizvua0lVY7PZOs8t56f5eTuwfFe26zVu+tR9lHdY2TJQ+m57s1V6fhZ67lnW71zO2KOZ8vnQH2945Gb85GeA0WOe7L3P3w/N/8eP+PvPXnysqxLdWweaYaWlPehKvIbXSHH3vMLzzFNUUfwHJvj696IVDlufd+u1RVyvPf3BUbIcdQzt7HfIyr1Ix4vaq936gyHzL7MRsvx0Tl85hxHn+F7X1qOyVfN8W3l76kt8kWOz19H+ww/OS7NaPp+/oh6zk9SW7zOkePz11nUZje9fhlRT47T821ybMd327Xop116vk2O7Zg7LfrpR47tmDut9HO8M92v+Cx4n8uOHGvRz3Yvj0qRYzvmTot+tpnzOz0qRY7tmDst+lkWj8FTIMdKzJ1W7Xs1V7tefklqCuv5jcixHTnW8vQznfncteNRcvvWUlOmasixHTnW6u3n2syXslzLUM8yljxaqxU5tiPHWi39LOVkKf6tN1tb5dFaVuTYjhxrtfRzWqnW/zuq9kKO7cixVmuOraaVsv5/z7b3Ro7tyLEW/fQjx3bMnRb99CPHdsydFv30I8d2zJ0W/fQjx3bMnRb99CPHdsydFv30I8d2zJ0W/fQjx3bMnRb99CPHdsydFv30I8d28+P7AnWcRgU=
   </data>
  </layer>
  <layer id="9" name="Decoração" width="242" height="46">
@@ -28,7 +28,7 @@
  </layer>
  <layer id="10" name="Frente" width="242" height="46">
   <data encoding="base64" compression="zlib">
-   eJzt18EKQEAUBVC/ihU7a0tWvpoFJSnRME+dU7c3m6m3uU1TFAAAAAAAAAAAAAAAAPC+ckm1S513HbhlWGd/Mrfz+OlGAOltb/TbdwAAiOnszwuQwnQRIJ6r3uozxPa0w/oMcaTosU5DXnoM/6fHAAAAAAAAAAB8qVnSHdJm3QgAAAAAAAAAAAAAAOKaAXciP8w=
+   eJzt2jEKg0AQQFGvmljFLnVK05hTaxFBgiCRNTtj3oNhbYRpPotg0wAAAAAAAAAAAAAAAMDxLtNcF9PWXQe+0r/Px8o5Pz9/uhFAefMdffQ7AADEtPbNC1DCa2OAeLa61TPEtrdhPRPRUHuBSkp0rGmi0LGOyU/HOgYAAAAAAAAAzuFf/wPJ4jbN/WO6qhsRkY4hPx1DfjqG/HQMAAAAAAAAAHAOI3G3RBQ=
   </data>
  </layer>
  <objectgroup id="1" name="Plataformas"/>
@@ -36,7 +36,7 @@
  <objectgroup id="4" name="Entidades">
   <object id="40" type="spawn" x="44.6667" y="640" width="32" height="48"/>
   <object id="41" type="checkpoint" x="2351.33" y="423.667" width="35" height="90"/>
-  <object id="42" type="checkpoint" x="5854" y="391" width="35" height="90"/>
+  <object id="42" type="checkpoint" x="5884" y="420.333" width="35" height="90"/>
   <object id="44" type="livro" x="2175.5" y="448" width="28" height="34">
    <properties>
     <property name="nome" value="Curiosidade"/>
@@ -47,7 +47,7 @@
     <property name="nome" value="Observação"/>
    </properties>
   </object>
-  <object id="46" type="livro" x="5791.83" y="446" width="28" height="34">
+  <object id="46" type="livro" x="5794.5" y="477.333" width="28" height="34">
    <properties>
     <property name="nome" value="Hipótese"/>
    </properties>
@@ -64,7 +64,7 @@
   </object>
   <object id="49" type="slime" x="711.333" y="474.833" width="52" height="34"/>
   <object id="50" type="slime" x="4314" y="351" width="52" height="34"/>
-  <object id="51" type="slime" x="6278.5" y="509" width="52" height="34"/>
+  <object id="51" type="slime" x="5589.5" y="509" width="52" height="34"/>
   <object id="55" type="painel" x="3192" y="974" width="34" height="52"/>
   <object id="56" type="botao" x="2192" y="75.5" width="36" height="20">
    <properties>
@@ -97,6 +97,7 @@
    <properties>
     <property name="chave" value="campo_contencao_lab"/>
     <property name="destino" value="laboratorio_secreto"/>
+    <property name="requer_painel" type="bool" value="true"/>
    </properties>
   </object>
   <object id="79" type="neblina" x="6585" y="416" width="20" height="20">

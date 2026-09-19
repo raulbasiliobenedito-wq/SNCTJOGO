@@ -5,10 +5,11 @@ interativa simulando a descida antes de trocar pra sala escondida de
 verdade (Game.enter_room). Ao voltar, a MESMA cutscene toca com
 `reverse=True`, subindo em vez de descer, antes de chamar Game.exit_room.
 
-Pedido do Raul: a Lia fica PARADA (sprite idle já existente, centralizada,
-sem arte nova pra ela) — quem se move é o CENÁRIO ao redor dela (as
-paredes do vão + as correntes deslizando pra cima/baixo), como se ela
-estivesse de fato dentro do elevador olhando pro lado de fora andar.
+Pedido do Raul: a Lia fica PARADA (sprite idle já existente, centralizada
+e ampliada) — quem se move é o CENÁRIO ao redor dela (as paredes do vão +
+as correntes deslizando pra cima/baixo), como se ela estivesse de fato
+dentro do elevador olhando pro lado de fora andar. Os pés ficam no piso e
+a moldura do carrinho é desenhada por cima, cobrindo a parte inferior dela.
 
 Arte esperada, em DUAS camadas separadas (ver o prompt que mandei pro
 Raul pedir isso à IA):
@@ -48,14 +49,19 @@ class ElevatorCutscene:
     FRAME_PATH = ASSET_DIR / "cutscenes" / "elevador_lab_moldura.png"
 
     # Posição fixa da Lia na tela — ela não se move em nenhum momento da
-    # cutscene, só o fundo rola ao redor dela.
+    # cutscene, só o fundo rola ao redor dela. A escala 6 é o dobro dos 3x
+    # usados antes. LIA_FLOOR_Y ancora o último pixel visível dos pés logo
+    # acima da viga inferior; a grade furada da moldura passa na frente.
+    LIA_SCALE = 6
     LIA_X_ANCHOR = 0.5
-    LIA_Y_ANCHOR = 0.62
+    LIA_FLOOR_Y = HEIGHT - 56
 
     def __init__(self, lia_frame):
         self.lia_frame = pygame.transform.scale(
-            lia_frame, (lia_frame.get_width() * 3, lia_frame.get_height() * 3)
+            lia_frame,
+            (lia_frame.get_width() * self.LIA_SCALE, lia_frame.get_height() * self.LIA_SCALE),
         )
+        self.lia_visible_rect = self.lia_frame.get_bounding_rect()
         self.active = False
         self.reverse = False
         self.timer = 0
@@ -113,17 +119,22 @@ class ElevatorCutscene:
             self._draw_fallback_shaft(surface, scroll_offset)
 
         # A Lia fica sempre no mesmo lugar — quem se move é o cenário.
-        lia_rect = self.lia_frame.get_rect(
-            midbottom=(round(WIDTH * self.LIA_X_ANCHOR), round(HEIGHT * self.LIA_Y_ANCHOR))
-        )
-        surface.blit(self.lia_frame, lia_rect)
+        surface.blit(self.lia_frame, self._lia_position())
 
         if self.frame is not None:
             frame_rect = self.frame.get_rect(midbottom=(WIDTH // 2, HEIGHT))
             surface.blit(self.frame, frame_rect)
 
         label = "Subindo..." if self.reverse else "Descendo..."
-        text_fn(surface, label, (WIDTH // 2 - 55, HEIGHT - 64), 20, "#cbd6e6", True)
+        text_fn(surface, label, (WIDTH // 2 - 55, 54), 20, "#cbd6e6", True)
+
+    def _lia_position(self):
+        """Ancora os pixels visíveis, não a margem transparente do quadro."""
+        visible = self.lia_visible_rect
+        return (
+            round(WIDTH * self.LIA_X_ANCHOR - visible.centerx),
+            self.LIA_FLOOR_Y - visible.bottom,
+        )
 
     def _draw_scrolling_background(self, surface, scroll_offset):
         """Repete a textura vertical (paredes + correntes) quantas vezes

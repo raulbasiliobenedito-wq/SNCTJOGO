@@ -108,11 +108,10 @@ class InteractionSystem:
         Level._make_secret_elevators e a conversa sobre o "elevador
         chat"). Mesmo raio/formato de use_doors, mas a troca de sala só
         acontece depois de uma cutscene curta (ver
-        elevator_cutscene.ElevatorCutscene): do lado de fora, o elevador
-        só funciona depois da Lia esbarrar no bloqueio de neblina ligado
-        a ele pela propriedade "chave" (ver _check_fog_barriers, que
-        marca barrier.encountered) — do lado de dentro da sala (objeto
-        sem "chave", destino "sair"), sempre funciona."""
+        elevator_cutscene.ElevatorCutscene). A entrada da Fase 1 marcada
+        com "requer_painel" só funciona depois que os quatro botões do
+        painel são ativados na ordem correta; os elevadores de saída dentro
+        da sala continuam livres."""
         if self.game.elevator_cutscene.active:
             return False
         player = self.game.player
@@ -121,11 +120,12 @@ class InteractionSystem:
                 elevator["rect"].inflate(self.SECRET_ELEVATOR_RANGE, self.SECRET_ELEVATOR_RANGE)
             ):
                 continue
-            if elevator["chave"] and not self.fog_barrier_encountered(elevator["chave"]):
-                self.game.dialogue.start(
-                    "Lia",
-                    "Melhor eu não usar isso ainda — vou ver o que tem lá na frente primeiro.",
-                )
+            if elevator.get("requer_painel", False) and not self.game.puzzles.sequence_solved:
+                if self.game.puzzles.lever_on:
+                    message = "O elevador continua bloqueado. Preciso ativar os quatro botões do painel."
+                else:
+                    message = "O elevador está sem energia. Preciso ativar o painel primeiro."
+                self.game.dialogue.start("Lia", message)
                 return True
             audio.play_sfx("door_sound")
             if elevator["destino"] == "sair":

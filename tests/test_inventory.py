@@ -118,7 +118,7 @@ class InventoryTests(unittest.TestCase):
         chance.assert_not_called()
         sound.assert_called_once_with("boss_death_sound")
         self.assertEqual(game.items.drops, [])
-        self.assertEqual(game.message, "O caminho para a escola foi liberado!")
+        self.assertEqual(game.message, "O caminho para o Bosque do Conhecimento foi liberado!")
 
     def test_common_drop_thresholds_and_unlisted_enemy(self):
         game = self.game

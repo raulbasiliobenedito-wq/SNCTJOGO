@@ -32,7 +32,7 @@ class _StaticZone:
 # da intenção de cada fase (as posições de verdade vêm do Tiled).
 PHASES = [
     {
-        "name": "Fase 1 — Escola", "subtitle": "A primeira pergunta pode mudar o mundo.",
+        "name": "Fase 1 — Bosque do Conhecimento", "subtitle": "A primeira pergunta pode mudar o mundo.",
         "world": 7420, "world_height": 1450, "world_top": -520,
         # Os diálogos automáticos por posição (professores/Lia) saíram —
         # substituídos pela cientista-NPC de cada local (objeto "cientista"
@@ -312,11 +312,10 @@ class Level:
         """Elevador(es) secreto(s) (objeto tipo "elevador_lab",
         propriedades "destino" — mesma convenção de "porta": chave de
         ROOM_MAP_FILES pra entrar, "sair" pra voltar — e opcionalmente
-        "chave", que liga esse elevador a uma fog.FogBarrier específica:
-        só pode ser chamado depois da Lia esbarrar nela, ver
-        InteractionSystem.use_secret_elevator/fog_barrier_encountered). Sem "chave"
-        — o mesmo tipo de objeto usado do OUTRO lado, dentro da sala
-        escondida, pra voltar — fica sempre liberado."""
+        "requer_painel=true". Essa propriedade trava a entrada até a
+        sequência dos quatro botões do painel da Fase 1 estar concluída;
+        os elevadores do OUTRO lado, dentro da sala escondida, não têm a
+        propriedade e continuam sempre liberados."""
         if not self.tiled_map:
             return []
         elevators = []
@@ -327,6 +326,8 @@ class Level:
                     "rect": self._rect_from_object(item),
                     "destino": properties.get("destino", "sair"),
                     "chave": properties.get("chave") or None,
+                    "requer_painel": str(properties.get("requer_painel", "false")).lower()
+                    in ("1", "true", "yes"),
                 }
             )
         return elevators
@@ -759,7 +760,24 @@ class Level:
 
     NPC_WIDTH = 48
     NPC_HEIGHT = 48
-    NPC_GROUND_LIFT = 3
+    # Zeca é a referência visual aprovada: os últimos pixels dos pés entram
+    # 5 px na borda de grama. O objeto do Tiled não é confiável pra isso —
+    # entre os moradores, seu bottom varia de 2 a 12 px abaixo do chão.
+    NPC_GROUND_EMBED = 5
+
+    def _npc_ground_y(self, rect):
+        """Encontra o topo sólido imediatamente sob o centro de um NPC."""
+        center_x = rect.centerx
+        solid_rects = self.grounds + [platform.rect for platform in self.platforms]
+        candidates = [
+            solid.top
+            for solid in solid_rects
+            if solid.left <= center_x < solid.right
+            and rect.top <= solid.top <= rect.bottom + 64
+        ]
+        if not candidates:
+            return rect.bottom
+        return min(candidates, key=lambda top: abs(top - rect.bottom))
 
     # Uma cientista por local (chave = (índice da fase, sala)); o nome bate
     # com NPC_DIALOGUES/NPC_SPRITE_ROWS em game.py — level.py só guarda
@@ -785,7 +803,11 @@ class Level:
             for item in self.tiled_map.entities(entity_type):
                 name = item["properties"].get("nome", "")
                 rect = pygame.Rect(item["x"], item["y"], self.NPC_WIDTH, self.NPC_HEIGHT)
-                npcs.append({"rect": rect, "name": name})
+                npcs.append({
+                    "rect": rect,
+                    "name": name,
+                    "ground_y": self._npc_ground_y(rect),
+                })
         return npcs
 
     def _enemy_platform_from_map_object(self, item):
@@ -1266,8 +1288,17 @@ class Level:
             rect = npc["rect"]
             frame_w, frame_h = frame.get_size()
             offset_x = (frame_w - rect.width) // 2
-            offset_y = frame_h - rect.height - self.NPC_GROUND_LIFT
-            surface.blit(frame, (rect.x - offset_x - camera_x, rect.y - offset_y - camera_y))
+            # As folhas podem ter margens transparentes diferentes sob os
+            # pés (7–10 px nos moradores novos). Apoiar o canvas inteiro no
+            # chão fazia essa margem virar flutuação visível; o bounding rect
+            # ancora o último pixel realmente desenhado no mesmo piso.
+            visible = frame.get_bounding_rect()
+            ground_y = npc.get("ground_y", rect.bottom)
+            grounded_y = ground_y + self.NPC_GROUND_EMBED - visible.bottom
+            surface.blit(
+                frame,
+                (rect.x - offset_x - camera_x, grounded_y - camera_y),
+            )
 
     def _draw_school_platform(self, surface, platform, camera_x, camera_y, platform_sprite):
         """Repete apenas um tile de piso para cada plataforma, sem misturar estilos."""

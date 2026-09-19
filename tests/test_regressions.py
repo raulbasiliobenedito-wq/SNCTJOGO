@@ -130,12 +130,22 @@ class GameRegressionTests(unittest.TestCase):
 
     def setUp(self):
         game = self.game
+        game._level_transition_phase = None
+        game._level_transition_alpha = 0
+        game._level_transition_target = None
         game.load_level(0)
         game.lives = 5
         game.shield = 0
         game.items.counts = {}
         game.ranged_unlocked = False
         game.dialogue.close()
+
+    def finish_level_transition(self):
+        updates = 0
+        while self.game._level_transition_phase is not None:
+            self.game._update_level_transition()
+            updates += 1
+            self.assertLess(updates, 100)
 
     def test_microscope_drag_order_and_resume(self):
         from minigame import MICROSCOPE_ORDER, MicroscopeMinigame
@@ -258,6 +268,18 @@ class GameRegressionTests(unittest.TestCase):
         self.assertTrue(game.puzzles.microscope_assembled)
         self.assertTrue(barrier._dissipating)
 
+    def test_phase_one_lab_elevator_is_marked_to_require_the_panel(self):
+        game = self.game
+        game.load_level(0)
+
+        elevator = next(
+            item
+            for item in game.level.secret_elevators
+            if item["destino"] == "laboratorio_secreto"
+        )
+
+        self.assertTrue(elevator["requer_painel"])
+
     def test_elevator_lab_loose_parts_are_enlarged_and_bob(self):
         game = self.game
         game.load_level(0)
@@ -287,6 +309,55 @@ class GameRegressionTests(unittest.TestCase):
         first_y = level._lab_microscope_bob(0)
         level.npc_animation = 18
         self.assertNotEqual(level._lab_microscope_bob(0), first_y)
+
+    def test_elevator_cutscene_lia_is_doubled_and_grounded_behind_frame(self):
+        cutscene = self.game.elevator_cutscene
+        visible = cutscene.lia_visible_rect
+        x, y = cutscene._lia_position()
+
+        self.assertEqual(cutscene.lia_frame.get_size(), (288, 288))
+        self.assertEqual(y + visible.bottom, cutscene.LIA_FLOOR_Y)
+        self.assertEqual(x + visible.centerx, 1920 // 2)
+
+    def test_contextual_prompts_describe_elevator_energy_box_and_microscope(self):
+        game = self.game
+        surface = pygame.Surface((1920, 1080), pygame.SRCALPHA).convert_alpha()
+
+        with patch("game.draw_text") as draw:
+            game.load_level(0)
+            elevator = game.level.secret_elevators[0]["rect"]
+            game.player.reset(elevator.x, elevator.y)
+            game._draw_puzzle_prompts(surface)
+
+            game.enter_room("laboratorio_secreto")
+            exit_elevator = game.level.secret_elevators[0]["rect"]
+            game.player.reset(exit_elevator.x, exit_elevator.y)
+            game._draw_puzzle_prompts(surface)
+            bench = game.level.lab_bench["rect"]
+            game.player.reset(bench.x, bench.y)
+            game._draw_puzzle_prompts(surface)
+
+            game.load_level(1)
+            game.enter_room("laboratorio")
+            energy_box = game.level.energy_box
+            game.player.reset(energy_box.x, energy_box.y)
+            game._draw_puzzle_prompts(surface)
+
+        labels = [call.args[1] for call in draw.call_args_list]
+        self.assertIn("APERTE [E] PARA DESCER NO ELEVADOR", labels)
+        self.assertIn("APERTE [E] PARA SUBIR NO ELEVADOR", labels)
+        self.assertIn("APERTE [E] PARA MONTAR O MICROSCÓPIO", labels)
+        self.assertIn("APERTE [E] PARA ACESSAR A CAIXA DE ENERGIA", labels)
+
+    def test_secret_lab_elevators_use_full_object_width(self):
+        game = self.game
+        game.load_level(0)
+        game.enter_room("laboratorio_secreto")
+
+        self.assertEqual(
+            [tuple(item["rect"]) for item in game.level.secret_elevators],
+            [(40, 464, 80, 80), (2888, 464, 80, 80)],
+        )
 
     def test_web_entrypoint_dispatches_events_and_exits(self):
         import asyncio
@@ -320,10 +391,38 @@ class GameRegressionTests(unittest.TestCase):
         game.items.counts = {"essencia_slime": 1}
         game.player.x = game.level.world_width - 90
         game._advance_level_if_ready(game.player)
+
+        self.assertEqual(game.level.index, 0)
+        self.assertEqual(game._level_transition_phase, "fade_out")
+        while game._level_transition_phase == "fade_out":
+            game._update_level_transition()
+        self.assertEqual(game._level_transition_alpha, 255)
+        self.assertEqual(game.level.index, 1)
+        self.finish_level_transition()
+
         saved = json.loads(game.SAVE_PATH.read_text(encoding="utf-8"))
         self.assertEqual(saved["level"], 1)
         self.assertTrue(saved["ranged_unlocked"])
         self.assertTrue(game.ranged_unlocked)
+
+    def test_phase_two_requires_the_energy_box_before_advancing(self):
+        game = self.game
+        game.load_level(1)
+        game.collected = set(range(len(game.level.research)))
+        game.items.counts = {"livro_magico": 1, "amostra_especime": 1}
+        game.player.x = game.level.world_width - 90
+
+        game._advance_level_if_ready(game.player)
+
+        self.assertIsNone(game._level_transition_phase)
+        self.assertIn("caixa de energia", game.message)
+
+        game.puzzles.energy_box_state["wired"] = True
+        game.player.x = game.level.world_width - 90
+        game._advance_level_if_ready(game.player)
+
+        self.assertEqual(game._level_transition_phase, "fade_out")
+        self.assertEqual(game._level_transition_target, 2)
 
     def test_village_transition_saves_school_checkpoint(self):
         game = self.game
@@ -331,9 +430,34 @@ class GameRegressionTests(unittest.TestCase):
         game.collected = set(range(len(game.level.research)))
         game.player.x = game.level.world_width - 90
         game._advance_level_if_ready(game.player)
+        self.finish_level_transition()
         saved = json.loads(game.SAVE_PATH.read_text(encoding="utf-8"))
         self.assertEqual(saved["level"], 0)
         self.assertEqual(saved["checkpoint"], list(game.level.spawn))
+
+    def test_last_phase_fades_to_completion(self):
+        from game_data import COMPLETE, PLAYING
+
+        game = self.game
+        game.load_level(2)
+        game.collected = set(range(len(game.level.research)))
+        game.player.x = game.level.world_width - 90
+
+        game._advance_level_if_ready(game.player)
+
+        self.assertEqual(game.state, PLAYING)
+        self.assertEqual(game._level_transition_phase, "fade_out")
+        while game._level_transition_phase == "fade_out":
+            game._update_level_transition()
+        self.assertEqual(game.state, COMPLETE)
+        self.assertEqual(game._level_transition_alpha, 255)
+        self.finish_level_transition()
+        self.assertIsNone(game._level_transition_phase)
+
+    def test_phase_one_uses_bosque_do_conhecimento_name(self):
+        from level import PHASES
+
+        self.assertEqual(PHASES[0]["name"], "Fase 1 — Bosque do Conhecimento")
 
     def test_trimmed_village_parallax_matches_full_layers_pixel_for_pixel(self):
         from assets import Assets
@@ -407,10 +531,151 @@ class GameRegressionTests(unittest.TestCase):
         )
 
     def test_school_does_not_reuse_campo_background(self):
+        from settings import HEIGHT, WIDTH
+
         game = self.game
         game.load_level(0)
         self.assertEqual(game._background_key(), "school")
-        self.assertIn("school", game.assets.backgrounds)
+        self.assertEqual(len(game.assets.school_layers), 3)
+        self.assertEqual(
+            [layer["name"] for layer in game.assets.school_layers],
+            ["sky", "giant_trees", "fog"],
+        )
+
+        surface_view = pygame.Surface((WIDTH, HEIGHT)).convert()
+        deep_view = pygame.Surface((WIDTH, HEIGHT)).convert()
+        game.camera_x = 0
+        game.camera_y = 0
+        game._draw_background(surface_view)
+        game.camera_x = game.level.world_width - WIDTH
+        game.camera_y = game.level.world_height - HEIGHT
+        game._draw_background(deep_view)
+
+        # O céu opaco cobre os cantos e a descida altera a composição sem
+        # depender da antiga troca súbita de fundo em UNDERGROUND_Y.
+        self.assertEqual(surface_view.get_at((0, 0)).a, 255)
+        self.assertEqual(deep_view.get_at((WIDTH - 1, HEIGHT - 1)).a, 255)
+        self.assertNotEqual(
+            pygame.image.tostring(surface_view, "RGB"),
+            pygame.image.tostring(deep_view, "RGB"),
+        )
+
+        fog = next(
+            layer for layer in game.assets.school_layers if layer["name"] == "fog"
+        )
+        self.assertGreater(fog["scroll_speed_x"], 5.0)
+
+        trees = next(
+            layer
+            for layer in game.assets.school_layers
+            if layer["name"] == "giant_trees"
+        )
+        self.assertGreater(trees["variants"]["normal"].get_height(), HEIGHT)
+        for camera_y in (game.level.world_top, game.level.world_height - HEIGHT):
+            origin_y = round(
+                trees["draw_offset"][1]
+                - (camera_y - trees["reference_y"]) * trees["parallax_y"]
+            )
+            self.assertLessEqual(origin_y, 0)
+            self.assertGreaterEqual(
+                origin_y + trees["variants"]["normal"].get_height(), HEIGHT
+            )
+
+        sky = game.assets.school_layers[0]["variants"]["normal"]
+        lower_sky = sky.subsurface(pygame.Rect(0, HEIGHT - 16, WIDTH, 16))
+        red, green, blue, _alpha = pygame.transform.average_color(lower_sky)
+        self.assertGreater(blue, red)
+        self.assertGreater(blue, green)
+
+    def test_school_fog_moves_while_camera_is_still(self):
+        game = self.game
+        game.load_level(0)
+        fog = next(
+            layer for layer in game.assets.school_layers if layer["name"] == "fog"
+        )
+        before = round(
+            fog["base_offset"][0]
+            + fog["draw_offset"][0]
+            - game.camera_x * fog["parallax_x"]
+            - game._background_elapsed * fog["scroll_speed_x"]
+        )
+        game._background_elapsed += 1.0
+        after = round(
+            fog["base_offset"][0]
+            + fog["draw_offset"][0]
+            - game.camera_x * fog["parallax_x"]
+            - game._background_elapsed * fog["scroll_speed_x"]
+        )
+        self.assertNotEqual(before, after)
+
+    def test_all_villager_idle_sheets_are_loaded_without_chroma_green(self):
+        from assets import Assets
+
+        expected_counts = {
+            "Dona Marta": 9,
+            "Cadu": 8,
+            "Zeca": 4,
+            "Seu Joaquim": 9,
+            "Sra. Amélia": 9,
+            "Bento": 9,
+        }
+        expected_size = (round(48 * Assets.NPC_SCALE),) * 2
+        for name, count in expected_counts.items():
+            frames = self.game.assets.npc_frames[name]
+            self.assertEqual(len(frames), count, name)
+            self.assertTrue(any(frame.get_bounding_rect().size != (0, 0) for frame in frames))
+            for frame in frames:
+                self.assertEqual(frame.get_size(), expected_size, name)
+                self.assertEqual(frame.get_at((0, 0)).a, 0, name)
+                self.assertFalse(
+                    any(
+                        color.a
+                        and color.g >= 245
+                        and color.r <= 10
+                        and color.b <= 10
+                        for color in (
+                            frame.get_at((x, y))
+                            for y in range(frame.get_height())
+                            for x in range(frame.get_width())
+                        )
+                    ),
+                    name,
+                )
+
+            npc_rect = pygame.Rect(100, 50, 48, 48)
+            original_npcs = self.game.level.npcs
+            self.game.level.npcs = [{
+                "name": name,
+                "rect": npc_rect,
+                "ground_y": npc_rect.bottom,
+            }]
+            try:
+                preview = pygame.Surface((220, 160), pygame.SRCALPHA)
+                self.game.level._draw_npcs(
+                    preview, 0, 0, self.game.assets.npc_frames
+                )
+            finally:
+                self.game.level.npcs = original_npcs
+            self.assertEqual(
+                preview.get_bounding_rect().bottom,
+                npc_rect.bottom + self.game.level.NPC_GROUND_EMBED,
+                name,
+            )
+
+        self.game.load_level("vila")
+        for npc in self.game.level.npcs:
+            frame = self.game.assets.npc_frames[npc["name"]][0]
+            visible = frame.get_bounding_rect()
+            drawn_top = (
+                npc["ground_y"]
+                + self.game.level.NPC_GROUND_EMBED
+                - visible.bottom
+            )
+            self.assertEqual(
+                drawn_top + visible.bottom - npc["ground_y"],
+                5,
+                npc["name"],
+            )
 
     def test_zoom_one_draws_directly_without_allocating_world_buffer(self):
         import game as game_module
@@ -522,7 +787,7 @@ class GameRegressionTests(unittest.TestCase):
         self.assertLess(cadu["rect"].right, slime.rect.left)
         self.assertTrue(
             any(
-                ground.top == cadu["rect"].bottom
+                ground.top == cadu["ground_y"]
                 and ground.left < cadu["rect"].right
                 and ground.right > cadu["rect"].left
                 for ground in game.level.grounds

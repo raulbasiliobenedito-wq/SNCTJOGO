@@ -69,7 +69,7 @@ class IntroCutscene:
             "Mãe",
             "Comece por quem quase ficou fora dos livros. E lembre: ciência nunca se faz sozinha.",
         ),
-        ("Lia", "Vou levar o caderno para a escola. Cada pista vai entrar nessa pesquisa."),
+        ("Lia", "Vou levar o caderno ao Bosque do Conhecimento. Cada pista vai entrar nessa pesquisa."),
     )
 
     BACKGROUND_PATH = ASSET_DIR / "cutscenes" / "prologo_ciencia_delas.png"

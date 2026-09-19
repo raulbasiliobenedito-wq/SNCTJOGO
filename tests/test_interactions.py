@@ -103,16 +103,28 @@ class InteractionTests(unittest.TestCase):
         leave.assert_called_once_with()
         self.assertEqual([c.args[0] for c in self.sound.call_args_list], ["door_sound", "door_sound"])
 
-    def test_elevator_gate_and_delayed_transition(self):
+    def test_elevator_requires_all_panel_buttons_and_delays_transition(self):
         game = self.game
-        barrier = SimpleNamespace(chave="lab", encountered=False)
-        game.level.fog_barriers = [barrier]
-        elevator = {"rect": game.player.rect.copy(), "chave": "lab", "destino": "laboratorio_secreto"}
+        elevator = {
+            "rect": game.player.rect.copy(),
+            "chave": "lab",
+            "destino": "laboratorio_secreto",
+            "requer_painel": True,
+        }
         game.level.secret_elevators = [elevator]
         with patch.object(game, "enter_room") as enter:
             self.assertTrue(game.interactions.use_secret_elevator())
             game.elevator_cutscene.start.assert_not_called()
-            barrier.encountered = True
+            game.dialogue.start.assert_called_once_with(
+                "Lia", "O elevador está sem energia. Preciso ativar o painel primeiro."
+            )
+            game.puzzles.lever_on = True
+            self.assertTrue(game.interactions.use_secret_elevator())
+            game.elevator_cutscene.start.assert_not_called()
+            game.dialogue.start.assert_called_with(
+                "Lia", "O elevador continua bloqueado. Preciso ativar os quatro botões do painel."
+            )
+            game.puzzles.sequence_solved = True
             self.assertTrue(game.interactions.use_secret_elevator())
             enter.assert_not_called()
             kwargs = game.elevator_cutscene.start.call_args.kwargs
@@ -219,8 +231,14 @@ class InteractionTests(unittest.TestCase):
             self.assertEqual(game.puzzles.sequence_progress, index + 1)
         self.assertTrue(game.puzzles.sequence_solved)
         self.sound.assert_called_with("correct_sequence_sound")
+        game.dialogue.start.assert_called_with(
+            "Painel", "Sequência correta! O elevador foi ativado."
+        )
         game.puzzles.use_sequence_button(game.player)
         self.assertEqual(game.puzzles.sequence_progress, 4)
+        game.dialogue.start.assert_called_with(
+            "Painel", "Sequência concluída. O elevador está liberado."
+        )
 
     def test_elevator_lab_parts_are_the_phase_one_microscope_parts(self):
         game = self.game

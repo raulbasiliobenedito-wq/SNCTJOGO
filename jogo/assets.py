@@ -165,6 +165,46 @@ class Assets:
     # uma das cinco camadas esteja ausente ou incompleta.
     CAMPO_BACKGROUND_PATH = "backgrounds/campo/campo_background_final.png"
 
+    # A Escola usa apenas os três planos que se integram naturalmente ao
+    # percurso: céu, árvores gigantes e névoa. Os PNGs da construção e da
+    # vegetação continuam guardados na pasta, mas não são carregados nem
+    # desenhados porque formavam faixas artificiais sobre as plataformas.
+    # A névoa deriva devagar por conta própria, mesmo com Lia parada.
+    SCHOOL_BACKGROUND_DIR = "backgrounds/escola"
+    SCHOOL_PARALLAX_LAYERS = (
+        {
+            "name": "sky",
+            "filename": "escola_ceu.png",
+            "parallax_x": 0.00,
+            "parallax_y": 0.00,
+            "repeat_x": False,
+            "scroll_speed_x": 0.0,
+            "mirror_repeat": False,
+        },
+        {
+            "name": "giant_trees",
+            "filename": "escola_arvores_grandes.png",
+            "parallax_x": 0.08,
+            "parallax_y": 0.10,
+            "repeat_x": False,
+            "scroll_speed_x": 0.0,
+            "mirror_repeat": False,
+            # Repete apenas as fileiras externas fora da área visível. Isso
+            # conserva a arte e o parallax, mas impede a câmera vertical de
+            # alcançar o começo ou o fim físico do PNG.
+            "vertical_edge_padding": 64,
+        },
+        {
+            "name": "fog",
+            "filename": "escola_nevoa_arvores.png",
+            "parallax_x": 0.10,
+            "parallax_y": 0.18,
+            "repeat_x": True,
+            "scroll_speed_x": 7.0,
+            "mirror_repeat": True,
+        },
+    )
+
     # Cores de cena. Antes cada uma virava um Surface SRCALPHA de tela cheia
     # blitado por cima do fundo TODO QUADRO — medido em ~4,7 ms/quadro, a
     # operação mais cara do jogo inteiro. Agora são só dados: a cor é
@@ -188,6 +228,7 @@ class Assets:
         leva só o básico."""
         self.backgrounds = {}
         self.campo_layers = self._load_campo_parallax_layers()
+        self.school_layers = self._load_school_parallax_layers()
         campo_static_exists = (
             not self.campo_layers
             and (ASSET_DIR / self.CAMPO_BACKGROUND_PATH).exists()
@@ -209,11 +250,12 @@ class Assets:
             ("cave", "backgrounds/cave_background_v2.png", False),
             ("lab", "backgrounds/lab_background.png", True),
             ("library", "backgrounds/library_background.png", True),
-            # A escola e o Campo têm identidades visuais independentes. O
-            # arquivo antigo continua sendo o fallback da Fase 1 até a arte
-            # escolar definitiva chegar.
-            ("school", "backgrounds/background_school.png", False),
         ]
+        # O fundo antigo continua sendo fallback se qualquer uma das três
+        # camadas novas não estiver presente, sem ficar residente à toa no
+        # caminho normal.
+        if not self.school_layers:
+            specs.append(("school", "backgrounds/background_school.png", False))
         if village_flat_exists:
             specs.append(("village", "backgrounds/ceu.png", False))
         for key, path, is_university in specs:
@@ -238,6 +280,119 @@ class Assets:
             variant: pygame.transform.flip(image, True, False)
             for variant, image in self.backgrounds.get("university", {}).items()
         }
+
+    def _load_school_parallax_layers(self):
+        """Carrega os três planos ativos da Escola preservando pixel art e alpha.
+
+        As imagens transparentes têm proporções diferentes, então são
+        escaladas pela altura do canvas em vez de deformadas para 16:9. Só a
+        margem vertical invisível é removida; ``draw_offset`` recoloca os
+        pixels exatamente na posição original da composição.
+        """
+        paths = [
+            ASSET_DIR / self.SCHOOL_BACKGROUND_DIR / spec["filename"]
+            for spec in self.SCHOOL_PARALLAX_LAYERS
+        ]
+        if not all(path.exists() for path in paths):
+            return []
+
+        layers = []
+        for spec, path in zip(self.SCHOOL_PARALLAX_LAYERS, paths):
+            is_sky = spec["name"] == "sky"
+            raw = pygame.image.load(path)
+            if is_sky:
+                # O céu é a única camada opaca e garante cobertura total.
+                visible = pygame.transform.scale(raw, (WIDTH, HEIGHT)).convert()
+                # A exportação termina num degradê quase branco/amarelo que
+                # parece uma faixa vazia nos poços da fase. A parte inferior
+                # passa a refletir uma faixa ainda azul do próprio céu: a
+                # emenda começa na mesma fileira, portanto não abre corte.
+                horizon_y = round(HEIGHT * 0.75)
+                reflected_source_y = round(HEIGHT * 0.50)
+                reflected = pygame.transform.flip(
+                    visible.subsurface(
+                        pygame.Rect(
+                            0,
+                            reflected_source_y,
+                            WIDTH,
+                            horizon_y - reflected_source_y,
+                        )
+                    ),
+                    False,
+                    True,
+                )
+                reflected = pygame.transform.scale(
+                    reflected, (WIDTH, HEIGHT - horizon_y)
+                )
+                visible.blit(reflected, (0, horizon_y))
+                tile_width = WIDTH
+                draw_offset = (0, 0)
+            else:
+                raw = raw.convert_alpha()
+                scale = HEIGHT / raw.get_height()
+                scaled_width = max(1, round(raw.get_width() * scale))
+                scaled = pygame.transform.scale(
+                    raw, (scaled_width, HEIGHT)
+                ).convert_alpha()
+                tile_width = scaled_width
+                # A exportação contém alguns pixels quase transparentes nas
+                # margens. Ignorá-los evita superfícies enormes sem alterar o
+                # desenho que de fato aparece na tela.
+                content_rect = scaled.get_bounding_rect(min_alpha=8)
+                if content_rect:
+                    vertical_rect = pygame.Rect(
+                        0, content_rect.y, scaled_width, content_rect.height
+                    )
+                    visible = scaled.subsurface(vertical_rect).copy().convert_alpha()
+                    draw_offset = (0, content_rect.y)
+
+                    edge_padding = spec.get("vertical_edge_padding", 0)
+                    if edge_padding:
+                        core = visible
+                        extended = pygame.Surface(
+                            (scaled_width, core.get_height() + 2 * edge_padding),
+                            pygame.SRCALPHA,
+                        ).convert_alpha()
+                        top_edge = core.subsurface(
+                            pygame.Rect(0, 0, scaled_width, 1)
+                        )
+                        bottom_edge = core.subsurface(
+                            pygame.Rect(0, core.get_height() - 1, scaled_width, 1)
+                        )
+                        extended.blit(
+                            pygame.transform.scale(
+                                top_edge, (scaled_width, edge_padding)
+                            ),
+                            (0, 0),
+                        )
+                        extended.blit(core, (0, edge_padding))
+                        extended.blit(
+                            pygame.transform.scale(
+                                bottom_edge, (scaled_width, edge_padding)
+                            ),
+                            (0, edge_padding + core.get_height()),
+                        )
+                        visible = extended
+                        draw_offset = (
+                            draw_offset[0], draw_offset[1] - edge_padding
+                        )
+                else:
+                    visible = pygame.Surface((1, 1), pygame.SRCALPHA).convert_alpha()
+                    draw_offset = (0, 0)
+
+            layer = {
+                **spec,
+                "variants": {"normal": visible, "underground": visible},
+                "tile_width": tile_width,
+                "draw_offset": draw_offset,
+                "base_offset": (0, 0),
+                "reference_y": 0,
+            }
+            if spec["repeat_x"] and spec["mirror_repeat"]:
+                mirror = pygame.transform.flip(visible, True, False)
+                layer["mirrors"] = {"normal": mirror, "underground": mirror}
+            layers.append(layer)
+        return layers
 
     def _load_campo_parallax_layers(self):
         """Carrega os cinco planos do Campo já alinhados no mesmo canvas.
@@ -708,8 +863,9 @@ class Assets:
 
     # Um pouco maiores que o quadro cru (48x48, igual à Lia) pra se
     # destacarem melhor perto dela sem deixar de ler como "gente", mesma
-    # técnica de ampliação pós-recorte usada nos inimigos/chefes.
-    NPC_SCALE = 1.65
+    # técnica de ampliação pós-recorte usada nos inimigos/chefes. O fator
+    # anterior era 1.65; o novo tamanho é exatamente 1,25x maior.
+    NPC_SCALE = 1.65 * 1.25
 
     def _load_scientist_sprites(self):
         """cientistas_idle.png: quadro 48x48, grade 8x5 — uma linha por

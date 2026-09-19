@@ -48,9 +48,11 @@ class AncientGolemTests(unittest.TestCase):
         level = Level(VILLAGE)
         golem = next(enemy for enemy in level.enemies if isinstance(enemy, AncientGolem))
 
-        self.assertEqual(tuple(golem.platform.rect), (5600, 480, 576, 32))
+        # Posição final escolhida no Tiled: o teste protege a nova arena,
+        # não tenta empurrar o Golem de volta para o layout antigo.
+        self.assertEqual(tuple(golem.platform.rect), (6367, 288, 671, 32))
         arena = next(entry for entry in level.boss_arenas if entry["enemy"] is golem)
-        self.assertEqual(tuple(arena["zone"]), (5568, 0, 640, 640))
+        self.assertEqual(tuple(arena["zone"]), (6335, 0, 735, 640))
         self.assertEqual(golem.state, golem.DORMANT)
         self.assertIn("AncientGolem", BOSS_NAMES)
 

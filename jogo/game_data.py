@@ -345,8 +345,8 @@ NPC_DIALOGUES = {
     ),
     "Seu Joaquim": (
         ("Seu Joaquim", "Lia! Cedo pra tá de pé, hein. Vai pra onde com essa cara de missão?"),
-        ("Lia", "Até a escola. Preciso de uma coisa lá."),
-        ("Seu Joaquim", "Escola hoje. Tá certo. Então leva um conselho de graça: a estrada daqui pra lá não tá mais tão mansa quanto era."),
+        ("Lia", "Até o Bosque do Conhecimento. Preciso encontrar uma coisa por lá."),
+        ("Seu Joaquim", "Vai ao bosque hoje? Tá certo. Então leva um conselho de graça: a estrada daqui pra lá não tá mais tão mansa quanto era."),
         ("Lia", "Como assim?"),
         ("Seu Joaquim", "Apareceu bicho. Nada do outro mundo, mas é bom saber se mexer. Seta pra andar, espaço pra pular."),
         ("Lia", "E se alguém quiser conversar?"),

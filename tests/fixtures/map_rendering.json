@@ -4,36 +4,36 @@
       "map": "vila.tmx",
       "camera": [224.5, 0.25],
       "elapsed_ms": 0,
-      "base_sha256": "e055ab38232dae42f9ecb59ad8c9b9efd5e280fb6c45a402b42326f35882f0c2",
-      "foreground_sha256": "1f51a412856bf2d2bebdf6c3e0de2e3bfac835123ba5a672f6df6821387dd40a"
+      "base_sha256": "a347dc364a989f1cbe6044009be99f0031143c9605468452bae5324d959f80da",
+      "foreground_sha256": "24f00a1388d2251e958c4c9c57f430e505b38720cdead185d0486b949c453386"
     },
     "vila/tall_house_boundary": {
       "map": "vila.tmx",
       "camera": [1856.5, 96.25],
       "elapsed_ms": 0,
-      "base_sha256": "a181feefe50b91b1233ddf6c89ef6384a1d18ca03153026735f286b63f691a9f",
-      "foreground_sha256": "658651e1221f27730292c17af720c75c12dbd3038df479804326c1ef400e3be1"
+      "base_sha256": "322e835c68bc72b89e6e3d6285cb416c5de9eef2e8679a99212e0d704a9a592c",
+      "foreground_sha256": "d3ce44d222dfec4d7a5eabcc5d11db1e6e0c01a6af21306c734b16070314e015"
     },
     "vila/props_and_animation": {
       "map": "vila.tmx",
       "camera": [1280.5, 208.25],
       "elapsed_ms": 350,
-      "base_sha256": "e5ccac5fce7c10a4435b79429bbb0124b99eeff3722177a807ca4f0ff86b5755",
-      "foreground_sha256": "72f48a5006e3a92ba60f9f98ac69724bcdd96159f9a930b625f746d0ee5223ef"
+      "base_sha256": "9322a5c6b913561d0b8696128f2cc4c55c2daeb04a4025698ffbb89b221e23d3",
+      "foreground_sha256": "dde0d4422197f259cdcfdb8e609dd18939a569a59667e1b92445e884155738d9"
     },
     "vila/right_house_boundary": {
       "map": "vila.tmx",
       "camera": [2240.5, 96.25],
       "elapsed_ms": 0,
-      "base_sha256": "5e1dabf23c3ab5ffcde0ffd86eb5bfc57fb20ae29fa753b3433db8719cf61a16",
-      "foreground_sha256": "65795c658c52754db007fa00930e90a6e4ccf56b079088c60d25e17cec063953"
+      "base_sha256": "47cdb2c28c82351cecd9d4bfdce65e6516eafdc4dbdb1c2784e248ffafbdc301",
+      "foreground_sha256": "0f2fbcbb623ef927a53de44b93a0458405bed8c490acd934b3f5a97ac1ae0a71"
     },
     "school/early_large_tiles": {
       "map": "fase1_escola.tmx",
       "camera": [480.5, 352.25],
       "elapsed_ms": 0,
-      "base_sha256": "02e2f002a7ba1d59dd7de239220bd0dd5fdf12a3ddb106301be8276286704433",
-      "foreground_sha256": "3f97e4e67666bc801963bb24913a1734395eedb1e8f621eaca9cb918373804e7"
+      "base_sha256": "e97f61b7a7d8f72c510a71ae00ad7793a3a570883453159d754af487b7b98415",
+      "foreground_sha256": "ae86f7114a0d7783782eed8f3b6ded81ca52f2b7809dbe2e0182a55b2b5dad8d"
     },
     "school/foreground_boundary": {
       "map": "fase1_escola.tmx",
@@ -46,15 +46,15 @@
       "map": "fase1_escola.tmx",
       "camera": [6144.5, 352.25],
       "elapsed_ms": 0,
-      "base_sha256": "5b843c7828876e24d25b6ff4a30c994d6ca7831d82cd877fd2f2cd329b54c954",
-      "foreground_sha256": "41ab94df10da31f67941bd0ac4c731e15d58f15eee836f0cdace449039142f33"
+      "base_sha256": "743632f5dc2fb24b32f262e8070aee5ed6bbed9b62ee2eb4de6d38ff2f451da6",
+      "foreground_sha256": "12de0828f7fd07e2ec39fabf8499a673a3e1bd6a889d509f734116c8942d16bc"
     },
     "secret_lab/animated_tiles": {
       "map": "fase1_laboratorio_secreto.tmx",
       "camera": [768.5, 320.25],
       "elapsed_ms": 375,
-      "base_sha256": "ab20a6fd741828705bb563bda321b728586d81d01e7734d7c88f79fdaf5c5ec4",
-      "foreground_sha256": "b34e692559c364ec879ed9ae99934613709ab0520641f0cb3ad9fce7f8242362"
+      "base_sha256": "2252493c57eb6cfff4a970d11960efc143c9de8401d4efb50b9957c897d6af66",
+      "foreground_sha256": "1d828519ab478475164548496922773476c7c21b001bb520bb3431aaaf8cd01e"
     },
     "university/animated_tiles": {
       "map": "fase2_universidade.tmx",
@@ -81,15 +81,15 @@
       "map": "fase3_pesquisa.tmx",
       "camera": [0.5, 0.25],
       "elapsed_ms": 275,
-      "base_sha256": "a8ba49a498c58d5290737ead19f2d7728fe0364f87b45cf686a46ce0224e60d3",
-      "foreground_sha256": "7c6a625e30dfec694034b9d680fa909f185875f089834be16d92cbf12552bda2"
+      "base_sha256": "5311006b5477c3649faa6092f23cc4e68212808d1711545ac145fc47e889342f",
+      "foreground_sha256": "127c928015b633b9759119f62589e7a6257cbe7f9c625a739d40ba9014718973"
     },
     "cave/deep_animated_tiles": {
       "map": "fase3_pesquisa.tmx",
       "camera": [4096.5, 1408.25],
       "elapsed_ms": 875,
-      "base_sha256": "807743fe2032c77e49e7aff2330ab7462d1f2e2f1185535c4adba1d0e6e6e662",
-      "foreground_sha256": "b06ea567cfc78aeb2a0290c9a2c6c2d4355ba12c8e07501a3eecb72ab18e7120"
+      "base_sha256": "d3725633fd18aa6d0286124f3f2d21a01a13b27cf4c2123b6739ebfadd58142c",
+      "foreground_sha256": "2f35805ebf05451df9a07e85cfa7902b88c9b1971bf39ceaa27d3c6c73a0c328"
     }
   }
 }

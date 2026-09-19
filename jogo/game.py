@@ -76,6 +76,10 @@ from game_data import (
 class Game:
     """Mantém o estado de uma sessão de jogo e coordena seus componentes."""
 
+    # Aproximadamente 0,5 s no total a 60 FPS: rápido o bastante para não
+    # interromper o ritmo, mas com preto completo entre os dois cenários.
+    LEVEL_TRANSITION_FADE_STEP = 18
+
     def __init__(self):
         self._load_assets()
         self.player = Player()
@@ -122,6 +126,9 @@ class Game:
         self.shield = 0
         self.camera_x = 0
         self.camera_y = 0
+        # Relógio visual independente do movimento da câmera. A névoa do
+        # fundo da Escola usa este tempo para derivar mesmo com Lia parada.
+        self._background_elapsed = 0.0
         # Surface intermediária pro zoom da câmera (ver _blit_zoomed_world) —
         # criada só uma vez (não a cada quadro) e reaproveitada.
         self._world_surface = None
@@ -134,6 +141,13 @@ class Game:
         # a transição sem manter a cutscene carregada durante o gameplay.
         self._intro_exit_fade_alpha = 0
         self._intro_exit_fade_surface = None
+        # Transição entre Campo/fases: primeiro cobre o cenário atual de
+        # preto, troca o Level somente quando a tela está opaca e então
+        # revela o próximo. Enquanto ativa, update() congela o gameplay.
+        self._level_transition_phase = None
+        self._level_transition_alpha = 0
+        self._level_transition_target = None
+        self._level_transition_surface = None
         # Pano de fundo estático do menu (ver draw/_render_world_snapshot).
         # Invalidado em load_level, pra o menu nunca mostrar o mundo de uma
         # fase anterior depois de um reinício.
@@ -438,6 +452,12 @@ class Game:
         self._update_music()
         dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed = self._read_input(keyboard)
 
+        # Congela junto com o menu de pausa, mas continua durante diálogos e
+        # dicas, quando o jogo ainda está no estado PLAYING. O limite evita
+        # um salto visual se a janela ficar suspensa por alguns segundos.
+        if self.state == PLAYING:
+            self._background_elapsed += max(0.0, min(float(dt), 0.1))
+
         if self.state != INTRO and self._intro_exit_fade_alpha:
             self._intro_exit_fade_alpha = max(
                 0,
@@ -445,6 +465,12 @@ class Game:
             )
             if self._intro_exit_fade_alpha == 0:
                 self._intro_exit_fade_surface = None
+
+        # A tela continua sendo desenhada durante o fade, mas nenhuma
+        # entidade, combate ou interação avança até a troca terminar.
+        if self._level_transition_phase is not None:
+            self._update_level_transition()
+            return
 
         if self.state == TITLE:
             self._update_title(keyboard)
@@ -1364,11 +1390,18 @@ class Game:
         return False
 
     def _advance_level_if_ready(self, player):
+        if self._level_transition_phase is not None:
+            return
         if player.x < self.level.world_width - 100:
             return
 
         needs_microscope = (
             self.level.index == 0 and not self.level.room and not self.puzzles.microscope_assembled
+        )
+        needs_energy_box = (
+            self.level.index == 1
+            and not self.level.room
+            and not self.puzzles.energy_box_state["wired"]
         )
         missing_items = [
             key for key in PHASE_REQUIRED_ITEMS.get(self.level.index, ())
@@ -1386,6 +1419,12 @@ class Game:
                 MESSAGE_DURATION_LONG,
             )
             player.x = self.level.world_width - 160
+        elif needs_energy_box:
+            self.show_message(
+                "Conserte e ligue a caixa de energia no laboratório antes de avançar.",
+                MESSAGE_DURATION_LONG,
+            )
+            player.x = self.level.world_width - 160
         elif missing_items:
             names = ", ".join(ITEM_DEFS[key]["name"] for key in missing_items)
             self.show_message(f"Ainda falta: {names}.", MESSAGE_DURATION_LONG)
@@ -1394,23 +1433,59 @@ class Game:
             # Fim da rua da vila = caminho pra floresta → Fase 1 (ver
             # PLANO_VILA.md). Não é "fase+1" porque VILLAGE não é um índice
             # numérico — cai fora de PHASES de propósito.
-            self.load_level(0)
-            self.save_progress()
+            self._start_level_transition(0)
         elif self.level.index == len(PHASES) - 1:
-            self.state = COMPLETE
+            self._start_level_transition(COMPLETE)
         else:
-            finished_index = self.level.index
-            self.load_level(finished_index + 1)
-            # load_level já sobrescreveu self.message com o subtítulo da fase
-            # nova (message_timer=0, ver load_level) — o aviso de desbloqueio
-            # entra DEPOIS de propósito, pra não ser apagado por ele.
-            if finished_index == 0 and not self.ranged_unlocked:
-                self.ranged_unlocked = True
-                self.show_message(
-                    "Novo poder: Ataque à Distância [R] desbloqueado!",
-                    MESSAGE_DURATION_LONG,
-                )
-            self.save_progress()
+            self._start_level_transition(self.level.index + 1)
+
+    def _start_level_transition(self, target):
+        """Começa um fade sem trocar o mapa antes de chegar ao preto."""
+        if self._level_transition_phase is not None:
+            return
+        self._level_transition_target = target
+        self._level_transition_phase = "fade_out"
+        self._level_transition_alpha = 0
+
+    def _update_level_transition(self):
+        if self._level_transition_phase == "fade_out":
+            self._level_transition_alpha = min(
+                255,
+                self._level_transition_alpha + self.LEVEL_TRANSITION_FADE_STEP,
+            )
+            if self._level_transition_alpha == 255:
+                self._swap_level_at_black()
+                self._level_transition_phase = "fade_in"
+            return
+
+        if self._level_transition_phase == "fade_in":
+            self._level_transition_alpha = max(
+                0,
+                self._level_transition_alpha - self.LEVEL_TRANSITION_FADE_STEP,
+            )
+            if self._level_transition_alpha == 0:
+                self._level_transition_phase = None
+                self._level_transition_target = None
+                self._level_transition_surface = None
+
+    def _swap_level_at_black(self):
+        """Aplica a mudança quando nenhum dos dois mapas está visível."""
+        target = self._level_transition_target
+        finished_index = self.level.index
+        if target == COMPLETE:
+            self.state = COMPLETE
+            return
+
+        self.load_level(target)
+        # load_level já escreveu o subtítulo da fase nova. O desbloqueio vem
+        # depois para continuar sendo a mensagem visível ao chegar à Fase 2.
+        if finished_index == 0 and not self.ranged_unlocked:
+            self.ranged_unlocked = True
+            self.show_message(
+                "Novo poder: Ataque à Distância [R] desbloqueado!",
+                MESSAGE_DURATION_LONG,
+            )
+        self.save_progress()
 
 
     def draw(self, screen):
@@ -1462,6 +1537,7 @@ class Game:
         self._draw_background(surface)
         self._draw_world(surface)
         self._draw_door_prompts(surface)
+        self._draw_puzzle_prompts(surface)
         self._draw_npc_prompts(surface)
         self._draw_player_light(surface)
         self.draw_dash_trail(surface)
@@ -1480,6 +1556,7 @@ class Game:
         self.hint.draw(real_surface, draw_text)
         self.minigame.draw(real_surface, draw_text)
         self._draw_intro_exit_fade(real_surface)
+        self._draw_level_transition_fade(real_surface)
 
     def _render_world_snapshot(self):
         """Desenha o mundo uma única vez numa Surface própria, pro menu usar
@@ -1517,6 +1594,19 @@ class Game:
             self._intro_exit_fade_surface.fill("black")
         self._intro_exit_fade_surface.set_alpha(self._intro_exit_fade_alpha)
         surface.blit(self._intro_exit_fade_surface, (0, 0))
+
+    def _draw_level_transition_fade(self, surface):
+        """Escurece a fase antiga e revela a nova usando a mesma camada."""
+        if self._level_transition_phase is None or self._level_transition_alpha <= 0:
+            return
+        if (
+            self._level_transition_surface is None
+            or self._level_transition_surface.get_size() != surface.get_size()
+        ):
+            self._level_transition_surface = pygame.Surface(surface.get_size()).convert()
+            self._level_transition_surface.fill("black")
+        self._level_transition_surface.set_alpha(self._level_transition_alpha)
+        surface.blit(self._level_transition_surface, (0, 0))
 
     def _draw_underwater_overlay(self, surface):
         """Tinge o mundo enquanto a cabeça da Lia ainda toca a água."""
@@ -1575,6 +1665,9 @@ class Game:
         if key == "campo" and self.assets.campo_layers:
             self._draw_campo_parallax(surface, variant)
             return
+        if key == "school" and self.assets.school_layers:
+            self._draw_school_parallax(surface, variant)
+            return
         if key == "village" and self.assets.village_layers:
             self._draw_village_parallax(surface, variant)
             return
@@ -1603,6 +1696,43 @@ class Game:
         transparência sobre um fundo opaco, sem risco de "vazar" cor onde
         deveria ficar vazio (ver _load_village_parallax_layers)."""
         self._draw_parallax_layers(surface, self.assets.village_layers, variant)
+
+    def _draw_school_parallax(self, surface, variant):
+        """Desenha a Escola com movimento horizontal, vertical e névoa.
+
+        Não há troca brusca de imagem no limite subterrâneo: as variantes
+        apontam para os mesmos pixels e cada plano responde continuamente à
+        câmera. A névoa também deriva pelo relógio visual independente.
+        """
+        for layer in self.assets.school_layers:
+            image = layer["variants"][variant]
+            base_x, base_y = layer["base_offset"]
+            draw_x, draw_y = layer["draw_offset"]
+            origin_x = round(
+                base_x
+                + draw_x
+                - self.camera_x * layer["parallax_x"]
+                - self._background_elapsed * layer["scroll_speed_x"]
+            )
+            origin_y = round(
+                base_y
+                + draw_y
+                - (self.camera_y - layer["reference_y"])
+                * layer["parallax_y"]
+            )
+            if not layer["repeat_x"]:
+                surface.blit(image, (origin_x, origin_y))
+                continue
+
+            repeat_width = layer["tile_width"]
+            first_tile = math.floor((0 - origin_x) / repeat_width)
+            tile_x = origin_x + first_tile * repeat_width
+            mirror = layer.get("mirrors", {}).get(variant)
+            while tile_x < WIDTH:
+                use_mirror = mirror is not None and first_tile % 2
+                surface.blit(mirror if use_mirror else image, (tile_x, origin_y))
+                first_tile += 1
+                tile_x += repeat_width
 
     def _draw_parallax_layers(self, surface, layers, variant):
         """Desenha uma pilha de planos com repetição e velocidades próprias."""
@@ -1641,7 +1771,9 @@ class Game:
                 return "village"
             return None
         # A escola não compartilha mais o cenário rural do prólogo.
-        if self.level.index == 0 and "school" in self.assets.backgrounds:
+        if self.level.index == 0 and (
+            self.assets.school_layers or "school" in self.assets.backgrounds
+        ):
             return "school"
         if self.assets.village_layers or "village" in self.assets.backgrounds:
             return "village"
@@ -1744,6 +1876,67 @@ class Game:
             draw_text(
                 surface,
                 label,
+                (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
+                14,
+                "#f4e4a5",
+                True,
+            )
+
+    def _draw_puzzle_prompts(self, surface):
+        """Explica as interações que não são portas comuns.
+
+        Cada aviso usa a mesma área de proximidade da ação correspondente,
+        para nunca mandar apertar [E] num ponto em que a tecla ainda não
+        funciona. Elevadores informam a direção; a caixa e a bancada só
+        aparecem nos mapas em que realmente existem.
+        """
+        player_rect = self.player.rect
+
+        for elevator in self.level.secret_elevators:
+            rect = elevator["rect"]
+            if not player_rect.colliderect(
+                rect.inflate(
+                    self.interactions.SECRET_ELEVATOR_RANGE,
+                    self.interactions.SECRET_ELEVATOR_RANGE,
+                )
+            ):
+                continue
+            direction = "SUBIR" if elevator["destino"] == "sair" else "DESCER"
+            draw_text(
+                surface,
+                f"APERTE [E] PARA {direction} NO ELEVADOR",
+                (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
+                14,
+                "#f4e4a5",
+                True,
+            )
+
+        energy_box = self.level.energy_box
+        if (
+            energy_box is not None
+            and self.assets.energy_box_sprites is not None
+            and player_rect.colliderect(energy_box.inflate(70, 60))
+        ):
+            draw_text(
+                surface,
+                "APERTE [E] PARA ACESSAR A CAIXA DE ENERGIA",
+                (
+                    energy_box.centerx - self.camera_x,
+                    energy_box.top - 22 - self.camera_y,
+                ),
+                14,
+                "#f4e4a5",
+                True,
+            )
+
+        lab_bench = self.level.lab_bench
+        if lab_bench is None or self.puzzles.microscope_assembled:
+            return
+        rect = lab_bench["rect"]
+        if player_rect.colliderect(rect.inflate(70, 60)):
+            draw_text(
+                surface,
+                "APERTE [E] PARA MONTAR O MICROSCÓPIO",
                 (rect.centerx - self.camera_x, rect.top - 22 - self.camera_y),
                 14,
                 "#f4e4a5",
