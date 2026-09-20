@@ -18,3 +18,7 @@ __pycache__/
 # Ambiente local e resultados das verificações
 .venv/
 .test-output/
+
+# Materiais pessoais de estudo e apresentação
+GUIA_ESTUDO_CODIGO.md
+RESUMO_APRESENTACAO.md
