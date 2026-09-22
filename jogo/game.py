@@ -14,6 +14,7 @@ from hint import Hint
 from hud import draw_ability_ui, draw_hud, draw_inventory, draw_text
 from level import PHASES, VILLAGE, Level
 from minigame import MinigameManager
+from old_film import OldFilmOverlay
 from player import Player
 from render_state import WorldDrawState
 from combat import CombatSystem
@@ -82,6 +83,10 @@ class Game:
 
     def __init__(self):
         self._load_assets()
+        # Loop curto já convertido em spritesheet: evita decodificar GIF/MP4
+        # durante a partida. O preto é neutro na mistura aditiva, então só
+        # poeira e riscos discretos aparecem sobre o mundo.
+        self.old_film = OldFilmOverlay(ASSET_DIR / "vfx" / "old_film_overlay.png")
         self.player = Player()
         self.combat = CombatSystem(self)
         dialogue_portraits = dict(self.assets.npc_frames)
@@ -450,6 +455,7 @@ class Game:
 
     def update(self, keyboard, dt=1 / FPS):
         self._update_music()
+        self.old_film.update(dt)
         dialogue_advance_pressed, attack_pressed, dash_pressed, ranged_pressed = self._read_input(keyboard)
 
         # Congela junto com o menu de pausa, mas continua durante diálogos e
@@ -1497,10 +1503,10 @@ class Game:
         # Se um dia entrar um estado novo que NÃO cubra a tela toda, ele
         # precisa preencher o fundo por conta própria.
         if self.state == INTRO:
-            self.intro.draw(real_surface, draw_text)
+            self.intro.draw(real_surface, draw_text, self.old_film.draw)
             return
         if self.elevator_cutscene.active:
-            self.elevator_cutscene.draw(real_surface, draw_text)
+            self.elevator_cutscene.draw(real_surface, draw_text, self.old_film.draw)
             return
         if self.state in (TITLE, SETTINGS, PAUSED):
             # O mundo inteiro era desenhado (~7 ms/quadro medidos) só pra
@@ -1516,6 +1522,7 @@ class Game:
                 self._dim_background(snapshot, self.MENU_DIM_ALPHA)
                 self._menu_snapshot = snapshot
             real_surface.blit(self._menu_snapshot, (0, 0))
+            self.old_film.draw(real_surface)
             self._draw_state_overlay(real_surface)
             return
         # Sem zoom, desenha direto no destino: usar outra Surface 1920x1080
@@ -1551,6 +1558,9 @@ class Game:
         if surface is not real_surface:
             self._blit_zoomed_world(real_surface, surface)
         self._draw_underwater_overlay(real_surface)
+        # Fica sobre o mundo, mas atrás do HUD, diálogos, dicas e fades para
+        # o acabamento não prejudicar a leitura de nenhuma informação.
+        self.old_film.draw(real_surface)
         self._draw_interface(real_surface)
         self._draw_state_overlay(real_surface)
         self.hint.draw(real_surface, draw_text)

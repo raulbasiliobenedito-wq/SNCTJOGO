@@ -213,7 +213,7 @@ class IntroCutscene:
             if self.hold_timer <= 0:
                 self.transition_phase = "fade_out"
 
-    def draw(self, surface, text_fn):
+    def draw(self, surface, text_fn, film_overlay=None):
         image = self.energy_frame or self.background
         image_offset = (
             self.energy_frame_offset if self.energy_frame is not None
@@ -224,6 +224,8 @@ class IntroCutscene:
         else:
             self._draw_fallback_room(surface)
             self._draw_lia(surface)
+        if film_overlay is not None:
+            film_overlay(surface)
         if not self.sequence_active:
             self.dialogue_box.draw(surface, text_fn)
         text_fn(

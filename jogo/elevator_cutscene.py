@@ -106,7 +106,7 @@ class ElevatorCutscene:
             if callback:
                 callback()
 
-    def draw(self, surface, text_fn):
+    def draw(self, surface, text_fn, film_overlay=None):
         # Descendo: o mundo "sobe" ao redor da Lia. Subindo: o contrário.
         # scroll_offset cresce sempre no tempo; só o SINAL muda com a
         # direção — é o que dá a sensação de reverter o movimento.
@@ -124,6 +124,9 @@ class ElevatorCutscene:
         if self.frame is not None:
             frame_rect = self.frame.get_rect(midbottom=(WIDTH // 2, HEIGHT))
             surface.blit(self.frame, frame_rect)
+
+        if film_overlay is not None:
+            film_overlay(surface)
 
         label = "Subindo..." if self.reverse else "Descendo..."
         text_fn(surface, label, (WIDTH // 2 - 55, 54), 20, "#cbd6e6", True)
