@@ -53,7 +53,7 @@
   --ciano: #7fe3ec;     /* laboratório, ciência, dados */
   --ambar: #ffd166;     /* pesquisa, conquista */
   --violeta: #a97bd9;   /* névoa / campo de contenção */
-  --verde: #8fd694;     /* vila, ar livre */
+  --verde: #8fd694;     /* campo, ar livre */
   --brasa: #ff8a5c;     /* fase 3, vulcão */
 
   /* Texto */
@@ -262,7 +262,7 @@ ul { padding-left: 1.1em; }
 }
 .capa__fundo {
   position: absolute; inset: 0;
-  background-image: url('../../jogo/images/backgrounds/ceu.png');
+  background-image: url('../../jogo/images/backgrounds/campo/campo_background_final.png');
   background-size: cover; background-position: center;
   opacity: 0.5;
   transform: scale(1.08);

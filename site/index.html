@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Echoes of Life — um jogo sobre não desistir de uma pergunta</title>
-<meta name="description" content="Echoes of Life: platformer 2D feito em Python com Pygame Zero. Uma vila, três fases, um laboratório escondido, quatro chefes e doze fatos sobre cientistas mulheres.">
+<meta name="description" content="Echoes of Life: platformer 2D feito em Python com Pygame Zero para a SNCT. Lia transforma seu projeto Ciência Delas em uma jornada por mulheres que abriram caminhos na ciência.">
 <meta name="author" content="Raul Basílio Benedito">
 <meta name="theme-color" content="#0b0912">
 <link rel="stylesheet" href="css/estilo.css">
@@ -47,13 +47,13 @@
     <span class="rotulo">Plataforma 2D · Python</span>
     <h1 class="capa__titulo">Echoes<br>of Life</h1>
     <p class="capa__linha">
-      Depois de descobrir que a mãe está com câncer, Lia sai atrás de qualquer
-      pista de resposta — da vila onde cresceu até uma caverna vulcânica sob um
-      centro de pesquisa — coletando pelo caminho o trabalho de cientistas reais.
+      Ao preparar o projeto escolar Ciência Delas, Lia descobre que a mãe está
+      com câncer e parte em busca das mulheres que abriram caminhos na ciência —
+      do campo onde cresceu até um centro de pesquisa subterrâneo.
     </p>
     <blockquote class="capa__citacao">
-      “Todo experimento pode falhar. Levante-se e tente de novo, minha filha —
-      isso vale pra ciência, e vale pra vida.”
+      “Existe tratamento porque muita gente continuou pesquisando, errando,
+      registrando e compartilhando.”
     </blockquote>
     <div class="capa__acoes">
       <a class="botao botao--principal" href="#jogar">▶ Jogar agora</a>
@@ -70,12 +70,12 @@
 <!-- ===================== NÚMEROS ===================== -->
 <section class="numeros" aria-label="O jogo em números">
   <div class="numeros__grade">
-    <div class="numero"><b>1 + 3</b><span>vila e fases</span></div>
+    <div class="numero"><b>1 + 3</b><span>campo e fases</span></div>
     <div class="numero"><b>7</b><span>mapas jogáveis</span></div>
     <div class="numero"><b>10</b><span>tipos de inimigo</span></div>
     <div class="numero"><b>4</b><span>chefes</span></div>
-    <div class="numero"><b>8</b><span>itens</span></div>
-    <div class="numero"><b>11</b><span>personagens que falam</span></div>
+    <div class="numero"><b>7</b><span>itens</span></div>
+    <div class="numero"><b>11</b><span>NPCs com diálogo</span></div>
     <div class="numero"><b>12</b><span>fatos de pesquisa</span></div>
     <div class="numero"><b>2</b><span>minigames</span></div>
   </div>
@@ -91,8 +91,8 @@
     <p>
       Um platformer 2D escrito em Python com Pygame Zero. Tem combate corpo a
       corpo, exploração, chefes com ataques telegrafados e dois minigames de
-      mouse — tudo a serviço de uma pesquisa que Lia começa por um motivo bem
-      pessoal: a mãe dela está doente, e ela precisa entender o que pode ajudar.
+      mouse — tudo a serviço do projeto Ciência Delas, que Lia transforma numa
+      pesquisa sobre mulheres, colaboração e persistência científica.
     </p>
   </div>
 
@@ -101,10 +101,10 @@
       <div class="ficha__topo"><h3>Como o jogo se estrutura</h3><span class="ficha__id">GD-01</span></div>
       <div class="ficha__corpo">
         <ul>
-          <li><b>Abertura</b> — uma cutscene no quarto do hospital mostra Lia e a mãe antes de tudo começar.</li>
-          <li><b>Prólogo jogável</b> — a Vila, onde os vizinhos ensinam os controles um de cada vez, no ponto em que cada um passa a ser necessário.</li>
-          <li><b>Três fases</b> — Escola, Universidade e Centro de Pesquisa, cada uma com salas secundárias escondidas.</li>
-          <li><b>Progressão</b> — cada fase só libera a saída depois que Lia derrota o chefe local e pega o item de pesquisa que ele solta.</li>
+          <li><b>Abertura</b> — Lia e a mãe conversam em casa sobre a feira de ciências, o projeto Ciência Delas e a importância de registrar quem abriu cada caminho.</li>
+          <li><b>Prólogo jogável</b> — o Campo, onde seis moradores ensinam os controles e o Golem Ancião marca o primeiro grande confronto.</li>
+          <li><b>Três fases</b> — Bosque do Conhecimento, Universidade e Centro de Pesquisa, com laboratório, biblioteca e passagens secundárias.</li>
+          <li><b>Progressão</b> — pesquisa, chefes e objetivos de laboratório se combinam: microscópio e caixa de energia são obrigatórios para avançar.</li>
           <li><b>Vida e escudo</b> — cinco corações, mais um escudo que absorve um golpe inteiro; os dois vêm de itens consumíveis.</li>
           <li><b>Fôlego</b> — nos trechos submersos da Fase 3 existe um medidor de oxigênio de 7 segundos que enche de volta fora d'água.</li>
           <li><b>Checkpoints e save</b> — bandeiras espalhadas pelas fases; o progresso é gravado em <code>save.json</code> e o título ganha um botão “Continuar”.</li>
@@ -122,10 +122,10 @@
             <tr><td><span class="tecla">ESPAÇO</span><span class="tecla">↑</span><span class="tecla">W</span></td><td>Pular</td></tr>
             <tr><td><span class="tecla">F</span> ou clique</td><td>Atacar (combo de 4 golpes)</td></tr>
             <tr><td><span class="tecla">Q</span></td><td>Investida — atravessa vãos largos e bate mais forte</td></tr>
-            <tr><td><span class="tecla">E</span></td><td>Falar, interagir, usar elevador e bancada</td></tr>
+            <tr><td><span class="tecla">E</span></td><td>Falar, interagir, usar elevador, painel e bancada</td></tr>
+            <tr><td><span class="tecla">R</span></td><td>Ataque à distância depois da Fase 1; reiniciar nas telas de fim</td></tr>
             <tr><td><span class="tecla">1</span><span class="tecla">2</span><span class="tecla">3</span></td><td>Usar os três itens consumíveis</td></tr>
             <tr><td><span class="tecla">ESC</span></td><td>Pausar / voltar</td></tr>
-            <tr><td><span class="tecla">R</span></td><td>Reiniciar na tela de fim</td></tr>
             <tr><td><span class="tecla">F11</span></td><td>Tela cheia</td></tr>
           </tbody>
         </table>
@@ -139,61 +139,47 @@
   <div class="cabecalho-secao">
     <span class="rotulo rotulo--coral">História</span>
     <h2>Por trás de cada pista</h2>
-    <p>O jogo começa num quarto de hospital, não numa masmorra. Tudo que vem
-       depois — o coral que brilha, o frasco rachado, a página rasgada — é Lia
-       atrás de uma resposta.</p>
+    <p>O jogo começa com uma conversa entre mãe e filha e uma pergunta para a
+       feira de ciências: quem foram as mulheres que tornaram possíveis as
+       descobertas que hoje ajudam tantas pessoas?</p>
   </div>
 
   <article class="ficha">
     <div class="ficha__topo"><h3>O começo</h3><span class="ficha__id">LORE-00</span></div>
     <div class="ficha__corpo">
-      <p>Lia está sentada ao lado da cama, no quarto do hospital, quando a mãe pede
-         pra ela se aproximar. Os médicos encontraram um câncer; vai ter tratamento,
-         e vai ter dias difíceis. Lia pergunta se aquilo vai passar, e a mãe responde
-         com a frase que, sem Lia saber ainda,
-         vai valer pro resto da jornada dela:</p>
+      <p>Lia ainda está acordada, cercada pelo caderno, pelo microscópio e pelas
+         imagens do trabalho <b>Ciência Delas</b>. Ela sabe o tema, mas não sabe como
+         terminar. A mãe sugere começar por uma pergunta — como toda pesquisa.</p>
 
       <blockquote class="capa__citacao" style="margin-left:0;">
-        “Todo experimento pode falhar, Lia. Levanta e tenta de novo — isso vale pra
-        ciência e vale pra vida.”
+        “Comece por quem quase ficou fora dos livros. E lembre: ciência nunca se
+        faz sozinha.”
       </blockquote>
 
-      <p>No dia seguinte ela atravessa a vila onde cresceu. Os vizinhos já sabem —
-         a Sra. Amélia chega a perguntar, sem jeito, se é verdade. Ninguém tenta
-         impedir. Seu Joaquim, Cadu e Zeca só vão ensinando o que ela vai precisar
-         saber pra seguir: como andar, como se defender, como atravessar um buraco
-         largo demais pra pular. É o mundo dela se despedindo com o que tem.</p>
+      <p>Na mesma conversa, a mãe conta que os médicos encontraram um câncer. Existe
+         tratamento justamente porque outras pessoas pesquisaram, erraram,
+         registraram resultados e compartilharam o que aprenderam. Quando o caderno
+         reage com uma energia inesperada e suas páginas começam a voar, Lia decide
+         seguir as pistas e preencher a pesquisa pelo caminho.</p>
 
-      <p>A primeira pista aparece perto de casa, num laboratório lacrado embaixo do
-         pátio da própria escola. Ali, dentro do Rei Slime, pulsa um núcleo de uma
-         cor que não existe em nenhum outro lugar do mundo de Lia — um
-         <b style="color:var(--coral-claro)">coral</b> que, ela vai descobrir, está
-         ligado a uma reação biológica rara demais pra ignorar.</p>
+      <p>Ela atravessa o Campo, enfrenta o Golem Ancião e chega ao Bosque do
+         Conhecimento. Ali, um painel de quatro botões libera o elevador de um
+         laboratório escondido. Montar o microscópio desativa a barreira que protege
+         o Rei Slime e revela a primeira parte importante da investigação.</p>
 
-      <p>É na Universidade que a pesquisa começa a fazer sentido. No laboratório
-         mais velho do prédio, um tanque de contenção rachado guarda o que sobrou do
-         <b>Espécime 07</b> — o material que primeiro revelou essa reação. A etiqueta
-         ainda diz <em>“ESPÉCIME 07 — NÃO REMOVER DO TANQUE”</em>, mas alguém removeu
-         assim mesmo, e o que escapou se espalhou pelo prédio inteiro: alunos com os
-         olhos acesos naquele mesmo coral, um zelador que continua fazendo a ronda de
-         sempre, um Bibliotecário Silente guardando páginas que ninguém devia ter
-         lido. Não são monstros — são o preço de mexer com algo que ainda não se
-         entende direito.</p>
+      <p>Na Universidade, laboratório e biblioteca contam lados diferentes da mesma
+         história. Lia precisa enfrentar o Espécime e o Bibliotecário, encontrar a
+         chave de fenda e religar a caixa de energia antes de seguir para o Centro de
+         Pesquisa.</p>
 
-      <p>No Centro de Pesquisa, mais fundo ainda, numa caverna vulcânica sob o
-         prédio, os estudos estão mais avançados — e mais perigosos. Um dragão feito
-         da própria rocha do lugar guarda o que restou das pesquisas originais. É o
-         fim da linha: se existir uma resposta em algum lugar, é ali.</p>
+      <p>Em cada região, fatos coletáveis e conversas com cientistas reais mostram
+         que nenhuma descoberta nasce isolada. Ao concluir a jornada, Lia apresenta
+         a pesquisa no congresso e corre para contar à mãe: a pergunta continua, mas
+         agora ela sabe que não está procurando sozinha.</p>
 
-      <p>Em cada fase, Lia encontra cientistas — mulheres reais, de hoje e de um
-         século atrás — dispostas a conversar quando ela se aproxima. Lia demora a
-         contar o que aconteceu com a mãe; enquanto isso, cada uma mostra à sua
-         maneira o que significa não desistir de uma pergunta difícil.</p>
-
-      <p>No fim, o jogo não promete uma cura mágica — nenhuma pesquisa real funciona
-         assim. O que ele promete é o que a mãe de Lia disse no início: que toda
-         tentativa vale a pena, mesmo quando falha, e que ninguém precisa procurar
-         sozinho.</p>
+      <p>O jogo não promete cura mágica nem orientação médica. A doença da mãe é a
+         motivação humana de uma história sobre memória, colaboração e a importância
+         das mulheres na ciência.</p>
     </div>
   </article>
 </section>
@@ -202,7 +188,7 @@
 <section class="secao revelar" id="mundo">
   <div class="cabecalho-secao">
     <span class="rotulo rotulo--ambar">Mundo</span>
-    <h2>Da vila até o vulcão</h2>
+    <h2>Do Campo ao centro de pesquisa</h2>
     <p>O percurso completo de Lia, na ordem em que ele acontece. As medidas são
        o tamanho real de cada mapa do Tiled, em pixels de jogo.</p>
   </div>
@@ -211,10 +197,10 @@
 
     <article class="ficha etapa">
       <div class="etapa__grade">
-        <div class="etapa__arte" style="background-image:url('../jogo/images/backgrounds/ceu.png')"><span class="etapa__num">00</span></div>
+        <div class="etapa__arte" style="background-image:url('../jogo/images/backgrounds/campo/campo_background_final.png')"><span class="etapa__num">00</span></div>
         <div class="etapa__corpo">
-          <h3>Vila — o prólogo jogável</h3>
-          <span class="etapa__fala">“Antes da estrada — a vila onde Lia cresceu.”</span>
+          <h3>Campo — o prólogo jogável</h3>
+          <span class="etapa__fala">“Antes da estrada — o campo onde Lia cresceu.”</span>
           <p>A primeira vez que Lia anda livre pelo mundo. Em vez de uma tela de
              tutorial, os próprios vizinhos ensinam: Seu Joaquim dá o básico, Cadu
              ensina <span class="tecla">F</span> ou clique esquerdo antes do slime
@@ -225,28 +211,29 @@
           <div class="etapa__meta">
             <span class="etiqueta etiqueta--verde">6 moradores</span>
             <span class="etiqueta">Tutorial distribuído</span>
+            <span class="etiqueta etiqueta--coral">Chefe: Golem Ancião</span>
             <span class="etiqueta">Fundo com 5 camadas de parallax</span>
           </div>
-          <p class="medida">maps/vila.tmx — 220 × 20 tiles (7040 × 640 px)</p>
+          <p class="medida">maps/vila.tmx — 228 × 20 tiles (7296 × 640 px)</p>
         </div>
       </div>
     </article>
 
     <article class="ficha etapa">
       <div class="etapa__grade">
-        <div class="etapa__arte" style="background-image:url('../jogo/images/backgrounds/background_school.png')"><span class="etapa__num">01</span></div>
+        <div class="etapa__arte" style="background-image:url('../jogo/images/backgrounds/escola/escola_ceu.png')"><span class="etapa__num">01</span></div>
         <div class="etapa__corpo">
-          <h3>Fase 1 — Escola</h3>
+          <h3>Fase 1 — Bosque do Conhecimento</h3>
           <span class="etapa__fala">“A primeira pergunta pode mudar o mundo.”</span>
-          <p>O lugar mais familiar de todos, com um laboratório escondido embaixo do
-             pátio. No fim do pátio, um campo de contenção de névoa bloqueia a
-             passagem para a arena do Rei Slime — e não tem como forçar. A única saída
-             é achar o elevador de serviço e descer.</p>
+          <p>Árvores gigantes e névoa cercam um antigo complexo de pesquisa. Uma
+             barreira bloqueia a arena do Rei Slime; para atravessá-la, Lia precisa
+             ligar o painel, ativar quatro botões na ordem correta e usar o elevador
+             que desce até o laboratório escondido.</p>
           <div class="etapa__meta">
             <span class="etiqueta etiqueta--coral">Chefe: Rei Slime</span>
             <span class="etiqueta etiqueta--ciano">Cientista: Rosalind Franklin</span>
             <span class="etiqueta etiqueta--ambar">Item: Essência de Slime</span>
-            <span class="etiqueta etiqueta--violeta">Campo de contenção</span>
+            <span class="etiqueta etiqueta--violeta">Painel + elevador</span>
           </div>
           <p class="medida">maps/fase1_escola.tmx — 242 × 46 tiles (7744 × 1472 px)</p>
         </div>
@@ -259,11 +246,10 @@
         <div class="etapa__corpo">
           <h3>Laboratório lacrado <span class="etiqueta etiqueta--violeta">área secreta</span></h3>
           <span class="etapa__fala">“Melhor eu não usar isso ainda.”</span>
-          <p>Descendo pelo elevador, Lia encontra a instalação que gerou o campo de
-             contenção: um poço rompido com poça tóxica no fundo, uma galeria de
-             tanques de espécime, uma sala elétrica e um corredor alagado. As quatro
-             peças de um microscópio estão espalhadas por ali — montá-las na bancada
-             do fim é o que desliga o campo lá em cima e abre o caminho pro chefe.</p>
+          <p>Uma cutscene acompanha a descida de Lia. No laboratório, quatro peças de
+             microscópio estão espalhadas entre poças tóxicas, tanques e passarelas.
+             Montá-las na bancada é obrigatório: o microscópio concluído desliga a
+             barreira no bosque e abre o caminho para o Rei Slime.</p>
           <div class="etapa__meta">
             <span class="etiqueta">4 peças de microscópio</span>
             <span class="etiqueta">Poças tóxicas</span>
@@ -282,8 +268,8 @@
           <span class="etapa__fala">“Conhecimento se constrói em movimento.”</span>
           <p>Um corredor universitário tomado por alunos possuídos e vigiado por um
              zelador guardião. Duas portas levam às salas onde a origem da anomalia é
-             revelada — e as duas são obrigatórias: a fase só termina com os
-             <em>dois</em> itens de pesquisa na mochila.</p>
+             revelada. A fase só termina com os <em>dois</em> itens de pesquisa e a
+             caixa de energia do laboratório funcionando.</p>
           <div class="etapa__meta">
             <span class="etiqueta etiqueta--coral">Mini-chefe: Zelador Guardião</span>
             <span class="etiqueta etiqueta--ciano">Katherine Johnson · Marie Curie · Ada Lovelace</span>
@@ -300,8 +286,9 @@
         <div class="etapa__corpo">
           <h3>Sala do Laboratório <span class="etiqueta etiqueta--violeta">porta lateral</span></h3>
           <p>O laboratório velho, com o tanque de contenção rachado do Espécime 07 e
-             uma caixa de energia que precisa ser reaberta à mão — o minigame de
-             parafusos e fios. É aqui que Marie Curie fica.</p>
+             uma caixa de energia que precisa ser reaberta à mão. A chave de fenda
+             vem da biblioteca; depois dos parafusos, Lia ainda precisa religar os
+             quatro fios. Concluir esse minigame é obrigatório para sair da fase.</p>
           <div class="etapa__meta">
             <span class="etiqueta etiqueta--coral">Chefe: Espécime 07</span>
             <span class="etiqueta">Minigame da caixa de energia</span>
@@ -334,14 +321,13 @@
         <div class="etapa__corpo">
           <h3>Fase 3 — Centro de Pesquisa</h3>
           <span class="etapa__fala">“Pesquisa é colaboração, coragem e esperança.”</span>
-          <p>O maior mapa do jogo: uma caverna vulcânica sob o centro de pesquisa,
-             com lagos de lava, trechos submersos que exigem gerenciar o fôlego e
-             cervos de cristal que se mineralizam ao morrer. No fundo dela, um Dragão
-             feito de basalto e magma guarda o que restou das pesquisas originais.</p>
+          <p>O maior mapa do jogo: uma caverna sob o centro de pesquisa, com lagos de
+             lava, trechos submersos que exigem gerenciar o fôlego, cervos de cristal
+             e entidades sombrias. É a etapa final da coleta de pesquisa antes da
+             apresentação de Lia no congresso.</p>
           <div class="etapa__meta">
-            <span class="etiqueta etiqueta--coral">Chefe: Dragão</span>
             <span class="etiqueta etiqueta--ciano">Cientista: Jaqueline Goes de Jesus</span>
-            <span class="etiqueta etiqueta--ambar">Item: Sangue do Dragão</span>
+            <span class="etiqueta etiqueta--ambar">Conclusão da pesquisa</span>
             <span class="etiqueta">Natação e fôlego</span>
           </div>
           <p class="medida">maps/fase3_pesquisa.tmx — 315 × 100 tiles (10080 × 3200 px)</p>
@@ -357,8 +343,8 @@
   <div class="cabecalho-secao">
     <span class="rotulo rotulo--ciano">Personagens</span>
     <h2>Quem Lia encontra</h2>
-    <p>Onze personagens conversam com ela ao longo do jogo — seis moradores da
-       vila e cinco cientistas reais, uma por local. Todos esperam Lia chegar
+    <p>Onze NPCs conversam com ela ao longo do jogo — seis moradores do
+       Campo e cinco cientistas reais, uma por local. Todos esperam Lia chegar
        perto e apertar <span class="tecla">E</span>.</p>
   </div>
 
@@ -385,7 +371,7 @@
       <div class="ficha__corpo">
         <div class="palco palco--npc"><div class="sprite" data-sprite="franklin" data-escala="3"></div></div>
         <h4>Rosalind Franklin</h4>
-        <span class="pessoa__papel">Escola</span>
+        <span class="pessoa__papel">Bosque do Conhecimento</span>
         <p class="pessoa__fala">“Olhar com atenção é trabalho, Lia, não é talento. Vai fundo no que os outros acharam que não valia a pena.”</p>
         <p class="pessoa__fato">Produziu imagens de raios X que foram fundamentais para compreender a estrutura do DNA.</p>
       </div>
@@ -441,7 +427,7 @@
     homenagem feita com respeito, no contexto de um trabalho escolar não-comercial.
   </p>
 
-  <h3 style="margin:44px 0 16px;">Os moradores da vila</h3>
+  <h3 style="margin:44px 0 16px;">Os moradores do Campo</h3>
   <div class="grade grade--3">
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-01</span><span class="ficha__id">tutorial</span></div>
@@ -455,7 +441,8 @@
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-02</span><span class="ficha__id">tutorial</span></div>
       <div class="ficha__corpo">
-        <h4 style="margin-top:12px;">Cadu</h4>
+        <div class="palco palco--npc"><div class="sprite" data-sprite="cadu" data-escala="3"></div></div>
+        <h4>Cadu</h4>
         <span class="pessoa__papel">Ensina o ataque</span>
         <p class="pessoa__fala">“Aperta F ou usa o clique esquerdo do mouse quando ele chegar perto. Se continuar vindo, acerta de novo.”</p>
       </div>
@@ -463,7 +450,8 @@
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-03</span><span class="ficha__id">tutorial</span></div>
       <div class="ficha__corpo">
-        <h4 style="margin-top:12px;">Zeca</h4>
+        <div class="palco palco--npc"><div class="sprite" data-sprite="zeca" data-escala="3"></div></div>
+        <h4>Zeca</h4>
         <span class="pessoa__papel">Ensina a investida</span>
         <p class="pessoa__fala">“Olha pro lado que quer ir e aperta Q. Você dispara naquela direção e passa por cima antes de perceber.”</p>
       </div>
@@ -471,7 +459,8 @@
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-04</span><span class="ficha__id">história</span></div>
       <div class="ficha__corpo">
-        <h4 style="margin-top:12px;">Sra. Amélia</h4>
+        <div class="palco palco--npc"><div class="sprite" data-sprite="amelia" data-escala="3"></div></div>
+        <h4>Sra. Amélia</h4>
         <span class="pessoa__papel">A única que pergunta</span>
         <p class="pessoa__fala">“Passa aqui na volta, minha filha. Nem que seja pra dizer que não achou.”</p>
       </div>
@@ -479,7 +468,8 @@
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-05</span><span class="ficha__id">história</span></div>
       <div class="ficha__corpo">
-        <h4 style="margin-top:12px;">Dona Marta</h4>
+        <div class="palco palco--npc"><div class="sprite" data-sprite="marta" data-escala="3"></div></div>
+        <h4>Dona Marta</h4>
         <span class="pessoa__papel">Vizinha</span>
         <p class="pessoa__fala">“Toda vez, Lia. Ela fala de você toda vez.”</p>
       </div>
@@ -487,16 +477,16 @@
     <article class="ficha pessoa">
       <div class="ficha__topo"><span class="ficha__id">VILA-06</span><span class="ficha__id">história</span></div>
       <div class="ficha__corpo">
-        <h4 style="margin-top:12px;">Bento</h4>
+        <div class="palco palco--npc"><div class="sprite" data-sprite="bento" data-escala="3"></div></div>
+        <h4>Bento</h4>
         <span class="pessoa__papel">Amigo</span>
         <p class="pessoa__fala">“Tua vaga tá guardada, viu?”</p>
       </div>
     </article>
   </div>
   <p class="nota" style="max-width:760px;margin-top:18px;">
-    Cadu, Zeca, Sra. Amélia, Dona Marta e Bento ainda não têm sprite desenhado —
-    dá pra conversar com todos normalmente, eles só não aparecem em tela. O jogo
-    ignora sozinho a arte que falta, sem quebrar.
+    Os seis moradores têm animações próprias e foram posicionados pixel a pixel
+    para manter os pés alinhados ao terreno.
   </p>
 </section>
 
@@ -505,9 +495,9 @@
   <div class="cabecalho-secao">
     <span class="rotulo rotulo--coral">Inimigos e chefes</span>
     <h2>Quem se atravessa no caminho</h2>
-    <p>Cinco inimigos comuns patrulham as fases. Cada local principal tem seu
-       chefe, com dois ataques telegrafados que pedem respostas diferentes — e
-       os dois podem ser aparados no tempo certo.</p>
+    <p>Cinco inimigos comuns patrulham as fases. Quatro confrontos maiores
+       pontuam a jornada, com preparações visíveis, padrões diferentes e ataques
+       que exigem pular, reposicionar ou aparar no tempo certo.</p>
   </div>
 
   <h3 style="margin-bottom:16px;">Inimigos comuns</h3>
@@ -564,7 +554,7 @@
         <div>
           <p>Corpo translúcido e gelatinoso com um núcleo coral visível por dentro —
              a primeira aparição da anomalia no jogo. Guarda a arena no fim do pátio
-             da escola, atrás do campo de contenção.</p>
+             do Bosque do Conhecimento, atrás da barreira de névoa.</p>
           <div class="ataques">
             <div class="ataque"><b>Esmagar</b><span>Se achata, sobe e solta uma onda rasteira pros dois lados ao aterrissar. Resposta: pular por cima da onda.</span></div>
             <div class="ataque"><b>Cisão</b><span>Se estica, convulsiona e cospe 4 slimes menores que se espalham e continuam vivos depois. Resposta: andar pra limpar espaço — pular no meio deles é a pior escolha.</span></div>
@@ -609,18 +599,19 @@
     </article>
 
     <article class="ficha chefe">
-      <div class="ficha__topo"><h3>Dragão</h3><span class="ficha__id">BOSS-04 · Fase 3</span></div>
+      <div class="ficha__topo"><h3>Golem Ancião</h3><span class="ficha__id">BOSS-04 · Campo</span></div>
       <div class="ficha__corpo">
-        <div class="palco palco--chefe"><div class="sprite" data-sprite="dragao" data-escala="0.55"></div></div>
+        <div class="palco palco--chefe"><div class="sprite" data-sprite="golem" data-escala="1.5"></div></div>
         <div>
-          <p>Feito do mesmo material da caverna: dorso de basalto escuro e ventre em
-             brasa, como se tivesse nascido da lava e não apenas vivido nela. O último
-             obstáculo da jornada.</p>
+          <p>Primeiro grande chefe da jornada, adormecido no Campo. Tem mais vida que
+             os outros adversários e acorda com tremor de tela e poeira antes de
+             alternar três ataques bem sinalizados.</p>
           <div class="ataques">
-            <div class="ataque"><b>Sopro</b><span>O peito acende em 4 estágios antes de um jato rasteiro varrer o chão inteiro. Resposta: pular.</span></div>
-            <div class="ataque"><b>Brasas</b><span>Abre as asas, decola e solta pedras incandescentes em posições aleatórias, que continuam caindo depois dele pousar. Resposta: andar pra se reposicionar — e aparar as pedras que dá.</span></div>
+            <div class="ataque"><b>Impacto no chão</b><span>Golpeia o solo e cria uma sequência de erupções de pedra na direção de Lia.</span></div>
+            <div class="ataque"><b>Investida</b><span>Trava a direção, cruza a arena levantando poeira e deixa pouco espaço para hesitar.</span></div>
+            <div class="ataque"><b>Pedregulho</b><span>Arremessa uma pedra em arco que explode ao atingir o chão.</span></div>
           </div>
-          <p style="margin-top:14px;"><span class="etiqueta etiqueta--ambar">Solta: Sangue do Dragão</span></p>
+          <p style="margin-top:14px;"><span class="etiqueta etiqueta--verde">Libera o caminho para o Bosque</span></p>
         </div>
       </div>
     </article>
@@ -633,9 +624,8 @@
   <div class="cabecalho-secao">
     <span class="rotulo rotulo--ambar">Itens</span>
     <h2>O que Lia encontra pelo caminho</h2>
-    <p>Três consumíveis com efeito imediato, quatro itens de pesquisa que são
-       drop garantido de chefe e destravam o avanço de fase, e uma ferramenta
-       que serve pra um minigame específico.</p>
+    <p>Três consumíveis com efeito imediato, três itens de pesquisa obtidos em
+       chefes e uma ferramenta usada para abrir a caixa de energia.</p>
   </div>
 
   <div class="grade grade--2">
@@ -688,13 +678,6 @@
         <div><h4>Livro Mágico</h4><p>Drop garantido do Bibliotecário Silente. A Fase 2 exige os dois itens de pesquisa dela pra liberar a saída.</p></div>
       </div>
     </article>
-    <article class="ficha item">
-      <div class="ficha__topo"><span class="ficha__id">ITEM-6</span><span class="etiqueta etiqueta--ambar">Pesquisa · conclui a Fase 3</span></div>
-      <div class="ficha__corpo">
-        <div class="sprite" data-sprite="item-6" data-escala="4"></div>
-        <div><h4>Sangue do Dragão</h4><p>Drop garantido do Dragão, no fim da caverna.</p></div>
-      </div>
-    </article>
   </div>
 </section>
 
@@ -716,16 +699,20 @@
       <div class="ficha__corpo"><p>Atacar durante a investida aumenta o alcance do golpe e o dano. Serve pra atravessar vãos largos e pra abrir espaço quando o chefe encurrala.</p></div>
     </article>
     <article class="ficha mecanica">
+      <div class="ficha__topo"><h4>Ataque à distância</h4><span class="ficha__id">MEC-02B</span></div>
+      <div class="ficha__corpo"><p>Ao concluir a Fase 1, Lia desbloqueia o disparo com <span class="tecla">R</span>. Ele alcança inimigos do outro lado da arena e tem recarga própria mostrada no HUD.</p></div>
+    </article>
+    <article class="ficha mecanica">
       <div class="ficha__topo"><h4>Aparar (parry)</h4><span class="ficha__id">MEC-03</span></div>
-      <div class="ficha__corpo"><p>Acertar o ataque corpo a corpo num projétil de chefe — pedra do Dragão, tomo do Bibliotecário, jato do Espécime — destrói o projétil, devolve o maior dano do jogo e dá 1 segundo de invencibilidade, com congelamento de quadro e tremor de tela.</p></div>
+      <div class="ficha__corpo"><p>Acertar o ataque corpo a corpo num projétil aparável — como o tomo do Bibliotecário ou o jato do Espécime — destrói o projétil, devolve o maior dano do jogo e dá 1 segundo de invencibilidade, com congelamento de quadro e tremor de tela.</p></div>
     </article>
     <article class="ficha mecanica">
       <div class="ficha__topo"><h4>Vida e escudo</h4><span class="ficha__id">MEC-04</span></div>
       <div class="ficha__corpo"><p>Cinco corações. Encostar num inimigo comum tira meio coração; ataques de chefe tiram mais. O escudo absorve um golpe inteiro antes de qualquer perda de vida.</p></div>
     </article>
     <article class="ficha mecanica">
-      <div class="ficha__topo"><h4>Campo de contenção</h4><span class="ficha__id">MEC-05</span></div>
-      <div class="ficha__corpo"><p>Uma parede de névoa animada bloqueia a passagem e só cai quando o objetivo ligado a ela é cumprido. Na Fase 1, o campo só desliga quando Lia monta o microscópio no laboratório lacrado lá embaixo.</p></div>
+      <div class="ficha__topo"><h4>Painel, elevador e barreira</h4><span class="ficha__id">MEC-05</span></div>
+      <div class="ficha__corpo"><p>O elevador da Fase 1 só aceita a interação depois que a alavanca liga o painel e os quatro botões são pressionados na ordem azul, verde, amarelo e vermelho. A barreira de névoa só desaparece quando o microscópio é montado no laboratório.</p></div>
     </article>
     <article class="ficha mecanica">
       <div class="ficha__topo"><h4>Fôlego e natação</h4><span class="ficha__id">MEC-06</span></div>
@@ -764,8 +751,9 @@
            fora de ordem, é recusada explicando o que falta antes; peça no encaixe
            errado é recusada explicando pra que aquela peça serve. Nada de tentativa
            e erro cego: cada recusa ensina alguma coisa.</p>
-        <p>Aparece duas vezes no jogo, com bancadas independentes: a da Fase 1 e a
-           do laboratório lacrado, que é a que desliga o campo de contenção.</p>
+        <p>A bancada fica no laboratório acessado pelo elevador da Fase 1. Montar o
+           microscópio é obrigatório para desligar a barreira de névoa e alcançar o
+           Rei Slime.</p>
         <p><span class="etiqueta etiqueta--violeta">Sem punição</span><span class="etiqueta">Sem limite de tempo</span></p>
       </div>
     </article>
@@ -779,7 +767,8 @@
            <b>fios</b>: quatro fios coloridos para quatro terminais, seguindo o
            diagrama desenhado ao lado.</p>
         <p>Errar solta faísca e devolve só aquele fio. No terceiro erro a caixa fecha
-           sozinha — sem dano, só recomeçar. Fica na sala do laboratório da Fase 2.</p>
+           sozinha — sem dano, só recomeçar. Fica na sala do laboratório da Fase 2 e
+           precisa estar ligada para a saída da Universidade ser liberada.</p>
         <p><span class="etiqueta etiqueta--ambar">Precisa da chave de fenda</span><span class="etiqueta">3 erros e fecha</span></p>
       </div>
     </article>
@@ -836,7 +825,7 @@
             <tr><td>Resolução lógica</td><td>1920 × 1080, ampliada para qualquer janela</td></tr>
             <tr><td>Taxa de quadros</td><td>60 fps</td></tr>
             <tr><td>Versão web</td><td>pygbag (WebAssembly), pela entrada <code>main_web.py</code></td></tr>
-            <tr><td>Dependências externas</td><td>nenhuma além do pygame — nada de motor de terceiros</td></tr>
+            <tr><td>Dependências externas</td><td>pygame e Pygame Zero — sem motor de jogo pronto</td></tr>
           </tbody>
         </table>
       </div>
@@ -847,12 +836,13 @@
       <div class="ficha__corpo">
         <table class="tabela">
           <tbody>
-            <tr><td>Código Python</td><td>~12.300 linhas em 22 arquivos</td></tr>
-            <tr><td>Maiores módulos</td><td><code>game.py</code> (~3.700), <code>enemy.py</code> (~2.900), <code>minigame.py</code> (~1.300), <code>level.py</code> (~1.200)</td></tr>
+            <tr><td>Código Python</td><td>~12.400 linhas em 38 módulos</td></tr>
+            <tr><td>Maiores módulos</td><td><code>game.py</code> (~2.100), <code>level.py</code> e <code>minigame.py</code> (~1.200 cada), <code>assets.py</code> (~960)</td></tr>
             <tr><td>Mapas do Tiled</td><td>7 mapas e 15 tilesets</td></tr>
             <tr><td>Maior mapa</td><td>Fase 3 — 315 × 100 tiles (10.080 × 3.200 px)</td></tr>
-            <tr><td>Arte</td><td>264 arquivos PNG</td></tr>
-            <tr><td>Sistemas próprios</td><td>leitor de TMX, câmera, colisão em blocos, diálogo, cutscenes, HUD, minigames, save</td></tr>
+            <tr><td>Arte</td><td>306 arquivos PNG, além de áudio, fontes e mapas</td></tr>
+            <tr><td>Verificação</td><td>126 testes automatizados</td></tr>
+            <tr><td>Sistemas próprios</td><td>leitor de TMX, parallax, câmera, colisão, combate, diálogo, cutscenes, HUD, minigames e save</td></tr>
           </tbody>
         </table>
       </div>
@@ -893,7 +883,7 @@
           <li><b>Mapas fora do código</b> — fase nenhuma é escrita em Python. Tudo vem do <code>.tmx</code>, então mudar o level design não exige mexer em código.</li>
           <li><b>Colisão em blocos</b> — o mapa é indexado em pedaços; a cada quadro só os blocos perto da Lia são testados, não o mapa inteiro.</li>
           <li><b>Arte carregada sob demanda</b> — sprite que a fase atual não usa não entra na memória.</li>
-          <li><b>Asset opcional</b> — arte que ainda não existe é ignorada em silêncio em vez de derrubar o jogo; por isso dá pra jogar a vila mesmo sem os sprites dos moradores.</li>
+          <li><b>Inimigos separados</b> — chefes e inimigos especiais vivem em módulos próprios, facilitando ajustar comportamento e animações sem transformar <code>enemy.py</code> num arquivo gigante.</li>
           <li><b>Tolerância a erro do editor</b> — o leitor de TMX confere o que o arquivo declara contra o tamanho real da imagem e avisa em vez de estourar.</li>
         </ul>
       </div>
@@ -921,20 +911,18 @@
       <div class="aviso" id="aviso-jogo">
         <h3>Versão para navegador</h3>
         <p>O jogo é escrito em Pygame Zero e precisa ser compilado para WebAssembly
-           com o <b>pygbag</b> antes de rodar aqui dentro. A entrada web
-           (<code>main_web.py</code>) já está pronta na pasta do projeto — falta só
-           gerar o build e copiar pra cá.</p>
+           com o <b>pygbag</b> antes de rodar aqui dentro. O projeto já possui uma
+           entrada web e um script que prepara o pacote sem alterar a versão desktop.</p>
       </div>
     </div>
     <ol class="passos">
-      <li>Instale o pygbag: <code>pip install pygbag</code></li>
-      <li>Entre na pasta <code>jogo/</code> e rode: <code>python -m pygbag main_web.py</code></li>
+      <li>Instale o pygbag no ambiente do projeto: <code>pip install pygbag</code></li>
+      <li>Na raiz do projeto, rode: <code>python build_web.py</code></li>
       <li>Copie o que foi gerado em <code>jogo/build/web/</code> para <code>site/jogo_web/</code></li>
       <li>Recarregue esta página — o jogo aparece sozinho no quadro acima</li>
     </ol>
-    <p class="nota">Se o pygbag exigir um arquivo chamado exatamente <code>main.py</code>,
-       renomeie <code>main.py</code> → <code>main_desktop.py</code> e
-       <code>main_web.py</code> → <code>main.py</code> só durante o build, e desfaça depois.</p>
+    <p class="nota">O script usa <code>main_web.py</code> somente na cópia de build;
+       o <code>main.py</code> do jogo para computador permanece intacto.</p>
   </div>
 
   <div class="painel" id="painel-local" role="tabpanel" aria-labelledby="aba-local" hidden>

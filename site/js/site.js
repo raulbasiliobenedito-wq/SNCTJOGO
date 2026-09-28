@@ -27,7 +27,12 @@
   var FOLHAS = {
     lia:        { arquivo: 'player/player_sheet.png',  q: [48, 48], linha: 0, quadros: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], fps: 12 },
     lia_parada: { arquivo: 'player/player_sheet.png',  q: [48, 48], linha: 0, quadros: [0, 1, 2, 3, 4, 5, 6, 7],                          fps: 8 },
-    joaquim:    { arquivo: 'npcs/seu_joaquim_idle.png', q: [48, 48], linha: 0, quadros: 6, fps: 8 },
+    joaquim:    { arquivo: 'npcs/seu_joaquim_idle.png', q: [48, 48], linha: 0, quadros: 9, fps: 8 },
+    marta:      { arquivo: 'npcs/dona_marta_idle.png',   q: [48, 48], linha: 0, quadros: 9, fps: 8 },
+    cadu:       { arquivo: 'npcs/cadu_idle.png',         q: [48, 48], linha: 0, quadros: 8, fps: 8 },
+    zeca:       { arquivo: 'npcs/zeca_idle.png',         q: [48, 48], linha: 0, quadros: 4, fps: 8 },
+    amelia:     { arquivo: 'npcs/sra_amelia_idle.png',   q: [48, 48], linha: 0, quadros: 9, fps: 8 },
+    bento:      { arquivo: 'npcs/bento_idle.png',        q: [48, 48], linha: 0, quadros: 9, fps: 8 },
 
     /* cientistas_idle.png: grade 8x5, 48x48, uma linha por cientista
        (a mesma ordem de NPC_SPRITE_ROWS em game.py) */
@@ -49,7 +54,7 @@
     rei_slime:  { arquivo: 'enemies/slime_king.png',     q: [64, 64],   linha: 0, quadros: 8, fps: 7 },
     especime:   { arquivo: 'enemies/lab_specimen.png',   q: [56, 48],   linha: 0, quadros: 8, fps: 7 },
     bibliotecario: { arquivo: 'enemies/librarian_boss.png', q: [64, 64], linha: 0, quadros: 8, fps: 7 },
-    dragao:     { arquivo: 'enemies/dragon.png',         q: [324, 265], linha: 0, quadros: 9, fps: 7 }
+    golem:      { arquivo: 'enemies/golem/golem_animations/spritesheets/golem_idle_sheet.png', q: [92, 92], linha: 0, quadros: 11, fps: 8 }
   };
 
   /* items.png: quadro 16x16, 4 colunas, uma linha por item — a mesma ordem

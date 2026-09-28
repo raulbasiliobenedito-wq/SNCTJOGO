@@ -213,7 +213,7 @@ class IntroCutscene:
             if self.hold_timer <= 0:
                 self.transition_phase = "fade_out"
 
-    def draw(self, surface, text_fn, film_overlay=None):
+    def draw(self, surface, text_fn):
         image = self.energy_frame or self.background
         image_offset = (
             self.energy_frame_offset if self.energy_frame is not None
@@ -224,8 +224,6 @@ class IntroCutscene:
         else:
             self._draw_fallback_room(surface)
             self._draw_lia(surface)
-        if film_overlay is not None:
-            film_overlay(surface)
         if not self.sequence_active:
             self.dialogue_box.draw(surface, text_fn)
         text_fn(
@@ -240,7 +238,7 @@ class IntroCutscene:
             self.fade_surface.set_alpha(self.fade_alpha)
             surface.blit(self.fade_surface, (0, 0))
 
-    # --- Fallback (só usado se images/cutscenes/hospital.png não existir) ---
+    # --- Fallback (só usado se a ilustração do prólogo não existir) ---
 
     def _draw_fallback_room(self, surface):
         top = (16, 24, 40)
